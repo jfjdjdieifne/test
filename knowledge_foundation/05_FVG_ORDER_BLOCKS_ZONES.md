@@ -71,6 +71,13 @@ Therefore a system that implements "last opposing candle" has not implemented th
 - Entry: "when price trades higher away from the bullish order block and then returns to the bullish order block candle or price bar high."
 - Stop: "the low of the bullish order block is the location of a relatively safe stop loss placement"; "just below the 50 percent of the order block total range is also considered to be a good location to raise the stop loss."
 
+**Execution status of G-OB-P (R3; response to audit F-04):** NOT RUNNABLE until the owner declares its unset slots. P-W (the window for "the move", UN-01) and P-N (the meaning and scale of "near", UN-02) have no value in this foundation, and none is assigned here. Options are listed as choices, not recommendations:
+- P-W: (i) the leg bounded by the reference under a declared swing family; (ii) the span from the last confirmed reference to the candidate; (iii) a fixed bar or time count, value unset.
+- P-N: (i) a set relation: the candidate's price band overlaps the reference's band (no numeric value needed); (ii) a distance no larger than a declared tolerance, value and units unset.
+- Each choice produces different candidates. The owner must run sensitivity analysis (SP-12) over the declared options and record the result. Multipliers of volatility measures or sweep ranges must be declared by the owner before use; none is proposed here.
+
+**Pending verification (R3):** an external review reports that the lesson contains the passage "using the bodies of the candles, you may end up using the wick but I want your focus primarily on the bodies." This session's retrieval did not reproduce it (chunk 0 returned an error page; chunks 1 and 2 contained only page navigation). It is **not** added as a source statement. Action: re-read the complete transcript; if confirmed, add it as a P1 statement and update P-L, P-C and the body/wick table.
+
 **Body vs wick, as worded (refinement of §5.4):**
 
 | Use in primary text | Wording | Reading | Status |

@@ -78,6 +78,21 @@ for f in sorted(glob.glob(f"{ROOT}/*.md")):
     pct[f] = len(re.findall(r"\d+(?:\.\d+)?\s?%|\d+\s?percent", open(f, encoding="utf-8").read()))
 print("[INFO] percentage-like tokens per file:", {k.split('/')[-1][:3]: v for k, v in pct.items() if v})
 
+
+# 7 cross-file references for R3 seed procedures and selectors
+defined_sp = set(re.findall(r"^### (SP-\d{2})", open(f"{ROOT}/17_SEED_PROCEDURES.md", encoding="utf-8").read(), re.M))
+cited_sp = set()
+for f in glob.glob(f"{ROOT}/1[5-9]_*.md"):
+    cited_sp |= set(re.findall(r"\bSP-\d{2}\b", open(f, encoding="utf-8").read()))
+undefined_sp = sorted(x for x in cited_sp if x not in defined_sp)
+check("every SP-NN cited in files 15-19 is defined in file 17 (### heading)", [f"undefined {x}" for x in undefined_sp])
+
+sel_defined = set(re.findall(r"\*\*(SEL-[A-Z-]+)\*\*", open(f"{ROOT}/11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md", encoding="utf-8").read()))
+sel_cited = set()
+for f in glob.glob(f"{ROOT}/*.md"):
+    sel_cited |= set(re.findall(r"\bSEL-[A-Z-]+\b", open(f, encoding="utf-8").read()))
+check("every SEL-* cited is defined in file 11", [f"undefined {x}" for x in sorted(sel_cited - sel_defined)])
+
 print("\nClaim type distribution:", dict(collections.Counter(c["type"] for c in claims)))
 print("Grade distribution:", dict(collections.Counter(c["grade"] for c in claims)))
 print("\nTOTAL FAILURES:", len(problems))

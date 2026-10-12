@@ -63,6 +63,12 @@ Common rules for all contracts:
 - **Dependencies:** IC-02.
 - **Invalidating evidence:** the same selector returns the same single candidate for all tasks (task-blindness), or a selected candidate's knowable time is after the decision time.
 - **Requires empirical learning:** selector ranking; calibration of alternatives (target 3).
+- **Seed selectors (R3; response to audit F-01).** Each seed states its justification class: [DETERMINISTIC] follows from a stated definition; [DECLARED-POLICY] is an owner-declared choice with no market-truth claim and must have a registry entry (SP-18); [SOURCE-SUPPORTED] is a direction supported by a cited ICT primary wording, not a validated rule; [UNRESOLVED] is left open. No seed produces a ranking, and no seed assigns a value to an unset slot.
+  - **SEL-INV-FALSIFIER** [DETERMINISTIC given the interpretation]. Input: an interpretation written as reference claims (SWS-08, SP-04). Output: the falsifier reference(s). Interpretation not in reference form: unresolved, reason MP. Source: researcher principle (file 02 §2.7); no ICT source is claimed. Validation: fixtures per interpretation (file 19, W3).
+  - **SEL-HTF-BIAS** [DECLARED-POLICY + SOURCE-SUPPORTED direction]. Input: confirmed references in the coarse view for role HTF-BIAS. Output: the set of coarse confirmed references, not a single one. Source support: the ICT Order Blocks transcript (P1, auto-caption) states a higher-timeframe preference for support/resistance references; it does not define a bias selector. Unset slots: P-REC ("recent enough", units and value not declared) and the scale table entry for HTF-BIAS (SP-02). Unresolved if either is unset: MP.
+  - **SEL-ENTRY-REF** [DECLARED-POLICY, residual UNRESOLVED]. Input: fine legs contained in the zone-defining coarse leg (SP-05, SP-08) and completed (SP-13). Output: a set. Unset slot: P-PROX ("close to current price"; units and value not declared). Recency versus depth among the survivors is an empirical question (SWS-07, W2) and returns unresolved, reason EP or MP.
+  - **SEL-LIQ-TARGET** [UNRESOLVED by design]. Input: IC-06 candidates with factual attributes (SP-17). Output: candidate set with conditional readings (file 19, W6). Never a single target.
+  - Recency, size, proximity and scale appear in these seeds only as declared slots or declared tables, never as a built-in ranking (file 17 §17.4).
 
 ## IC-04 — Structure view construction
 
@@ -139,6 +145,7 @@ Common rules for all contracts:
 - **Explicit unresolved states:** "G-OB-P produced no candidate (no reference near)," "candidate overlaps others."
 - **Dependencies:** IC-02, IC-04.
 - **Invalidating evidence:** a generator returns a candidate whose defining bars postdate the decision time; an FVG reported with no three-candle relation.
+- **Execution status (R3):** G-OB-P is NOT RUNNABLE until the owner declares its unset slots (window for the move, UN-01 / P-W; meaning and scale of "near", UN-02 / P-N; see file 05 §5.4a). Until then, the generator must return the explicit state "not executable: parameters undeclared" and must not substitute a value.
 - **Requires empirical learning:** whether any generator's candidates differ in outcomes (UN-05, UN-06).
 
 ## IC-09 — Zone status tracking

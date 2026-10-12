@@ -48,7 +48,8 @@ For each task: question · output · inputs · `H_T` · `X_T` · `C_T` · `Π_T`
 - **Procedure.** Filter, then apply `Π_T`. If the view has no confirmed leg, emit IC.
 - **Unresolved outcomes.** IC (too little history); MP (no declared role for the question).
 - **Dependent.** T-S5 falsifier, T-S4 base, zone context, liquidity "objective" labels.
-- **Worked cases.** W1 (definite), W8 (reference relevance changes after a later event).
+- **Status of the policy.** `Π_T` is declared and unvalidated. It is not an ICT-source claim. Any use requires sensitivity analysis (SP-12) and a report of the main alternative rule.
+- **Worked cases.** W1 (definite only conditional on the declared policy), W8 (reference relevance changes after a later event).
 
 ### T-S2 Event binding
 
@@ -87,6 +88,7 @@ For each task: question · output · inputs · `H_T` · `X_T` · `C_T` · `Π_T`
 - **`X_T`.** `X-SCALE`, `X-SUPER`.
 - **`Π_T`.** The "most recent opposite leg" rule is operational; state it.
 - **Unresolved outcomes.** MP if the task uses a different base than the declared rule; IC.
+- **Status of the rule.** "Most recent opposite leg" is a recency rule and is declared and unvalidated (SP-15). It is reported alongside its alternatives, not as a fact.
 - **Dependent.** Any depth measure; zone-depth comparisons.
 
 ### T-S5 Falsifier of an interpretation

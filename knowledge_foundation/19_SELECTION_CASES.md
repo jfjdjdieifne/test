@@ -50,7 +50,7 @@ Note: fB's low (25) and fD's low (22) are both inside Leg3's price span [20, 50]
 
 ## W1 — Structural reference for the current leg (definite)
 
-- **Priority item:** 3 · **Task:** T-S1 · **Class of result:** definite, conditional on view C and `Π_T`.
+- **Priority item:** 3 · **Task:** T-S1 · **Class of result:** definite only conditional on view C and on the declared policy P-ORIGIN (unvalidated; not an ICT-source claim).
 - **Observed state at t=52:** confirmed coarse points knowable ≤ 52: `L_a, H_a, L_b, H_b`. Last confirmed leg: Leg3 (`L_b→H_b`, up).
 - **Question:** which confirmed point is the reference for the current state of view C?
 - **Candidates:** `L_a`, `H_a`, `L_b`, `H_b`, all in view C. Fine points are excluded by `X-SCALE` (not in view C).
@@ -152,6 +152,7 @@ Note: fB's low (25) and fD's low (22) are both inside Leg3's price span [20, 50]
 - **FVG3 under two readings:**
   - If the task card declares a direction-match policy (long-continuation uses bullish zones only): FVG3 is excluded under `X-POL`. Result: FVG2 definite, conditional on that policy.
   - If no such policy is declared: FVG3 survives. Result: unresolved, reason **MP**, survivors {FVG2, FVG3}.
+- **Note on example policies:** the direction-match policy, the filled-gap exclusion, and the continuation-entry condition used in W2 and W7 are illustrative declarations. None is recommended, and each must be recorded in the policy registry (SP-18) before use.
 - **Why the direction-match policy is not a fact:** FVG definitions (file 04, file 05) describe gap geometry and do not state which gap direction is relevant for which entry phase. Any such mapping is O-class.
 - **Dependents blocked:** the zone used for the entry; invalidation derived from the zone's boundary.
 

@@ -243,3 +243,33 @@ Every procedure below states:
 - **Counterexamples.** Cycles in the dependency graph (should not exist by §15.10; a cycle is a defect).
 - **Unresolved parameters.** None.
 - **Validation.** Case W8 (file 19) includes a propagation log.
+
+## 17.4 Justification classes (R3; response to audit F-01)
+
+Each procedure is classified by the kind of justification it has. The classes are: **D** deterministic (follows from a stated definition); **P** declared operational policy (an owner-declared choice, unvalidated); **S** ICT-source-supported (cited ICT primary wording, a direction rather than a validated rule); **E** empirically unresolved (no evidence yet says which option is better).
+
+| ID | Class | Note |
+|---|---|---|
+| SP-01 | D | Knowability follows from the definition of knowable bar. |
+| SP-02 | P | The scale table is an owner declaration. S support is a preference for coarse scale on support and resistance, not an entry rule. |
+| SP-03 | D (basis P) | Binding by crossing is deterministic given the close or wick basis, which is a declared choice (open). |
+| SP-04 | D (given I) | Deterministic once I is written in reference form; the writing is an analyst act and is recorded. |
+| SP-05 | D | Geometry only. |
+| SP-06 | D (list P) | Dominance is deterministic given the requirement list, which is a declared choice. |
+| SP-07 | D | Logical constraints of the declared direction. |
+| SP-08 | D | Structural window; no temporal parameter. |
+| SP-09 | S | Trade-through per P1 wording (partial transcript); the trade-through basis is open (P-V). |
+| SP-10 | S | Stop at candle low per P1 wording; the 50% reference is undefined (UN-11). |
+| SP-11 | D (definition S) | Three-candle geometry is deterministic; the lower-timeframe condition is unresolved. |
+| SP-12 | procedure | Reports sensitivity over declared grids; selects nothing. |
+| SP-13 | D | Confirmation status follows from the family's rule; parameters are declared. |
+| SP-14 | D | Leg construction from alternating points. |
+| SP-15 | P | "Most recent opposite leg" is a recency rule and is unvalidated. |
+| SP-16 | procedure | Reports representation disagreement; merges nothing. |
+| SP-17 | D (naming E*) | Taken status is deterministic; the buy-side and sell-side names are community usage. |
+| SP-18 | procedure | Registry of declared policies. |
+| SP-19 | procedure | Emits unresolved states; never picks silently. |
+| SP-20 | procedure | Recomputes dependents; never patches in place. |
+| (ranking among survivors) | E | Recency versus depth, and which of several plausible candidates to prefer, are unresolved. No SP procedure supplies this ranking. |
+
+**Answer to the audit's question.** The SP procedures do not introduce hidden recency, size, proximity or scale rankings. Their selections come from deterministic filters (D), from declared tables or rules (P), or from source-supported directions (S). Recency appears only in SP-15 and in the T-S1 origin rule, both declared and unvalidated. Scale appears only in the SP-02 declared table. Proximity is not a relevance criterion anywhere in the foundation; it appears only as the unset slot P-PROX. Size appears nowhere as a selection criterion. The only ranking the method declines to supply is the empirically unresolved class E.

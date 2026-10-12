@@ -1500,18 +1500,34 @@
    "type": "CF",
    "statement": "Session and kill-zone time windows stated by community sources are convention-dependent and their predictive value is unverified; not used as facts.",
    "grade": "NOT_APPLICABLE",
-   "sources": [
-    "SRC-COMM-BIO"
-   ],
+   "sources": [],
    "scope": "session definitions",
-   "limitations": "Community claims not verified.",
+   "limitations": "Community claims about sessions not verified; no source in this foundation establishes session windows.",
    "related": [
     "IC-06"
    ],
    "conflicts": [],
-   "provenance": "secondary-community",
+   "provenance": "researcher",
    "grade_previous": "CF",
-   "informed_by": []
+   "informed_by": [],
+   "revision_log": [
+    {
+     "round": "R3",
+     "field": "sources",
+     "from": [
+      "SRC-COMM-BIO"
+     ],
+     "to": [],
+     "note": "Biography page does not support session windows (audit F-02); no source in file 12 supports session definitions, so this entry is a gap record"
+    },
+    {
+     "round": "R3",
+     "field": "provenance",
+     "from": "secondary-community",
+     "to": "researcher"
+    }
+   ],
+   "revision": "R3"
   },
   {
    "id": "CF-12",
@@ -2461,7 +2477,7 @@
    "file": "16_SWING_WAVE_SELECTION.md",
    "section": "16.5",
    "type": "F",
-   "statement": "Provisional turning points are excluded from structural references unless a declared policy allows provisional use; supersession and replay consistency are required.",
+   "statement": "Provisional turning points are excluded from structural references by declared default (a P-class design choice, not a market fact) unless a declared policy allows provisional use; supersession and replay consistency are required.",
    "grade": "NOT_SOURCE_BASED",
    "sources": [],
    "scope": "task-independent method",
@@ -2477,9 +2493,16 @@
      "field": "created",
      "from": null,
      "to": "new entry (targeted repair: contextual selection)"
+    },
+    {
+     "round": "R3",
+     "field": "statement",
+     "from": "(R2 wording)",
+     "to": "adds explicit P-class label for the default",
+     "note": "audit reconciliation: no selection default presented as fact"
     }
    ],
-   "revision": "R2",
+   "revision": "R3",
    "informed_by": []
   },
   {
@@ -3278,7 +3301,7 @@
  "metadata_r2": {
   "round": "R2",
   "date": "2026-10-12",
-  "note": "Provenance, grade vocabulary and type corrections applied (F-02); chart-claim prefix renamed CH-* -> CC-* (F-03). Added CSM-01..08, SWS-01..08, SP-01..20, LRN-01..06 for targeted repair (contextual selection)."
+  "note": "Provenance, grade vocabulary and type corrections applied (F-02); chart-claim prefix renamed CH-* -> CC-* (F-03). Added CSM-01..08, SWS-01..08, SP-01..20, LRN-01..06 for targeted repair (contextual selection). R3 (audit reconciliation): CF-11 sources removed (F-02)."
  },
  "provenance_vocabulary": {
   "ICT-primary": "ICT lesson/material read in this session (partial transcript allowed; see grade)",
