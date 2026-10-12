@@ -19,7 +19,7 @@ Zones are **candidates**, not areas where orders were observed. A zone's label a
 
 ## 5.3 Fair value gap: definitions and operationalization
 
-**ICT primary text (P1, FVG lesson, transcript read in part):** the transcript describes an FVG as "a range in price delivery where one side of the market liquidity is offered," and says that it is "typically confirmed with a liquidity void on the lower time frame charts in the same range of price," and that "in the same range of price price can actually gap to create a literal vacuum of trading thus posting an actual price gap." The lesson's example uses a daily chart and describes a range of "about a 20 pip range" inside a down candle (the numeric value is a transcript artifact-prone reading and is **not** used as a market fact here).
+**ICT primary text (P1, FVG lesson, transcript read in part):** the transcript describes an FVG as "a range in price delivery where one side of the market liquidity is offered," and says that it is "typically confirmed with a liquidity void on the lower time frame charts in the same range of price," and that "in the same range of price price can actually gap to create a literal vacuum of trading thus posting an actual price gap." The lesson's example is described as using a daily chart. The transcript read contains a numeric fragment about the size of the range inside a down candle; because transcript numerals are artifact-prone, that figure is **not** reproduced or used as a market fact here.
 
 **Community operationalization (S1, multiple sites, not individually verified):** a bullish FVG is a three-candle pattern in which candle 1's high is below candle 3's low; the gap is the space between them. Bearish is the mirror.
 
@@ -40,7 +40,7 @@ This is the central conflict in the zone family.
 - Entry: "when price trades higher away from the bullish order block and then returns to the bullish order block candle or price bar high" — described as a bullish entry technique.
 - Risk: "the low of the bullish order block is the location of a relatively safe stop loss placement" and "just below the 50 percent of the order block total range … is also considered to be a good location to raise the stop loss."
 
-Note the transcript text: "bullet shorter block" appears in the transcript; this is almost certainly an auto-caption artifact and is not used.
+One passage of the transcript is a recognition artifact (a phrase that does not fit its sentence). It is not used.
 
 **Community definitions (S1, read as snippets or short pages):**
 
@@ -62,6 +62,44 @@ Note the transcript text: "bullet shorter block" appears in the transcript; this
 
 Therefore a system that implements "last opposing candle" has not implemented the ICT primary definition, and vice versa. Both must be represented as distinct candidate generators (IC-05).
 
+## 5.4a G-OB-P parameter register (round R2 — resolves F-04 as far as sources allow)
+
+**Verified wording (P1, transcript re-read this round; auto-caption; opening section only; no timestamp):**
+
+- Definition: "the lowest candle or price bar with a down close that has the most range between open to close and is near a support level."
+- Validation: "the high of the lowest down candle or price bar is traded through by a later formed candle or price bar."
+- Entry: "when price trades higher away from the bullish order block and then returns to the bullish order block candle or price bar high."
+- Stop: "the low of the bullish order block is the location of a relatively safe stop loss placement"; "just below the 50 percent of the order block total range is also considered to be a good location to raise the stop loss."
+
+**Body vs wick, as worded (refinement of §5.4):**
+
+| Use in primary text | Wording | Reading | Status |
+|---|---|---|---|
+| Selection range ("most range") | "between open to close" | candle **body** | Verified wording |
+| Validation level | "the high of" the candle | candle **high** (wick extreme) | Verified wording |
+| Stop reference | "the low of the bullish order block" | candle **low** (wick extreme) | Verified wording |
+| Stop-management reference | "50 percent of the order block total range" | "total range" is not defined in the text read; the most literal reading is high-to-low, but body-based is not excluded | **Ambiguous** (UN-11) |
+
+The primary text therefore uses the body to *select* and the wick extremes to *validate* and *protect*. A generator that uses full range to select is not the primary definition.
+
+**Parameter register.** Each parameter is either source-stated, source-ambiguous, or a declared operational policy. No numeric value is supplied.
+
+| ID | Parameter | Status | Options | What the source does not settle |
+|---|---|---|---|---|
+| P-L | Meaning of "lowest" | Ambiguous | Reading L-low: bar with minimum low among qualifying bars. Reading L-base: bottom-most bar of a base cluster. Reading L-descriptive: "lowest" only describes the cluster; selection key is the body (below). | Which reading the source intends |
+| P-C | How "lowest", "most range" and "near support" combine | Ambiguous | C-conjunctive: all clauses must hold for one bar (can be empty). C-prioritized: qualify by down close and nearness, then choose by one declared key. | Whether the clauses are a conjunction or a ranking. A conjunction can return nothing when the lowest bar is not the largest-body bar. |
+| P-N | "Near support" | Undefined | Declared NEAR_POLICY. Options: (i) overlap of candle range with the reference band (no distance value needed, only the band); (ii) distance from a candle boundary to the reference, in a declared unit (value required, not market truth); (iii) distance in units of the candle's own range (value required). | Metric, unit, and magnitude |
+| P-W | Window of "the move" that the candidate precedes | Undefined | Start: candle index. End: first of (validation bar), (opposite structure event, file 03), (declared maximum bars, policy). | The end condition and maximum length |
+| P-R | Support reference | Partly stated | REF-OLD-LOW-HTF (old low on higher timeframe); REF-OLD-HIGH-RECLAIMED (old high price moved above recently). Both verbal (P1). | How the reference is confirmed and its expiry |
+| P-V | Validation timing | Partly stated | Close-based (validated when a later bar closes beyond candle high) vs trade-through (any later bar's high exceeds candle high, P1 wording). Intrabar ordering undetermined at OHLC scale (PM-07). | Whether intrabar or close is intended |
+| P-K | Invalidation | Not in primary text read | Community close-through (S1, separate rule). | Whether ICT invalidates by close |
+| P-T | Multiplicity and ties | Not in source | Return all qualifying candidates, flag ties; never choose silently. | — |
+| P-E | Empty result | Not in source | Return null with reason ("no down-close near reference in window"). Do not fall back to the nearest candle without an explicit fallback policy. | — |
+
+**Consequence (answering F-04):** G-OB-P is not one generator. It is a family of readings. The implementation must expose the choices as variant IDs, for example `G-OB-P/L-low/C-prioritized/NEAR=overlap/V=trade-through`. Each variant is a separate candidate source. The ICT primary text does not justify choosing one variant over another, so no variant is labeled "the ICT order block."
+
+**Symbolic illustration (hypothetical, no numbers).** Within one window there are three down-close bars: D1 is nearest to the reference and has a small body; D2 is farther and has the largest body; D3 has the lowest low but is not near the reference. C-conjunctive returns nothing. C-prioritized with key "largest body among near bars" returns D1 only if D1 is the only near bar; if D1 and D2 are both near, it returns D2. L-low with near-filter returns D1 or D2 depending on their lows. Four readings, four outputs, all consistent with the text read. That is the ambiguity, stated explicitly.
+
 ## 5.5 Movement origin and structural relation
 
 Whatever definition is used, an OB or FVG candidate is linked to a **movement** that followed it. The relevant questions:
@@ -75,7 +113,7 @@ These relations define **origin quality features**. None has a verified universa
 
 ## 5.6 Candidate generation
 
-**Candidate generator G-OB-P (ICT primary, D-rendered):** for each swing-supported move, find the lowest down-close bar in the window that precedes the move, measure its range, and check proximity to a defined support reference. Unresolved: window length, definition of "lowest" (low of candle vs body), definition of "near," and what counts as the move.
+**Candidate generator G-OB-P (ICT primary, D-rendered; R2):** a family of variants defined by the §5.4a register. Each variant is identified by its choices for P-L, P-C, P-N, P-W, P-R, P-V, P-E. No variant is authoritative. Example variant: `G-OB-P/L-low/C-prioritized/NEAR=overlap/V=trade-through`, which takes the qualifying down-close bars whose range overlaps the reference band, chooses the one with the lowest low, and validates on a later trade-through of its high. Its output is a candidate, not an ICT-endorsed block.
 
 **Candidate generator G-OB-C (community, D-rendered):** for each displacement-like move, take the last opposing candle before it. Unresolved: displacement threshold, whether sweep is required.
 

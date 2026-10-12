@@ -102,7 +102,7 @@ Common rules for all contracts:
 - **Candidate types:** as listed; each with side (buy-side above / sell-side below), level, knowable bar.
 - **Temporal boundary:** prior period extremes knowable at period close; clusters knowable at the second member's confirmation; sessions at session close.
 - **Supported contexts:** scale; calendar; tolerance; instrument.
-- **Source-backed constraints:** BSL/SSL naming is community (S1). The primary FVG lesson uses "liquidity offered" for traded ranges (P1), a different referent (CH-04).
+- **Source-backed constraints:** BSL/SSL naming is community (S1). The primary FVG lesson uses "liquidity offered" for traded ranges (P1), a different referent (CASE-04).
 - **[FACT-LOGIC]:** candidates and their taken status, given family and parameters.
 - **[JUDGMENT]:** relevance; whether a candidate is a target; whether a cluster is meaningful.
 - **Legitimate alternatives:** all families; wick vs close-based taken status.

@@ -28,29 +28,29 @@
 | Check | Method | Result |
 |---|---|---|
 | Claim index is valid JSON | Python `json.load` | Pass |
-| Claim IDs unique | Count vs unique set | Pass (100 claims, 0 duplicates) |
-| Every claim ID cited in markdown exists in index | Regex over all `.md` files for `[ID]` and bare `XX-NN` forms | Pass after adding 40 entries; 0 missing |
-| All `related` and `conflicts` references resolve | Set membership | Pass after two fixes (LQ-03 reference, CH-04 renaming) |
-| Source IDs cited in index exist in source index | Manual review | Partially checked; see 13.4 |
-| Quotations from primary transcripts match the text retrieved | Manual comparison against the fetch output in this session (not re-run programmatically; the transcripts were not saved to disk) | Quoted fragments in 02, 05, 08 matched on manual review. Transcript artifacts flagged rather than corrected. |
+| Claim IDs unique | `checks/check_r2.py` (count vs unique set) | Pass (142 claims in R2, 0 duplicates) |
+| Claim-like IDs cited in markdown exist in index | `checks/check_r2.py`: regex over `*.md`; namespaces excluded by design; three reviewed false positives allowlisted | Pass in R2 (0 missing). Earlier ‘0 missing’ statement was a manual claim and is superseded. |
+| All `related` and `conflicts` references resolve | Set membership | Pass after two fixes (LQ-03 reference, and a claim-ID/case-label collision now resolved by renaming claims CH-* to CC-*) |
+| Source IDs cited in index and markdown exist in file 12 | `checks/check_r2.py` (set membership against `12_SOURCE_INDEX.md`) | Pass in R2. (Replaces the earlier ‘manual review, partially checked’ entry.) |
+| Quotations from primary transcripts match the text retrieved | **Not programmatic.** R2: FVG chunk 0 re-fetched and quotations in 05 and 08 compared by hand (matched). OB chunk 0: two unverified quotations paraphrased; the rest not re-checked. Transcripts are not saved to disk, so no programmatic match is possible. R1’s ‘Pass’ was a manual review and is not a programmatic result. | Partially verified (see file 14, §14.5) |
 | Retracted or corrected claims | Manual | Corrected: (a) attribution of a liquidity-sweep page to an unverified domain (04); (b) BOS/CHoCH contrast not verified (03); (c) equal-lows example source attribution (08); (d) a mis-numbered OS reference (09) and a wrong purged-CV repository reference (09); (e) a wrongly fetched unrelated arXiv paper excluded (12); (f) PELT description wording (01). |
-| No numeric market facts | Search of all files for numerals used as market values | Numbers used only as paper/publication metadata, lesson lengths, commit counts, or labeled hypotheticals. The transcript "20 pip" figure is explicitly not used as a fact. |
-| No invented timestamps | Search for `mm:ss`-like tokens | None used as verified; a third-party summary's markers are described as unverified and not reproduced. |
-| No confidence percentages | Search for "%" | Only retracement references (50%) described as ICT-stated stop-management references, with CF-07 noting no predictive support. |
+| No numeric market facts | Manual review in R2 of numerals in files 05, 08, 10, 16–19 (percent and price-like tokens listed by the checker) | Numbers are paper or repository metadata, video lengths, commit dates, cited ICT references (e.g., 50% stop-raise reference), fixture ordinals in files 16 and 19 (labelled as symbols, not prices), or declared-parameter examples. The transcript "20 pip" figure is not used. R1 had not run this check. |
+| No invented timestamps | `checks/check_r2.py` (mm:ss tokens) | Two tokens found, both video durations in file 12 (17:57 and 35:47), taken from fetch metadata. No transcript timestamp is used as verified. R1 had not run this check. |
+| No confidence percentages | `checks/check_r2.py` (percent-like tokens per file) | Percent tokens are ICT-stated references (e.g., 50%) or declared-parameter examples; no confidence or probability threshold is given (LRN-05). |
 | No universal rules | Manual review against mission §9 | Rules stated are conditional. Prohibited universal rules appear only as prohibitions. |
 
 ## 13.3 Known inconsistencies still present (disclosed)
 
 1. Some files use the word "claim" for both numbered claims and for prose examples. The index is the authoritative list; prose examples carry no claim ID unless listed.
-2. Case labels (CH-01 … CH-08) in file 08 and the claim ID `CH-04` in the index refer to the same case; this is intentional but the namespace is shared.
+2. Case labels CASE-01 … CASE-08 (file 08) and W1–W10, O1–O2 (file 19) are a separate namespace from claim IDs. The index contains no `CASE-*` IDs. The earlier shared `CH-0n` labels are retired (R2, F-03).
 3. Several contracts (IC-xx) are classified as type `F` (researcher-proposed) in the index, though they include `FACT-LOGIC` parts. The classification refers to the contract as a whole.
 4. Gradings for open-source components (OS1) reflect landing-page reads only. They are not evaluations of code quality.
 5. The academic abstracts were read in full; their experiment sections were not. Claims are restricted accordingly.
 
 ## 13.4 Source-verification status
 
-- Verified this session: transcript text for SRC-ICT-FVG and SRC-ICT-OB (partial); abstracts for SRC-AM07, SRC-CKS14, SRC-HE16, SRC-TS2V; library record for SRC-KFE12; repository landing pages for SRC-RUP, SRC-TS2V-REPO, SRC-PCV-REPO.
-- Not verified: the cited licenses (ruptures, TS2Vec, purgedcv); the full ICT lessons; any ICT chart; any ICT timestamp; the López de Prado book; HMM, Bai–Perron, segmentation-survey and wavelet references.
+- Verified: transcript text for SRC-ICT-FVG (chunk 0 of 3, re-read in R2) and SRC-ICT-OB (chunk 0 of 5, re-read in R2); abstracts for SRC-AM07, SRC-CKS14, SRC-HE16, SRC-TS2V; library record for SRC-KFE12; repository pages for SRC-RUP, SRC-TS2V-REPO, SRC-PCV-REPO; **licenses verified in R2**: ruptures BSD-2-Clause, TS2Vec MIT, purgedcv MIT.
+- Not verified: the full ICT lessons (chunks 1–4 of OB; chunks 1–2 of FVG); any ICT chart; any ICT timestamp; the López de Prado book; HMM, Bai–Perron, segmentation-survey and wavelet references.
 - Snippet-only: several community and one academic (ACM segment-based BOCPD) sources.
 
 ## 13.5 Instructions for the independent auditor
@@ -83,10 +83,15 @@
 
 ## 13.6 Remaining work a follow-up round should prioritize
 
+0. (Resolved R2) Verified open-source licenses: ruptures BSD-2-Clause, TS2Vec MIT, purgedcv MIT.
 1. Read the full text of both primary ICT lessons, with timestamps, and update SRC-ICT-FVG and SRC-ICT-OB entries.
 2. Read the primary ICT liquidity, market structure, and mitigation lessons (P2 items).
-3. Verify licenses for ruptures, TS2Vec, and purgedcv.
 4. Obtain the López de Prado chapter and verify the purging and embargo definitions directly.
 5. Design (not run) a causal annotation study for contextual selection (file 07 §7.6).
 6. Design (not run) a matched-control test for liquidity-level attraction (HY-03) and a pre-registered test for HY-01 and HY-02.
 7. Check whether any intra-bar sequencing data is available for the project's instrument (GP-10).
+
+## 13.6 R2 pointers
+
+- Repair map, changes, and check results: `14_RESOLUTION_MAP_R2.md` (§14.1 findings, §14.5 check commands and results, §14.6 audit attachment status).
+- Method and designs: files 15–19. Checker: `checks/check_r2.py`.

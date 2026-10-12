@@ -64,7 +64,7 @@ This file records what is disputed, what is unknown, and what this research cann
 - **GP-06:** No verified empirical study of ICT concepts (FVG, OB, liquidity, breakers, kill zones) was found in this session. This is the largest evidence gap.
 - **GP-07:** The academic change-point, representation, and imitation papers were read at abstract level. Full methods, experiments, and reproducibility were not reviewed.
 - **GP-08:** Some foundational references (HMMs, Bai–Perron, segmentation surveys, the López de Prado book) are flagged AC2/S1 and need primary verification before citation in an audit.
-- **GP-09:** Open-source licenses were not verified for ruptures and TS2Vec; purgedcv license heading empty in read content.
+- **GP-09 (partly resolved in R2):** licenses verified from LICENSE files: ruptures BSD-2-Clause, TS2Vec MIT, purgedcv MIT. Remaining: current CI status of ruptures and dependency licenses not checked.
 - **GP-10:** Intra-bar ordering is not recoverable from OHLC (PM-07). Any analysis requiring it needs finer data.
 - **GP-11:** No order-book, volume-profile or tick data were examined. Any claim about participation is unsupported without them.
 
@@ -80,6 +80,8 @@ This file records what is disputed, what is unknown, and what this research cann
 - **UN-08:** How should overlapping zones from different scales be combined, if at all? (Unknown; presenting them separately is the default.)
 - **UN-09:** What minimal dataset of annotated causal snapshots is needed to evaluate contextual selection? (Design question, file 07 §7.6.)
 - **UN-10:** Is intra-bar sequencing needed for the tasks the project cares about? (Depends on task; file 01 §1.7.)
+- **UN-11 (added R2):** Does the primary OB text's "50 percent of the order block total range" refer to the full high-to-low range or to the body? The text read does not define "total range." (File 05 §5.4a.)
+- **UN-12 (added R2):** Are the three readings of "lowest" and the conjunctive vs prioritized combination in the primary OB definition intended as a conjunction, a ranking, or a description? (File 05 §5.4a, P-L and P-C.)
 
 ## 10.5 Limits of this research
 

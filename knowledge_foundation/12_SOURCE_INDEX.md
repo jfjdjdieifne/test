@@ -49,10 +49,10 @@ Access date for all sources: 2026-10-12 (session date). Grades are defined in fi
 
 | ID | Project | URL | Read in session | License | Maintenance (as read) | Grade |
 |---|---|---|---|---|---|---|
-| SRC-RUP | ruptures | https://github.com/deepcharles/ruptures | Repo landing page | Not verified | 600 commits; latest commit May 2026 shown; latest commit CI status shown as "failure" | OS1 |
+| SRC-RUP | ruptures | https://github.com/deepcharles/ruptures | Repo landing page | BSD-2-Clause (verified R2 from LICENSE) | 600 commits; latest commit May 2026 shown; latest commit CI status shown as "failure" (R1 landing page) | OS1 |
 | SRC-RUP-DOC | ruptures PELT documentation | https://centre-borelli.github.io/ruptures-docs/user-guide/detection/pelt/ | Search snippet | — | — | S2 |
-| SRC-TS2V-REPO | TS2Vec official repo | https://github.com/zhihanyue/ts2vec (abstract's yuezhihan/ts2vec link redirects here) | Repo landing page | LICENSE file present; type not verified | Last commit June 2023 ("Fix typo"); 27 commits | OS1 |
-| SRC-PCV-REPO | purgedcv | https://github.com/landtml/purgedcv | Search snippet and landing content | Heading present, text not visible | Not verified | OS1 |
+| SRC-TS2V-REPO | TS2Vec official repo | https://github.com/zhihanyue/ts2vec (abstract's yuezhihan/ts2vec link redirects here) | Repo landing page | MIT (verified R2 from LICENSE) | Last commit June 2023 ("Fix typo"); 27 commits | OS1 |
+| SRC-PCV-REPO | purgedcv | https://github.com/landtml/purgedcv | Search snippet and landing content | MIT (verified R2 from LICENSE) | Commit dated 2026-07-23 on the LICENSE page ("Restructure as a proper package") | OS1 |
 
 ## Sources attempted and not used
 

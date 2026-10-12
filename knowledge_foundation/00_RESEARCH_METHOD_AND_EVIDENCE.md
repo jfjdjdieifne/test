@@ -35,8 +35,8 @@ Rule: a claim in one category must never be presented as another. In particular,
 
 Full list with URLs in `12_SOURCE_INDEX.md`. Summary:
 
-- ICT FVG lesson (YouTube `FgacYSN9QEo`, "ICT Mentorship Core Content – Month 04 – ICT Fair Value Gaps FVG"): transcript text read in part (first portion of the lesson). Grade P1 (partial).
-- ICT Order Blocks lesson (YouTube `PIYh0CxoY9c`, "ICT Mentorship Core Content – Month 04 – Orderblocks"): transcript text read in part (opening section covering definition, validation, entry, stop placement). Grade P1 (partial).
+- ICT FVG lesson (YouTube `FgacYSN9QEo`, "ICT Mentorship Core Content – Month 04 – ICT Fair Value Gaps FVG"): transcript text read for chunk 0 of 3 (opening section, re-read and quotations verified in R2); chunks 1–2 not read. Auto-caption. Grade P1 (partial).
+- ICT Order Blocks lesson (YouTube `PIYh0CxoY9c`, "ICT Mentorship Core Content – Month 04 – Orderblocks"): transcript text read for chunk 0 of 5 (opening section covering body/wick selection wording, validation and stop, re-read in R2); chunks 1–4 not read. Auto-caption. Grade P1 (partial).
 - ICT Mitigation Blocks, Market Maker Models, Divergence Phantoms and other Month 04/2023 lessons: titles and IDs seen in listings only. Grade P2.
 - Secondary sources on liquidity, breaker blocks, kill zones, FVG, order blocks: Grade S1/S2.
 - Academic: Adams & MacKay 2007 (AC1), Killick et al. 2012 (AC1 via library record; ruptures documents the algorithm), Cont–Kukanov–Stoikov (AC1), Ho & Ermon 2016 (AC1), Yue et al. TS2Vec (AC1), López de Prado purged/embargoed CV (S1 via secondary and an OS1 repo; the book itself not read).
@@ -45,7 +45,7 @@ Full list with URLs in `12_SOURCE_INDEX.md`. Summary:
 
 1. **No chart viewing.** No ICT chart image or video frame was inspected. Any statement about what a chart "shows" comes from transcript text, not from the chart.
 2. **No verified timestamps.** The fetch returned transcripts without time markers. No `mm:ss` reference in this foundation is verified. Where a timestamp appears in a third-party summary, it is marked unverified.
-3. **Transcript quality.** The returned text contains recognition-style artifacts (e.g., "105 15", "bullet shorter block", "voltage order blocks", "we don't h"). Numeric values read from transcripts are **not** used as market facts. Provenance (manual vs auto-generated captions) of the transcript was not verified.
+3. **Transcript quality.** The returned text contains recognition-style artifacts (non-words, numeric fragments, and phrases that do not fit the surrounding sentence; the exact fragments are not reproduced here). Numeric values read from transcripts are **not** used as market facts. Provenance (manual vs auto-generated captions) of the transcript was not verified.
 4. **Truncation.** Both primary ICT transcripts were cut off within their opening sections. Statements about what the rest of each lesson says are unknown, not assumed.
 5. **Historical age.** The description of the two primary lessons states that the audio and visuals are "exactly as they were distributed in December 2016" (2016 Premium ICT Mentorship Core Content). ICT's later teaching may differ. Upload dates (2022) are not the teaching dates.
 6. **Secondary sources disagree with each other and with the primary text read.** See `10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md`.

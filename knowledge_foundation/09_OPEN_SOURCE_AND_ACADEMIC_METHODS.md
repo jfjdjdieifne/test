@@ -86,7 +86,7 @@ Areas the mission asks for, with known references the researcher expects to exis
 
 - **URL:** https://github.com/deepcharles/ruptures
 - **Read in session:** repository landing page (OS1).
-- **License:** **not verified in this session.** Check `LICENSE` before any use.
+- **License:** BSD 2-Clause ("BSD 2-Clause 'Simplified'"; copyright 2017–2021, ENS Paris-Saclay, CNRS). Verified this round from the repository LICENSE file (OS1).
 - **Maintenance:** repository shows 600 commits, 9 branches, 19 tags; recent commits in May 2026 (e.g., "Added L1Potts class," "drop Python 3.9 and update dev tooling"). Latest-commit CI status is displayed as "failure" on the landing page at the time of reading. Treat as active but with a failing check that should be investigated before dependence.
 - **Capabilities (documentation read):** includes PELT (OS-02) and a documented min_size and jump parameter for PELT grid control.
 - **Causal behavior:** offline algorithms; not for live causal use.
@@ -96,7 +96,7 @@ Areas the mission asks for, with known references the researcher expects to exis
 ### OS-10 — TS2Vec official implementation
 
 - **URL:** https://github.com/zhihanyue/ts2vec (landing page read; the link https://github.com/yuezhihan/ts2vec in the abstract redirects to this repository).
-- **License:** a LICENSE file exists; its type was **not verified** in this session.
+- **License:** MIT (copyright 2022, Zhihan Yue). Verified this round from the repository LICENSE file (OS1).
 - **Maintenance:** 27 commits; most recent commit shown as "Fix typo" in June 2023; the landing page lists pinned requirements (Python 3.8, torch 1.8.1, scipy 1.6.1, numpy 1.19.2, pandas 1.0.1, scikit-learn 0.24.2, statsmodels 0.12.2, Bottleneck 1.3.2). These pins are old; a modern environment would need checking.
 - **Capabilities:** training and evaluation scripts for UCR/UEA-style datasets and other listed benchmarks.
 - **Causal behavior:** must be audited for past-only context in any financial use.
@@ -107,7 +107,7 @@ Areas the mission asks for, with known references the researcher expects to exis
 
 - **URL:** https://github.com/landtml/purgedcv
 - **Read in session:** repository description (OS1, search snippet and landing content).
-- **License:** the description contains a "License" heading with no visible text in the read content. **Not verified.**
+- **License:** MIT (copyright 2026, landtml). Verified this round from the repository LICENSE file (OS1). The LICENSE page showed a commit dated 2026-07-23 ("Restructure as a proper package"); the package has changed since the earlier read.
 - **Capabilities (per description):** scikit-learn-compatible combinatorial purged CV with embargo; the description states it produces splits and a path map and does not compute returns or performance metrics; it states it does **not** detect leakage in feature engineering.
 - **Maintenance:** not verified (no commit history read).
 - **Causal behavior:** split-level only; the user must compute label windows correctly.

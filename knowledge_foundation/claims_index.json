@@ -1,1724 +1,3310 @@
 {
-  "schema_version": "1.0",
-  "foundation": "Causal Market Intelligence — Applied Knowledge Foundation V1 (research draft)",
-  "generated": "2026-10-12",
-  "claim_type_codes": {
-    "A": "direct observation",
-    "B": "derived measurement",
-    "C": "representation",
-    "D": "operational definition (ours)",
-    "E": "ICT source interpretation",
-    "F": "researcher-proposed principle",
-    "G": "empirically supported relationship",
-    "H": "trading decision / risk policy (out of scope)"
-  },
-  "evidence_grades": {
-    "P1": "primary ICT material, transcript partially read",
-    "P2": "primary ICT material, metadata only",
-    "S1": "secondary/community, read sufficiently to quote",
-    "S2": "secondary, search snippet only",
-    "AC1": "academic, abstract/record read this session",
-    "AC2": "academic, not re-verified this session",
-    "OS1": "open-source repo/landing page read; code not inspected",
-    "CF": "conflict or gap (not a source grade)"
-  },
-  "claims": [
-    {
-      "id": "PM-01",
-      "file": "01_PRICE_MOVEMENT.md",
-      "section": "1.2",
-      "type": "A",
-      "statement": "A bar-based feed directly provides open, high, low, close, and timestamp per bar; volume only if recorded.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-KFE12"
-      ],
-      "scope": "bar-based data",
-      "limitations": "Data-vendor conventions not verified.",
-      "related": [
-        "PM-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "PM-07",
-      "file": "01_PRICE_MOVEMENT.md",
-      "section": "1.7",
-      "type": "F",
-      "statement": "OHLC bars do not record the order in which a bar's high and low occurred; questions requiring intra-bar order are undetermined at the bar's scale without finer data.",
-      "grade": "F",
-      "sources": [],
-      "scope": "OHLC-only data",
-      "limitations": "Holds by construction of OHLC; relevance depends on task.",
-      "related": [
-        "PM-01",
-        "IC-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "PM-08",
-      "file": "01_PRICE_MOVEMENT.md",
-      "section": "1.6",
-      "type": "B",
-      "statement": "A coarser bar's high and low are the max and min of the contained finer bars, so a coarse wick can come from a single fine bar.",
-      "grade": "B",
-      "sources": [],
-      "scope": "aggregation by max/min",
-      "limitations": "Assumes standard aggregation.",
-      "related": [
-        "PM-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "PM-12",
-      "file": "01_PRICE_MOVEMENT.md",
-      "section": "1.8",
-      "type": "G",
-      "statement": "BOCPD computes an online posterior over run length (time since last changepoint) using message passing, causal by construction, for independent before/after parameters.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-AM07"
-      ],
-      "scope": "models with independent pre/post-change parameters",
-      "limitations": "Statistical change is not a market event.",
-      "related": [
-        "LL-06",
-        "CF-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "PM-13",
-      "file": "01_PRICE_MOVEMENT.md",
-      "section": "1.8",
-      "type": "G",
-      "statement": "PELT finds an optimal segmentation under a penalty with a pruning rule; it uses the full series and is not a causal live detector.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-KFE12",
-        "SRC-RUP-DOC"
-      ],
-      "scope": "offline",
-      "limitations": "Complexity depends on conditions.",
-      "related": [
-        "LL-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "SW-01",
-      "file": "02_SWINGS_AND_WAVES.md",
-      "section": "2.4",
-      "type": "D",
-      "statement": "Swing candidates are produced by operational families (k-bar pivot, threshold zigzag, closes-only extremes, change-point boundary, period extremes); each family and its parameters must be stored.",
-      "grade": "F",
-      "sources": [
-        "SRC-RUP-DOC"
-      ],
-      "scope": "our operational taxonomy",
-      "limitations": "Taxonomy is not exhaustive.",
-      "related": [
-        "SW-02",
-        "IC-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "SW-02",
-      "file": "02_SWINGS_AND_WAVES.md",
-      "section": "2.5",
-      "type": "F",
-      "statement": "A k-bar pivot is an occurrence at bar p but is knowable only at p+k; using it before p+k is leakage.",
-      "grade": "F",
-      "sources": [],
-      "scope": "k-bar pivot family",
-      "limitations": "Applies to any confirmation-lag definition.",
-      "related": [
-        "SW-01",
-        "IC-12"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "SW-03",
-      "file": "02_SWINGS_AND_WAVES.md",
-      "section": "2.8",
-      "type": "E",
-      "statement": "The primary ICT Order Blocks lesson states that a support line can be an old low on a long-term or higher-timeframe chart, or an old high price has recently moved above, and that higher timeframes (monthly, weekly, daily) are the intended scale.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-OB"
-      ],
-      "scope": "transcript opening section; auto-caption quality uncertain; no timestamp",
-      "limitations": "Verbal instruction, not a measured result.",
-      "related": [
-        "SW-04",
-        "CF-10"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "SW-04",
-      "file": "02_SWINGS_AND_WAVES.md",
-      "section": "2.13",
-      "type": "F",
-      "statement": "No universal importance score for swings is justified; importance is task-dependent and must be learned or validated per task.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all swing tasks",
-      "limitations": "Principle, not a finding.",
-      "related": [
-        "LL-07",
-        "IC-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "MS-01",
-      "file": "03_MARKET_STRUCTURE.md",
-      "section": "3.5",
-      "type": "F",
-      "statement": "Every structural break means reversal is an unsupported universal rule; break implications are context-dependent and held as unresolved interpretations.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all structure tasks",
-      "limitations": "Principle.",
-      "related": [
-        "CF-03",
-        "IC-05"
-      ],
-      "conflicts": [
-        "MS-02"
-      ]
-    },
-    {
-      "id": "MS-02",
-      "file": "03_MARKET_STRUCTURE.md",
-      "section": "3.6",
-      "type": "E",
-      "statement": "Community sources define market structure shift (MSS) as a break of structure following a liquidity sweep; this is not verified in the primary ICT text read.",
-      "grade": "S1",
-      "sources": [
-        "SRC-COMM-BB"
-      ],
-      "scope": "community definition",
-      "limitations": "Third-party site, not verified as official.",
-      "related": [
-        "CF-02"
-      ],
-      "conflicts": [
-        "MS-03"
-      ]
-    },
-    {
-      "id": "MS-03",
-      "file": "03_MARKET_STRUCTURE.md",
-      "section": "3.6",
-      "type": "CF",
-      "statement": "The primary ICT Order Blocks and FVG transcripts read do not define BOS or MSS.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-OB",
-        "SRC-ICT-FVG"
-      ],
-      "scope": "text read only",
-      "limitations": "Partial transcripts.",
-      "related": [
-        "CF-02",
-        "GP-01"
-      ],
-      "conflicts": [
-        "MS-02"
-      ]
-    },
-    {
-      "id": "MS-04",
-      "file": "03_MARKET_STRUCTURE.md",
-      "section": "3.7",
-      "type": "F",
-      "statement": "A break defined on close is delayed at least one bar relative to a wick-based break; both are legitimate definitions with different false-positive behavior.",
-      "grade": "F",
-      "sources": [],
-      "scope": "structure breaks",
-      "limitations": "Behavior claim is logical, not empirical.",
-      "related": [
-        "CF-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LQ-01",
-      "file": "04_LIQUIDITY.md",
-      "section": "4.1",
-      "type": "E",
-      "statement": "ICT-community sources describe liquidity as clusters of resting stop and breakout orders above highs (buy-side) and below lows (sell-side).",
-      "grade": "S1",
-      "sources": [
-        "SRC-COMM-LIQ-2",
-        "SRC-COMM-LIQ-3"
-      ],
-      "scope": "community usage",
-      "limitations": "Mechanism not observed; not verified as ICT doctrine.",
-      "related": [
-        "LQ-02",
-        "CF-05"
-      ],
-      "conflicts": [
-        "CH-04"
-      ]
-    },
-    {
-      "id": "LQ-02",
-      "file": "04_LIQUIDITY.md",
-      "section": "4.1",
-      "type": "F",
-      "statement": "The existence of resting orders at a derived level is an assumption of the source, not an observation; a liquidity candidate is a derived candidate.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all liquidity candidates",
-      "limitations": "Principle.",
-      "related": [
-        "LQ-01",
-        "IC-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LQ-03",
-      "file": "04_LIQUIDITY.md",
-      "section": "4.4",
-      "type": "D",
-      "statement": "Equal highs/lows are a tolerance-dependent cluster; tolerance can create or erase a cluster.",
-      "grade": "B",
-      "sources": [],
-      "scope": "any tolerance-based cluster",
-      "limitations": "Tolerance values unresolved.",
-      "related": [
-        "UN-03",
-        "LQ-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LQ-04",
-      "file": "04_LIQUIDITY.md",
-      "section": "4.7",
-      "type": "CF",
-      "statement": "Sweep definitions conflict: wick-through vs close-back vs reversal-after-N; run-vs-sweep distinction depends on subsequent price in the source snippet.",
-      "grade": "S1",
-      "sources": [
-        "SRC-COMM-LIQ-1",
-        "SRC-COMM-OB-KZ"
-      ],
-      "scope": "community definitions",
-      "limitations": "Snippet-level reading of one page.",
-      "related": [
-        "CF-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LQ-05",
-      "file": "04_LIQUIDITY.md",
-      "section": "4.9",
-      "type": "E",
-      "statement": "In the primary FVG transcript, 'buy side liquidity offered' refers to a candle range already traded, which is a different referent from community resting-order liquidity.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-FVG"
-      ],
-      "scope": "transcript read in part; auto-caption",
-      "limitations": "Interpretation of a transcript passage.",
-      "related": [
-        "CH-04",
-        "LQ-01"
-      ],
-      "conflicts": [
-        "LQ-01"
-      ]
-    },
-    {
-      "id": "CH-04",
-      "file": "08_APPLIED_CHART_CASES.md",
-      "section": "8.2 CH-04",
-      "type": "CF",
-      "statement": "The word 'liquidity' is used both for an observed traded range (primary FVG transcript) and a hypothesized resting-order cluster (community); they must be stored separately.",
-      "grade": "CF",
-      "sources": [
-        "SRC-ICT-FVG",
-        "SRC-COMM-LIQ-2"
-      ],
-      "scope": "terminology",
-      "limitations": "None.",
-      "related": [
-        "LQ-01",
-        "LQ-05"
-      ],
-      "conflicts": [
-        "LQ-01"
-      ]
-    },
-    {
-      "id": "FZ-01",
-      "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
-      "section": "5.3",
-      "type": "D",
-      "statement": "Our operational FVG (bullish): high[t-2] < low[t], gap = [high[t-2], low[t]]; minimum size and fill status are unresolved parameters.",
-      "grade": "B",
-      "sources": [],
-      "scope": "three-candle imbalance",
-      "limitations": "Gap size threshold unresolved; no verified value.",
-      "related": [
-        "FZ-02",
-        "CF-09"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "FZ-02",
-      "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
-      "section": "5.3",
-      "type": "E",
-      "statement": "The primary FVG lesson transcript describes a fair value gap as a range in price delivery where one side of market liquidity is offered, typically confirmed with a liquidity void on a lower timeframe.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-FVG"
-      ],
-      "scope": "transcript opening; auto-caption; 2016 content",
-      "limitations": "No timestamp; lower-timeframe confirmation undefined in text read.",
-      "related": [
-        "FZ-01",
-        "CF-09"
-      ],
-      "conflicts": [
-        "FZ-01"
-      ]
-    },
-    {
-      "id": "FZ-03",
-      "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
-      "section": "5.4",
-      "type": "E",
-      "statement": "Primary ICT Order Blocks lesson defines a bullish order block as the lowest down-close candle with the most open-to-close range, near a support level; validation is when a later candle trades through its high.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-OB"
-      ],
-      "scope": "transcript opening section; auto-caption; 2016 content",
-      "limitations": "Remaining lesson unread; 'near' undefined.",
-      "related": [
-        "FZ-04",
-        "CF-01"
-      ],
-      "conflicts": [
-        "FZ-04"
-      ]
-    },
-    {
-      "id": "FZ-04",
-      "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
-      "section": "5.4",
-      "type": "CF",
-      "statement": "Community definitions of OB (last opposing candle; sweep required; FVG preferred) conflict with the primary definition.",
-      "grade": "S1",
-      "sources": [
-        "SRC-COMM-OB-KZ",
-        "SRC-COMM-OB-VOL"
-      ],
-      "scope": "community pages",
-      "limitations": "Snippet-level for some claims.",
-      "related": [
-        "FZ-03",
-        "CF-01"
-      ],
-      "conflicts": [
-        "FZ-03"
-      ]
-    },
-    {
-      "id": "FZ-05",
-      "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
-      "section": "5.9",
-      "type": "F",
-      "statement": "A zone that price reacted to is an observed reaction; calling the zone institutional is an inferred cause, not a measurement.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all zones",
-      "limitations": "Principle.",
-      "related": [
-        "CF-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "FZ-06",
-      "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
-      "section": "5.10",
-      "type": "G",
-      "statement": "No verified empirical study in this session tests the predictive value of ICT FVG or order blocks.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "this session's search",
-      "limitations": "Absence within search scope, not proof of absence.",
-      "related": [
-        "GP-06",
-        "UN-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CH-OB-STOP",
-      "file": "08_APPLIED_CHART_CASES.md",
-      "section": "8.2 CH-02",
-      "type": "E",
-      "statement": "The primary OB lesson describes stop placement at the block low and a 50% point of the block range as a location to raise the stop after price moves away.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-OB"
-      ],
-      "scope": "procedure, not outcome data",
-      "limitations": "Auto-caption; partial read.",
-      "related": [
-        "CF-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-07",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "The 50% retracement point is an ICT-stated stop-management reference (primary) and a 'mean threshold' in community sources; no verified evidence that it predicts price.",
-      "grade": "CF",
-      "sources": [
-        "SRC-ICT-OB",
-        "SRC-COMM-OB-KZ"
-      ],
-      "scope": "reference levels",
-      "limitations": "None.",
-      "related": [
-        "CH-OB-STOP",
-        "UN-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-01",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "G",
-      "statement": "BOCPD (Adams & MacKay 2007) is an exact online changepoint inference method for the most recent changepoint, with modular implementation, demonstrated on three real datasets.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-AM07"
-      ],
-      "scope": "abstract-level claim",
-      "limitations": "Full methods not reviewed.",
-      "related": [
-        "PM-12",
-        "LL-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-02",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "G",
-      "statement": "PELT (Killick et al. 2012) gives optimal changepoint segmentation under a penalty at linear computational cost under conditions.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-KFE12",
-        "SRC-RUP-DOC"
-      ],
-      "scope": "offline",
-      "limitations": "Offline; not causal.",
-      "related": [
-        "PM-13",
-        "LL-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-04",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "G",
-      "statement": "GAIL (Ho & Ermon 2016) learns a policy directly from expert demonstrations without interaction or RL signal, demonstrated on complex high-dimensional control environments.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-HE16"
-      ],
-      "scope": "simulated control tasks",
-      "limitations": "Not chart-selection data.",
-      "related": [
-        "LL-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-05",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "G",
-      "statement": "TS2Vec (Yue et al. 2022) learns hierarchical contrastive timestamp-level representations, evaluated on UCR/UEA benchmarks and forecasting/anomaly tasks.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-TS2V"
-      ],
-      "scope": "benchmark datasets",
-      "limitations": "Causality of context in financial use unverified.",
-      "related": [
-        "LL-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-07",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "G",
-      "statement": "Cont, Kukanov & Stoikov (2014) found, for 50 US stocks in NYSE TAQ data, that short-interval price changes are driven mainly by order flow imbalance with a linear relation whose slope is inversely proportional to depth.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-CKS14"
-      ],
-      "scope": "NYSE TAQ, 50 US stocks; short intervals",
-      "limitations": "Requires order-book data; not chart-level liquidity.",
-      "related": [
-        "CF-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-06",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "G",
-      "statement": "Purging and embargo are leakage controls for financial labels with overlapping windows (López de Prado, AFML Ch. 7, via secondary sources).",
-      "grade": "S1",
-      "sources": [
-        "SRC-LDP-SUM",
-        "SRC-QM-PCV"
-      ],
-      "scope": "validation protocol",
-      "limitations": "Book not read; formula details from secondary sources.",
-      "related": [
-        "LL-08"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-09",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.3",
-      "type": "CF",
-      "statement": "ruptures recent commits (May 2026) are shown; latest-commit CI status is shown as failure; license not verified.",
-      "grade": "OS1",
-      "sources": [
-        "SRC-RUP"
-      ],
-      "scope": "landing page at read time",
-      "limitations": "Status may have changed.",
-      "related": [
-        "OS-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-10",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.3",
-      "type": "CF",
-      "statement": "TS2Vec repository last commit June 2023 and old pinned dependencies; license type not verified.",
-      "grade": "OS1",
-      "sources": [
-        "SRC-TS2V-REPO"
-      ],
-      "scope": "landing page",
-      "limitations": "Environment must be re-validated.",
-      "related": [
-        "OS-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-11",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.3",
-      "type": "CF",
-      "statement": "purgedcv describes split-level CV with embargo and states it does not detect feature leakage; its 'no-leakage proof' claim was not verified.",
-      "grade": "OS1",
-      "sources": [
-        "SRC-PCV-REPO"
-      ],
-      "scope": "repository description",
-      "limitations": "License and maintenance not verified.",
-      "related": [
-        "OS-06",
-        "LL-08"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "MR-01",
-      "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
-      "section": "6.4",
-      "type": "F",
-      "statement": "Upstream representation errors cascade: each downstream calculation can be internally correct while the chain is contextually inappropriate.",
-      "grade": "F",
-      "sources": [],
-      "scope": "chained analysis",
-      "limitations": "Principle.",
-      "related": [
-        "MR-02",
-        "IC-12"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "MR-02",
-      "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
-      "section": "6.5",
-      "type": "F",
-      "statement": "Elements sharing source bars share evidence and must not be counted as independent confirmations.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all interpretations",
-      "limitations": "Principle; magnitude untested (HY-04).",
-      "related": [
-        "MR-03",
-        "HY-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "MR-03",
-      "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
-      "section": "6.5",
-      "type": "F",
-      "statement": "Confidence percentages derived from confluence counts are not supported; no confluence count is a probability.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all outputs",
-      "limitations": "None.",
-      "related": [
-        "LL-09"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "MR-04",
-      "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
-      "section": "6.6",
-      "type": "F",
-      "statement": "Interpretations are kept as sets with supporting and contradicting observations and falsifiers; they are not ranked by a single score.",
-      "grade": "F",
-      "sources": [],
-      "scope": "interpretation output",
-      "limitations": "Presentation choice; effect untested.",
-      "related": [
-        "IC-10"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LL-03",
-      "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
-      "section": "7.3",
-      "type": "F",
-      "statement": "Offline segmentation (e.g., PELT) must not be used as a causal live input; it may be used only as research labels.",
-      "grade": "F",
-      "sources": [
-        "SRC-KFE12"
-      ],
-      "scope": "live inference",
-      "limitations": "None.",
-      "related": [
-        "PM-13",
-        "OS-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LL-04",
-      "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
-      "section": "7.3.3",
-      "type": "F",
-      "statement": "Learning from demonstrations requires a causal snapshot of the decision state; post-outcome annotations are not demonstrations of selection.",
-      "grade": "F",
-      "sources": [
-        "SRC-HE16"
-      ],
-      "scope": "annotation design",
-      "limitations": "Principle.",
-      "related": [
-        "OS-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LL-05",
-      "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
-      "section": "7.3.5",
-      "type": "F",
-      "statement": "Representation learning is only evaluated through a labeled downstream task defined before training.",
-      "grade": "F",
-      "sources": [
-        "SRC-TS2V"
-      ],
-      "scope": "representation experiments",
-      "limitations": "Principle.",
-      "related": [
-        "OS-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LL-06",
-      "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
-      "section": "7.3.6",
-      "type": "F",
-      "statement": "Statistical change-point events are not market-structure events without a separately validated relation.",
-      "grade": "F",
-      "sources": [
-        "SRC-AM07"
-      ],
-      "scope": "sequential models",
-      "limitations": "Principle.",
-      "related": [
-        "PM-12",
-        "CF-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LL-07",
-      "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
-      "section": "7.2",
-      "type": "F",
-      "statement": "Six learning targets (concept fidelity, extraction correctness, contextual selection, interpretation quality, predictive usefulness, decision quality) must be measured separately.",
-      "grade": "F",
-      "sources": [],
-      "scope": "evaluation design",
-      "limitations": "Principle.",
-      "related": [
-        "SW-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LL-08",
-      "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
-      "section": "7.4",
-      "type": "F",
-      "statement": "Label windows must be purged and embargoed relative to test windows; hindsight labels are stored separately and never used as features.",
-      "grade": "F",
-      "sources": [
-        "SRC-LDP-SUM",
-        "SRC-QM-PCV"
-      ],
-      "scope": "all learning",
-      "limitations": "Embargo sizing unresolved.",
-      "related": [
-        "OS-06",
-        "OS-11"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "LL-09",
-      "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
-      "section": "7.11",
-      "type": "F",
-      "statement": "Relevance scores are probabilities only after out-of-sample calibration; uncalibrated scores are not probabilities.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all scores",
-      "limitations": "None.",
-      "related": [
-        "MR-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "HY-04",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.6",
-      "type": "F",
-      "statement": "Hypothesis: FVG and OB candidates overlap in evidence such that their joint count overstates independent support. Untested.",
-      "grade": "F",
-      "sources": [],
-      "scope": "hypothesis",
-      "limitations": "Untested.",
-      "related": [
-        "MR-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "HY-03",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.6",
-      "type": "F",
-      "statement": "Hypothesis (null): chart-level liquidity candidates are not distinguishable from matched non-level candidates in forward movement. Untested.",
-      "grade": "F",
-      "sources": [],
-      "scope": "hypothesis",
-      "limitations": "Untested.",
-      "related": [
-        "CF-05",
-        "IC-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-01",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Order block definition conflict between ICT primary and community sources; both are retained as separate generators.",
-      "grade": "CF",
-      "sources": [
-        "SRC-ICT-OB",
-        "SRC-COMM-OB-KZ",
-        "SRC-COMM-OB-VOL"
-      ],
-      "scope": "OB",
-      "limitations": "Resolution requires more evidence.",
-      "related": [
-        "FZ-03",
-        "FZ-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-03",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Break-implies-reversal is prohibited as universal; community sources often imply it; no verified supporting evidence.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "structure",
-      "limitations": "None.",
-      "related": [
-        "MS-01",
-        "LL-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-05",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Chart-level stop-cluster attraction is a community mechanism with no verified study; microstructure evidence (OS-07) does not address it.",
-      "grade": "CF",
-      "sources": [
-        "SRC-CKS14",
-        "SRC-COMM-LIQ-4"
-      ],
-      "scope": "liquidity mechanism",
-      "limitations": "Gap, not refutation.",
-      "related": [
-        "HY-03",
-        "OS-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-09",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "FVG: primary offered-range description vs community three-candle imbalance; both retained.",
-      "grade": "CF",
-      "sources": [
-        "SRC-ICT-FVG"
-      ],
-      "scope": "FVG",
-      "limitations": "Transcript partial.",
-      "related": [
-        "FZ-01",
-        "FZ-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-10",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "The primary text read states a preference for higher-timeframe references but no method for evaluating alternatives.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-OB"
-      ],
-      "scope": "text read",
-      "limitations": "Partial read.",
-      "related": [
-        "SW-03",
-        "UN-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-06",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "No verified empirical study of ICT concepts was found in this session; the largest evidence gap.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "this session",
-      "limitations": "Search scope limited.",
-      "related": [
-        "FZ-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-01",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "Full transcripts of the two primary ICT lessons were not read.",
-      "grade": "CF",
-      "sources": [
-        "SRC-ICT-FVG",
-        "SRC-ICT-OB"
-      ],
-      "scope": "reading limit",
-      "limitations": "Known limitation.",
-      "related": [
-        "MS-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-03",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Tolerance defining equal highs/lows is unresolved and possibly task-dependent.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "liquidity clusters",
-      "limitations": "Open.",
-      "related": [
-        "LQ-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-05",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Whether higher-timeframe references predict better than lower-timeframe references is unknown.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "swings",
-      "limitations": "Open.",
-      "related": [
-        "SW-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CH-HYPO-STRUCT",
-      "file": "08_APPLIED_CHART_CASES.md",
-      "section": "8.2 CH-06",
-      "type": "F",
-      "statement": "Symbolic example: a close below a fine higher low that remains above a coarse higher low supports three readings; evidence at the break bar does not select one.",
-      "grade": "F",
-      "sources": [],
-      "scope": "hypothetical; no numbers",
-      "limitations": "Hypothetical.",
-      "related": [
-        "MS-01",
-        "MR-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-05",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-05",
-      "type": "D",
-      "statement": "Break events are typed (close-break, wick-break, reclaim) with knowable bar at the closing bar; intrabar ordering is undetermined without finer data.",
-      "grade": "D",
-      "sources": [],
-      "scope": "structure breaks",
-      "limitations": "Depends on PM-07.",
-      "related": [
-        "PM-07",
-        "MS-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-12",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-12",
-      "type": "F",
-      "statement": "A causal snapshot and replay audit must be built before any learning claim is accepted.",
-      "grade": "F",
-      "sources": [],
-      "scope": "all",
-      "limitations": "Principle.",
-      "related": [
-        "MR-01",
-        "LL-08"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-02",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Market structure shift / break-of-structure terminology is inconsistent across sources; the primary text read defines neither; no definition is adopted as doctrine.",
-      "grade": "CF",
-      "sources": [
-        "SRC-COMM-BB"
-      ],
-      "scope": "terminology",
-      "limitations": "Community definitions read partly.",
-      "related": [
-        "MS-02",
-        "MS-03"
-      ],
-      "conflicts": [
-        "MS-02"
-      ]
-    },
-    {
-      "id": "CF-04",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Close-based vs wick-based breaks and swing definitions are both legitimate; empirical performance of either is not established.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "structure and swings",
-      "limitations": "No study verified.",
-      "related": [
-        "MS-04",
-        "SW-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-06",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Sweep definitions conflict (wick-through, close-back, reversal-after-N); 'run vs sweep' depends on subsequent price and is hindsight.",
-      "grade": "CF",
-      "sources": [
-        "SRC-COMM-LIQ-1"
-      ],
-      "scope": "liquidity events",
-      "limitations": "Snippet-level reading.",
-      "related": [
-        "LQ-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-08",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "'Displacement' and 'impulsive' lack a numeric standard in the sources read; any threshold is a parameter, not a fact.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "movement definitions",
-      "limitations": "Community usage only.",
-      "related": [
-        "PM-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-11",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Session and kill-zone time windows stated by community sources are convention-dependent and their predictive value is unverified; not used as facts.",
-      "grade": "CF",
-      "sources": [
-        "SRC-COMM-BIO"
-      ],
-      "scope": "session definitions",
-      "limitations": "Community claims not verified.",
-      "related": [
-        "IC-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "CF-12",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.2",
-      "type": "CF",
-      "statement": "Primary lessons read are December 2016 content (re-uploaded 2022); later ICT teaching may differ; attribution must use lesson date.",
-      "grade": "P1",
-      "sources": [
-        "SRC-ICT-FVG",
-        "SRC-ICT-OB"
-      ],
-      "scope": "attribution",
-      "limitations": "Upload date is not teaching date.",
-      "related": [
-        "GP-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-02",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "No chart images or video frames were inspected; visual chart claims are unverified.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "all chart claims",
-      "limitations": "Known limitation.",
-      "related": [
-        "CH-HYPO-STRUCT"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-03",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "No verified timestamps; third-party summary timestamps unchecked.",
-      "grade": "CF",
-      "sources": [
-        "SRC-SUM-LIQ"
-      ],
-      "scope": "all timestamps",
-      "limitations": "Known limitation.",
-      "related": [
-        "LQ-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-04",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "ICT Mitigation Block, Market Maker Model, Divergence and other lessons were seen only as listings.",
-      "grade": "P2",
-      "sources": [
-        "SRC-ICT-MITIG",
-        "SRC-ICT-MMM"
-      ],
-      "scope": "ICT lessons not read",
-      "limitations": "Known limitation.",
-      "related": [
-        "FZ-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-05",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "No ICT primary liquidity lesson was read; liquidity definitions rest on secondary sources.",
-      "grade": "CF",
-      "sources": [
-        "SRC-COMM-LIQ-1"
-      ],
-      "scope": "liquidity",
-      "limitations": "Known limitation.",
-      "related": [
-        "LQ-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-07",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "Academic methods were read at abstract level; full methods and experiments not reviewed.",
-      "grade": "AC1",
-      "sources": [
-        "SRC-AM07",
-        "SRC-CKS14",
-        "SRC-HE16",
-        "SRC-TS2V"
-      ],
-      "scope": "academic",
-      "limitations": "Known limitation.",
-      "related": [
-        "OS-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-08",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "Some foundational references (HMM, Bai–Perron, segmentation surveys, López de Prado book) need primary verification before citation.",
-      "grade": "AC2",
-      "sources": [
-        "SRC-LDP-AFML"
-      ],
-      "scope": "references",
-      "limitations": "Flagged in OS-08.",
-      "related": [
-        "OS-08",
-        "OS-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-09",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "Licenses not verified for ruptures and TS2Vec; purgedcv license heading empty in read content.",
-      "grade": "OS1",
-      "sources": [
-        "SRC-RUP",
-        "SRC-TS2V-REPO",
-        "SRC-PCV-REPO"
-      ],
-      "scope": "open source",
-      "limitations": "Check before any use.",
-      "related": [
-        "OS-09",
-        "OS-10",
-        "OS-11"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-10",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "Intra-bar ordering is not recoverable from OHLC data.",
-      "grade": "F",
-      "sources": [],
-      "scope": "OHLC data",
-      "limitations": "Structural limit.",
-      "related": [
-        "PM-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "GP-11",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.3",
-      "type": "CF",
-      "statement": "No order-book, volume-profile or tick data were examined; participation claims are unsupported.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "data",
-      "limitations": "Known limitation.",
-      "related": [
-        "OS-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-01",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "What window defines 'the move' preceding an order-block candidate is unresolved.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "OB generators",
-      "limitations": "Open.",
-      "related": [
-        "FZ-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-02",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Operational meaning of 'near support' and its scale is unresolved.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "G-OB-P",
-      "limitations": "Open.",
-      "related": [
-        "FZ-03",
-        "CF-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-04",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Presentation policy when structure views coexist is a design choice, not a market fact.",
-      "grade": "F",
-      "sources": [],
-      "scope": "interpretation output",
-      "limitations": "Open design question.",
-      "related": [
-        "MR-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-06",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Whether FVG fill status carries predictive information is unknown.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "FVG status",
-      "limitations": "Open.",
-      "related": [
-        "FZ-06",
-        "IC-09"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-07",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Whether session-based liquidity levels are more informative than swing-based levels is unknown.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "liquidity families",
-      "limitations": "Open.",
-      "related": [
-        "IC-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-08",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "How overlapping zones from different scales should be combined, if at all, is unknown; default is separate presentation.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "zones",
-      "limitations": "Open.",
-      "related": [
-        "MR-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-09",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Minimal annotated dataset size for contextual selection evaluation is unknown.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "learning",
-      "limitations": "Design question.",
-      "related": [
-        "LL-04",
-        "IC-13"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "UN-10",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.4",
-      "type": "CF",
-      "statement": "Whether intra-bar sequencing matters depends on task and is unresolved.",
-      "grade": "CF",
-      "sources": [],
-      "scope": "tasks",
-      "limitations": "Open.",
-      "related": [
-        "PM-07"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "HY-01",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.6",
-      "type": "F",
-      "statement": "Hypothesis: causal structure readings at two scales with explicit disagreement explain subsequent movement better than single-scale readings. Untested.",
-      "grade": "F",
-      "sources": [],
-      "scope": "hypothesis",
-      "limitations": "Untested.",
-      "related": [
-        "MR-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "HY-02",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.6",
-      "type": "F",
-      "statement": "Hypothesis: knowable-at-creation candidates differ in causal evaluation from retrospective candidates. Untested.",
-      "grade": "F",
-      "sources": [],
-      "scope": "hypothesis",
-      "limitations": "Untested.",
-      "related": [
-        "IC-12"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "HY-05",
-      "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
-      "section": "10.6",
-      "type": "F",
-      "statement": "Hypothesis: offline segmentation boundaries are not reliable as live structural breaks. Untested.",
-      "grade": "F",
-      "sources": [
-        "SRC-KFE12"
-      ],
-      "scope": "hypothesis",
-      "limitations": "Untested.",
-      "related": [
-        "LL-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-01",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-01",
-      "type": "F",
-      "statement": "Movement state contract: causal, closed bars only; offline methods excluded from live output.",
-      "grade": "F",
-      "sources": [
-        "SRC-AM07"
-      ],
-      "scope": "movement",
-      "limitations": "Contract.",
-      "related": [
-        "PM-12",
-        "LL-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-02",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-02",
-      "type": "F",
-      "statement": "Swing candidate contract: deterministic per family and parameters; each candidate carries occurrence and knowable bars.",
-      "grade": "F",
-      "sources": [],
-      "scope": "swings",
-      "limitations": "Contract.",
-      "related": [
-        "SW-01",
-        "SW-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-03",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-03",
-      "type": "F",
-      "statement": "Task-specific swing selection contract: selectors are separate, named, and never a single universal 'best swing'.",
-      "grade": "F",
-      "sources": [],
-      "scope": "swing selection",
-      "limitations": "Contract.",
-      "related": [
-        "SW-04",
-        "MR-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-04",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-04",
-      "type": "F",
-      "statement": "Structure view contract: each (family, scale, break rule) combination is a separate view.",
-      "grade": "F",
-      "sources": [],
-      "scope": "structure",
-      "limitations": "Contract.",
-      "related": [
-        "MS-01",
-        "CF-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-06",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-06",
-      "type": "F",
-      "statement": "Liquidity candidate contract: families with parameters; output is candidate sets with taken status; no cause asserted.",
-      "grade": "F",
-      "sources": [],
-      "scope": "liquidity",
-      "limitations": "Contract.",
-      "related": [
-        "LQ-02",
-        "CF-05"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-07",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-07",
-      "type": "F",
-      "statement": "Liquidity relevance contract: annotated attributes and per-task rules; no universal score; learning required.",
-      "grade": "F",
-      "sources": [],
-      "scope": "liquidity relevance",
-      "limitations": "Contract.",
-      "related": [
-        "UN-07",
-        "LQ-03"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-08",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-08",
-      "type": "F",
-      "statement": "Zone candidate contract: G-FVG, G-OB-P, G-OB-C as separate generators with stated parameters.",
-      "grade": "F",
-      "sources": [
-        "SRC-ICT-OB",
-        "SRC-ICT-FVG"
-      ],
-      "scope": "zones",
-      "limitations": "Contract.",
-      "related": [
-        "FZ-03",
-        "FZ-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-09",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-09",
-      "type": "F",
-      "statement": "Zone status contract: status history with bars; validation and invalidation logged separately.",
-      "grade": "F",
-      "sources": [
-        "SRC-ICT-OB"
-      ],
-      "scope": "zone status",
-      "limitations": "Contract.",
-      "related": [
-        "UN-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-10",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-10",
-      "type": "F",
-      "statement": "Interpretation ledger contract: competing interpretations with evidence, assumptions, falsifiers; shared bars flagged.",
-      "grade": "F",
-      "sources": [],
-      "scope": "interpretations",
-      "limitations": "Contract.",
-      "related": [
-        "MR-02",
-        "MR-04"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-11",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-11",
-      "type": "F",
-      "statement": "Revision propagation contract: dependent statuses recomputed; revisions appended, never overwritten.",
-      "grade": "F",
-      "sources": [],
-      "scope": "revisions",
-      "limitations": "Contract.",
-      "related": [
-        "MR-01"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "IC-13",
-      "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
-      "section": "IC-13",
-      "type": "F",
-      "statement": "Learning protocol contract: causal snapshots, pre-outcome annotations, separate hindsight table, purged/embargoed splits.",
-      "grade": "F",
-      "sources": [
-        "SRC-LDP-SUM"
-      ],
-      "scope": "learning",
-      "limitations": "Contract.",
-      "related": [
-        "LL-08",
-        "OS-06"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-03",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "G",
-      "statement": "ruptures PELT documentation describes complexity O(CKn) under conditions and min_size/jump grid controls.",
-      "grade": "S2",
-      "sources": [
-        "SRC-RUP-DOC"
-      ],
-      "scope": "documentation",
-      "limitations": "Snippet-level.",
-      "related": [
-        "OS-02"
-      ],
-      "conflicts": []
-    },
-    {
-      "id": "OS-08",
-      "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
-      "section": "9.2",
-      "type": "CF",
-      "statement": "Multiscale and segmentation references (HMMs, Bai–Perron, segmentation surveys, wavelets) are expected but not verified this session.",
-      "grade": "AC2",
-      "sources": [],
-      "scope": "references",
-      "limitations": "Must verify.",
-      "related": [
-        "GP-08"
-      ],
-      "conflicts": []
+ "schema_version": "1.1",
+ "foundation": "Causal Market Intelligence — Applied Knowledge Foundation V1 (research draft)",
+ "generated": "2026-10-12",
+ "claim_type_codes": {
+  "A": "direct observation / data convention",
+  "B": "derived measurement (deterministic from observations)",
+  "C": "representation (organizing view of movement)",
+  "D": "operational definition, including properties of a published algorithm as used here",
+  "E": "ICT primary-source interpretation (provenance must be ICT-primary)",
+  "E*": "community interpretation of ICT-branded concepts (not ICT doctrine; provenance must be secondary-community)",
+  "F": "researcher-proposed principle, contract, hypothesis or adopted method",
+  "G": "empirically supported relationship as reported by a cited study (provenance academic/open-source)",
+  "H": "trading decision or risk policy (out of scope)",
+  "CF": "conflict, gap or limitation record (not a substantive claim)"
+ },
+ "evidence_grades": {
+  "P1": "primary ICT material, transcript partially read",
+  "P2": "primary ICT material, metadata only",
+  "S1": "secondary/community, read sufficiently to quote",
+  "S2": "secondary, search snippet only",
+  "AC1": "academic, abstract/record read this session",
+  "AC2": "academic, not re-verified this session",
+  "OS1": "open-source repo/landing page read; code not inspected",
+  "CF": "conflict or gap (not a source grade)"
+ },
+ "claims": [
+  {
+   "id": "PM-01",
+   "file": "01_PRICE_MOVEMENT.md",
+   "section": "1.2",
+   "type": "A",
+   "statement": "Bar-based price data is recorded as open, high, low, close and timestamp per bar; volume only if recorded (data convention, not a source claim).",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "bar-based data",
+   "limitations": "Vendor conventions vary; the claim depends on the data feed in use. Previously cited the PELT paper (SRC-KFE12), which does not support this claim (audit provenance defect).",
+   "related": [
+    "PM-07"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "sources",
+     "from": [
+      "SRC-KFE12"
+     ],
+     "to": []
+    },
+    {
+     "round": "R2",
+     "field": "provenance",
+     "from": "academic",
+     "to": "researcher"
+    },
+    {
+     "round": "R2",
+     "field": "grade",
+     "from": "AC1",
+     "to": "NOT_SOURCE_BASED"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "A bar-based feed directly provides open, high, low, close, and timestamp per bar; volume only if recorded.",
+     "to": "Bar-based price data is recorded as open, high, low, close and timestamp per bar; volume only if recorded (data convention, not a source claim)."
+    },
+    {
+     "round": "R2",
+     "field": "limitations",
+     "from": "Data-vendor conventions not verified.",
+     "to": "Vendor conventions vary; the claim depends on the data feed in use. Previously cited the PELT paper (SRC-KFE12), which does not support this claim (audit provenance defect)."
     }
-  ]
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "PM-07",
+   "file": "01_PRICE_MOVEMENT.md",
+   "section": "1.7",
+   "type": "F",
+   "statement": "OHLC bars do not record the order in which a bar's high and low occurred; questions requiring intra-bar order are undetermined at the bar's scale without finer data.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "OHLC-only data",
+   "limitations": "Holds by construction of OHLC; relevance depends on task.",
+   "related": [
+    "PM-01",
+    "IC-05"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "PM-08",
+   "file": "01_PRICE_MOVEMENT.md",
+   "section": "1.6",
+   "type": "B",
+   "statement": "A coarser bar's high and low are the max and min of the contained finer bars, so a coarse wick can come from a single fine bar.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "aggregation by max/min",
+   "limitations": "Assumes standard aggregation.",
+   "related": [
+    "PM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "B",
+   "informed_by": []
+  },
+  {
+   "id": "PM-12",
+   "file": "01_PRICE_MOVEMENT.md",
+   "section": "1.8",
+   "type": "D",
+   "statement": "Property of the published BOCPD algorithm: causal online posterior over run length; parameters before and after a change assumed independent (algorithmic property, not an empirical result).",
+   "grade": "AC1",
+   "sources": [
+    "SRC-AM07"
+   ],
+   "scope": "models with independent pre/post-change parameters",
+   "limitations": "Statistical change is not a market event.",
+   "related": [
+    "LL-06",
+    "CF-03"
+   ],
+   "conflicts": [],
+   "provenance": "academic",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "type",
+     "from": "G",
+     "to": "D"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "BOCPD computes an online posterior over run length (time since last changepoint) using message passing, causal by construction, for independent before/after parameters.",
+     "to": "Property of the published BOCPD algorithm: causal online posterior over run length; parameters before and after a change assumed independent (algorithmic property, not an empirical result)."
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "PM-13",
+   "file": "01_PRICE_MOVEMENT.md",
+   "section": "1.8",
+   "type": "D",
+   "statement": "Property of the published PELT algorithm: optimal segmentation under a penalty with pruning; uses the full series and is not causal for live use.",
+   "grade": "AC1",
+   "sources": [
+    "SRC-KFE12",
+    "SRC-RUP-DOC"
+   ],
+   "scope": "offline",
+   "limitations": "Complexity depends on conditions.",
+   "related": [
+    "LL-03"
+   ],
+   "conflicts": [],
+   "provenance": "mixed:academic+open-source",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "type",
+     "from": "G",
+     "to": "D"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "PELT finds an optimal segmentation under a penalty with a pruning rule; it uses the full series and is not a causal live detector.",
+     "to": "Property of the published PELT algorithm: optimal segmentation under a penalty with pruning; uses the full series and is not causal for live use."
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SW-01",
+   "file": "02_SWINGS_AND_WAVES.md",
+   "section": "2.4",
+   "type": "D",
+   "statement": "Swing candidates are produced by operational families (k-bar pivot, threshold zigzag, closes-only extremes, change-point boundary, period extremes); each family and its parameters must be stored.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "our operational taxonomy",
+   "limitations": "Taxonomy is not exhaustive.",
+   "related": [
+    "SW-02",
+    "IC-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-RUP-DOC"
+   ]
+  },
+  {
+   "id": "SW-02",
+   "file": "02_SWINGS_AND_WAVES.md",
+   "section": "2.5",
+   "type": "F",
+   "statement": "A k-bar pivot is an occurrence at bar p but is knowable only at p+k; using it before p+k is leakage.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "k-bar pivot family",
+   "limitations": "Applies to any confirmation-lag definition.",
+   "related": [
+    "SW-01",
+    "IC-12"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "SW-03",
+   "file": "02_SWINGS_AND_WAVES.md",
+   "section": "2.8",
+   "type": "E",
+   "statement": "The primary ICT Order Blocks lesson states that a support line can be an old low on a long-term or higher-timeframe chart, or an old high price has recently moved above, and that higher timeframes (monthly, weekly, daily) are the intended scale.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-OB"
+   ],
+   "scope": "transcript opening section; auto-caption quality uncertain; no timestamp",
+   "limitations": "Verbal instruction, not a measured result.",
+   "related": [
+    "SW-04",
+    "CF-10"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "SW-04",
+   "file": "02_SWINGS_AND_WAVES.md",
+   "section": "2.13",
+   "type": "F",
+   "statement": "No universal importance score for swings is justified; importance is task-dependent and must be learned or validated per task.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all swing tasks",
+   "limitations": "Principle, not a finding.",
+   "related": [
+    "LL-07",
+    "IC-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "MS-01",
+   "file": "03_MARKET_STRUCTURE.md",
+   "section": "3.5",
+   "type": "F",
+   "statement": "Every structural break means reversal is an unsupported universal rule; break implications are context-dependent and held as unresolved interpretations.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all structure tasks",
+   "limitations": "Principle.",
+   "related": [
+    "CF-03",
+    "IC-05"
+   ],
+   "conflicts": [
+    "MS-02"
+   ],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "MS-02",
+   "file": "03_MARKET_STRUCTURE.md",
+   "section": "3.6",
+   "type": "E*",
+   "statement": "Community sources (one third-party page using Huddleston's name, not verified as official) define market structure shift (MSS) as a break of structure following a liquidity sweep. Not present in the primary ICT text read.",
+   "grade": "S1",
+   "sources": [
+    "SRC-COMM-BB"
+   ],
+   "scope": "community definition",
+   "limitations": "Third-party site, not verified as official.",
+   "related": [
+    "CF-02"
+   ],
+   "conflicts": [
+    "MS-03"
+   ],
+   "provenance": "secondary-community",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "type",
+     "from": "E",
+     "to": "E*"
+    },
+    {
+     "round": "R2",
+     "field": "provenance",
+     "from": "secondary-community",
+     "to": "secondary-community"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "Community sources define market structure shift (MSS) as a break of structure following a liquidity sweep; this is not verified in the primary ICT text read.",
+     "to": "Community sources (one third-party page using Huddleston's name, not verified as official) define market structure shift (MSS) as a break of structure following a liquidity sweep. Not present in the primary ICT text read."
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "MS-03",
+   "file": "03_MARKET_STRUCTURE.md",
+   "section": "3.6",
+   "type": "CF",
+   "statement": "The primary ICT Order Blocks and FVG transcripts read do not define BOS or MSS.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-OB",
+    "SRC-ICT-FVG"
+   ],
+   "scope": "text read only",
+   "limitations": "Partial transcripts.",
+   "related": [
+    "CF-02",
+    "GP-01"
+   ],
+   "conflicts": [
+    "MS-02"
+   ],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "MS-04",
+   "file": "03_MARKET_STRUCTURE.md",
+   "section": "3.7",
+   "type": "F",
+   "statement": "A break defined on close is delayed at least one bar relative to a wick-based break; both are legitimate definitions with different false-positive behavior.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "structure breaks",
+   "limitations": "Behavior claim is logical, not empirical.",
+   "related": [
+    "CF-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "LQ-01",
+   "file": "04_LIQUIDITY.md",
+   "section": "4.1",
+   "type": "E*",
+   "statement": "Community sources describe liquidity as clusters of resting stop and breakout orders above highs (buy-side) and below lows (sell-side).",
+   "grade": "S1",
+   "sources": [
+    "SRC-COMM-LIQ-2",
+    "SRC-COMM-LIQ-3"
+   ],
+   "scope": "community usage",
+   "limitations": "Mechanism not observed; not verified as ICT doctrine.",
+   "related": [
+    "LQ-02",
+    "CF-05"
+   ],
+   "conflicts": [
+    "CC-04"
+   ],
+   "provenance": "secondary-community",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "type",
+     "from": "E",
+     "to": "E*"
+    },
+    {
+     "round": "R2",
+     "field": "provenance",
+     "from": "secondary-community",
+     "to": "secondary-community"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "ICT-community sources describe liquidity as clusters of resting stop and breakout orders above highs (buy-side) and below lows (sell-side).",
+     "to": "Community sources describe liquidity as clusters of resting stop and breakout orders above highs (buy-side) and below lows (sell-side)."
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "LQ-02",
+   "file": "04_LIQUIDITY.md",
+   "section": "4.1",
+   "type": "F",
+   "statement": "The existence of resting orders at a derived level is an assumption of the source, not an observation; a liquidity candidate is a derived candidate.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all liquidity candidates",
+   "limitations": "Principle.",
+   "related": [
+    "LQ-01",
+    "IC-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "LQ-03",
+   "file": "04_LIQUIDITY.md",
+   "section": "4.4",
+   "type": "D",
+   "statement": "Equal highs/lows are a tolerance-dependent cluster; tolerance can create or erase a cluster.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "any tolerance-based cluster",
+   "limitations": "Tolerance values unresolved.",
+   "related": [
+    "UN-03",
+    "LQ-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "B",
+   "informed_by": []
+  },
+  {
+   "id": "LQ-04",
+   "file": "04_LIQUIDITY.md",
+   "section": "4.7",
+   "type": "CF",
+   "statement": "Sweep definitions conflict: wick-through vs close-back vs reversal-after-N; run-vs-sweep distinction depends on subsequent price in the source snippet.",
+   "grade": "S1",
+   "sources": [
+    "SRC-COMM-LIQ-1",
+    "SRC-COMM-OB-KZ"
+   ],
+   "scope": "community definitions",
+   "limitations": "Snippet-level reading of one page.",
+   "related": [
+    "CF-06"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-community",
+   "informed_by": []
+  },
+  {
+   "id": "LQ-05",
+   "file": "04_LIQUIDITY.md",
+   "section": "4.9",
+   "type": "E",
+   "statement": "In the primary FVG transcript, 'buy side liquidity offered' refers to a candle range already traded, which is a different referent from community resting-order liquidity.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-FVG"
+   ],
+   "scope": "transcript read in part; auto-caption",
+   "limitations": "Interpretation of a transcript passage.",
+   "related": [
+    "CC-04",
+    "LQ-01"
+   ],
+   "conflicts": [
+    "LQ-01"
+   ],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "CC-04",
+   "file": "08_APPLIED_CHART_CASES.md",
+   "section": "8.2 CH-04",
+   "type": "CF",
+   "statement": "The word 'liquidity' is used both for an observed traded range (primary FVG transcript) and a hypothesized resting-order cluster (community); they must be stored separately.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-ICT-FVG",
+    "SRC-COMM-LIQ-2"
+   ],
+   "scope": "terminology",
+   "limitations": "None.",
+   "related": [
+    "LQ-01",
+    "LQ-05"
+   ],
+   "conflicts": [
+    "LQ-01"
+   ],
+   "provenance": "mixed:ICT-primary+secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "FZ-01",
+   "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
+   "section": "5.3",
+   "type": "D",
+   "statement": "Our operational FVG (bullish): high[t-2] < low[t], gap = [high[t-2], low[t]]; minimum size and fill status are unresolved parameters.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "three-candle imbalance",
+   "limitations": "Gap size threshold unresolved; no verified value.",
+   "related": [
+    "FZ-02",
+    "CF-09"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "B",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "grade",
+     "from": "NOT_SOURCE_BASED",
+     "to": "NOT_SOURCE_BASED"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "FZ-02",
+   "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
+   "section": "5.3",
+   "type": "E",
+   "statement": "The primary FVG lesson transcript describes a fair value gap as a range in price delivery where one side of market liquidity is offered, typically confirmed with a liquidity void on a lower timeframe.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-FVG"
+   ],
+   "scope": "transcript opening; auto-caption; 2016 content",
+   "limitations": "No timestamp; lower-timeframe confirmation undefined in text read.",
+   "related": [
+    "FZ-01",
+    "CF-09"
+   ],
+   "conflicts": [
+    "FZ-01"
+   ],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "FZ-03",
+   "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
+   "section": "5.4",
+   "type": "E",
+   "statement": "Primary ICT Order Blocks lesson defines a bullish order block as the lowest down-close candle with the most open-to-close range, near a support level; validation is when a later candle trades through its high.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-OB"
+   ],
+   "scope": "transcript opening section; auto-caption; 2016 content",
+   "limitations": "Remaining lesson unread; 'near' undefined.",
+   "related": [
+    "FZ-04",
+    "CF-01"
+   ],
+   "conflicts": [
+    "FZ-04"
+   ],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "FZ-04",
+   "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
+   "section": "5.4",
+   "type": "CF",
+   "statement": "Community definitions of OB (last opposing candle; sweep required; FVG preferred) conflict with the primary definition.",
+   "grade": "S1",
+   "sources": [
+    "SRC-COMM-OB-KZ",
+    "SRC-COMM-OB-VOL"
+   ],
+   "scope": "community pages",
+   "limitations": "Snippet-level for some claims.",
+   "related": [
+    "FZ-03",
+    "CF-01"
+   ],
+   "conflicts": [
+    "FZ-03"
+   ],
+   "provenance": "secondary-community",
+   "informed_by": []
+  },
+  {
+   "id": "FZ-05",
+   "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
+   "section": "5.9",
+   "type": "F",
+   "statement": "A zone that price reacted to is an observed reaction; calling the zone institutional is an inferred cause, not a measurement.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all zones",
+   "limitations": "Principle.",
+   "related": [
+    "CF-05"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "FZ-06",
+   "file": "05_FVG_ORDER_BLOCKS_ZONES.md",
+   "section": "5.10",
+   "type": "CF",
+   "statement": "No verified empirical study in this session tests the predictive value of ICT FVG or order blocks.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "this session's search",
+   "limitations": "Absence within search scope, not proof of absence.",
+   "related": [
+    "GP-06",
+    "UN-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": [],
+   "revision": "R2"
+  },
+  {
+   "id": "CC-OB-STOP",
+   "file": "08_APPLIED_CHART_CASES.md",
+   "section": "8.2 CH-02",
+   "type": "E",
+   "statement": "The primary OB lesson describes stop placement at the block low and a 50% point of the block range as a location to raise the stop after price moves away.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-OB"
+   ],
+   "scope": "procedure, not outcome data",
+   "limitations": "Auto-caption; partial read.",
+   "related": [
+    "CF-07"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "CF-07",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "The 50% retracement point is an ICT-stated stop-management reference (primary) and a 'mean threshold' in community sources; no verified evidence that it predicts price.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-ICT-OB",
+    "SRC-COMM-OB-KZ"
+   ],
+   "scope": "reference levels",
+   "limitations": "None.",
+   "related": [
+    "CC-OB-STOP",
+    "UN-02"
+   ],
+   "conflicts": [],
+   "provenance": "mixed:ICT-primary+secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "OS-01",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "D",
+   "statement": "Published algorithm property (BOCPD, Adams & MacKay 2007): exact online inference of the most recent changepoint; demonstrated on three real datasets (reported by source).",
+   "grade": "AC1",
+   "sources": [
+    "SRC-AM07"
+   ],
+   "scope": "abstract-level claim",
+   "limitations": "Full methods not reviewed.",
+   "related": [
+    "PM-12",
+    "LL-06"
+   ],
+   "conflicts": [],
+   "provenance": "academic",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "type",
+     "from": "G",
+     "to": "D"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "BOCPD (Adams & MacKay 2007) is an exact online changepoint inference method for the most recent changepoint, with modular implementation, demonstrated on three real datasets.",
+     "to": "Published algorithm property (BOCPD, Adams & MacKay 2007): exact online inference of the most recent changepoint; demonstrated on three real datasets (reported by source)."
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "OS-02",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "D",
+   "statement": "Published algorithm property (PELT, Killick et al. 2012): optimal segmentation under a penalty at linear cost under conditions; offline.",
+   "grade": "AC1",
+   "sources": [
+    "SRC-KFE12",
+    "SRC-RUP-DOC"
+   ],
+   "scope": "offline",
+   "limitations": "Offline; not causal.",
+   "related": [
+    "PM-13",
+    "LL-03"
+   ],
+   "conflicts": [],
+   "provenance": "mixed:academic+open-source",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "type",
+     "from": "G",
+     "to": "D"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "PELT (Killick et al. 2012) gives optimal changepoint segmentation under a penalty at linear computational cost under conditions.",
+     "to": "Published algorithm property (PELT, Killick et al. 2012): optimal segmentation under a penalty at linear cost under conditions; offline."
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "OS-04",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "G",
+   "statement": "GAIL (Ho & Ermon 2016) learns a policy directly from expert demonstrations without interaction or RL signal, demonstrated on complex high-dimensional control environments.",
+   "grade": "AC1",
+   "sources": [
+    "SRC-HE16"
+   ],
+   "scope": "simulated control tasks",
+   "limitations": "Not chart-selection data.",
+   "related": [
+    "LL-04"
+   ],
+   "conflicts": [],
+   "provenance": "academic",
+   "informed_by": []
+  },
+  {
+   "id": "OS-05",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "G",
+   "statement": "TS2Vec (Yue et al. 2022) learns hierarchical contrastive timestamp-level representations, evaluated on UCR/UEA benchmarks and forecasting/anomaly tasks.",
+   "grade": "AC1",
+   "sources": [
+    "SRC-TS2V"
+   ],
+   "scope": "benchmark datasets",
+   "limitations": "Causality of context in financial use unverified.",
+   "related": [
+    "LL-05"
+   ],
+   "conflicts": [],
+   "provenance": "academic",
+   "informed_by": []
+  },
+  {
+   "id": "OS-07",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "G",
+   "statement": "Cont, Kukanov & Stoikov (2014) found, for 50 US stocks in NYSE TAQ data, that short-interval price changes are driven mainly by order flow imbalance with a linear relation whose slope is inversely proportional to depth.",
+   "grade": "AC1",
+   "sources": [
+    "SRC-CKS14"
+   ],
+   "scope": "NYSE TAQ, 50 US stocks; short intervals",
+   "limitations": "Requires order-book data; not chart-level liquidity.",
+   "related": [
+    "CF-05"
+   ],
+   "conflicts": [],
+   "provenance": "academic",
+   "informed_by": []
+  },
+  {
+   "id": "OS-06",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "F",
+   "statement": "Adopted validation method: purging and embargo as leakage controls for labels with overlapping windows (López de Prado, AFML Ch. 7, via secondary sources). Type changed from G: the claim is a method choice, not an empirical result.",
+   "grade": "S1",
+   "sources": [
+    "SRC-LDP-SUM",
+    "SRC-QM-PCV"
+   ],
+   "scope": "validation protocol",
+   "limitations": "Book not read; formula details from secondary sources.",
+   "related": [
+    "LL-08"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-academic",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "type",
+     "from": "G",
+     "to": "F"
+    },
+    {
+     "round": "R2",
+     "field": "provenance",
+     "from": "secondary-academic",
+     "to": "academic-secondary"
+    },
+    {
+     "round": "R2",
+     "field": "grade",
+     "from": "S1",
+     "to": "S1"
+    },
+    {
+     "round": "R2",
+     "field": "statement",
+     "from": "Purging and embargo are leakage controls for financial labels with overlapping windows (López de Prado, AFML Ch. 7, via secondary sources).",
+     "to": "Adopted validation method: purging and embargo as leakage controls for labels with overlapping windows (López de Prado, AFML Ch. 7, via secondary sources). Type changed from G: the claim is a method choice, not an empirical result."
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "OS-09",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.3",
+   "type": "CF",
+   "statement": "ruptures is licensed under BSD-2-Clause (license file read this session). Latest commits and CI status were read at landing-page level; recent-commit CI status should be re-checked before dependence.",
+   "grade": "OS1",
+   "sources": [
+    "SRC-RUP"
+   ],
+   "scope": "landing page at read time",
+   "limitations": "Read on the landing page and LICENSE file; the CI status shown may have changed. Not code-reviewed.",
+   "related": [
+    "OS-02"
+   ],
+   "conflicts": [],
+   "provenance": "open-source",
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "OS-10",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.3",
+   "type": "CF",
+   "statement": "TS2Vec repository is licensed under MIT (LICENSE read this session, copyright 2022). Last commit June 2023; pinned dependencies are old.",
+   "grade": "OS1",
+   "sources": [
+    "SRC-TS2V-REPO"
+   ],
+   "scope": "landing page",
+   "limitations": "Environment must be re-validated before use; code not inspected.",
+   "related": [
+    "OS-05"
+   ],
+   "conflicts": [],
+   "provenance": "open-source",
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "OS-11",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.3",
+   "type": "CF",
+   "statement": "purgedcv repository is licensed under MIT (LICENSE read this session, copyright 2026). Repository description states it produces splits only and does not detect feature leakage; its 'no-leakage proof' claim was not verified.",
+   "grade": "OS1",
+   "sources": [
+    "SRC-PCV-REPO"
+   ],
+   "scope": "repository description",
+   "limitations": "Code not inspected; claim of formal proof and empirical verification is the author's and unverified.",
+   "related": [
+    "OS-06",
+    "LL-08"
+   ],
+   "conflicts": [],
+   "provenance": "open-source",
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "MR-01",
+   "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
+   "section": "6.4",
+   "type": "F",
+   "statement": "Upstream representation errors cascade: each downstream calculation can be internally correct while the chain is contextually inappropriate.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "chained analysis",
+   "limitations": "Principle.",
+   "related": [
+    "MR-02",
+    "IC-12"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "MR-02",
+   "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
+   "section": "6.5",
+   "type": "F",
+   "statement": "Elements sharing source bars share evidence and must not be counted as independent confirmations.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all interpretations",
+   "limitations": "Principle; magnitude untested (HY-04).",
+   "related": [
+    "MR-03",
+    "HY-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "MR-03",
+   "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
+   "section": "6.5",
+   "type": "F",
+   "statement": "Confidence percentages derived from confluence counts are not supported; no confluence count is a probability.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all outputs",
+   "limitations": "None.",
+   "related": [
+    "LL-09"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "MR-04",
+   "file": "06_MULTISCALE_CONTEXTUAL_REASONING.md",
+   "section": "6.6",
+   "type": "F",
+   "statement": "Interpretations are kept as sets with supporting and contradicting observations and falsifiers; they are not ranked by a single score.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "interpretation output",
+   "limitations": "Presentation choice; effect untested.",
+   "related": [
+    "IC-10"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "LL-03",
+   "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
+   "section": "7.3",
+   "type": "F",
+   "statement": "Offline segmentation (e.g., PELT) must not be used as a causal live input; it may be used only as research labels.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "live inference",
+   "limitations": "None.",
+   "related": [
+    "PM-13",
+    "OS-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-KFE12"
+   ]
+  },
+  {
+   "id": "LL-04",
+   "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
+   "section": "7.3.3",
+   "type": "F",
+   "statement": "Learning from demonstrations requires a causal snapshot of the decision state; post-outcome annotations are not demonstrations of selection.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "annotation design",
+   "limitations": "Principle.",
+   "related": [
+    "OS-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-HE16"
+   ]
+  },
+  {
+   "id": "LL-05",
+   "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
+   "section": "7.3.5",
+   "type": "F",
+   "statement": "Representation learning is only evaluated through a labeled downstream task defined before training.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "representation experiments",
+   "limitations": "Principle.",
+   "related": [
+    "OS-05"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-TS2V"
+   ]
+  },
+  {
+   "id": "LL-06",
+   "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
+   "section": "7.3.6",
+   "type": "F",
+   "statement": "Statistical change-point events are not market-structure events without a separately validated relation.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "sequential models",
+   "limitations": "Principle.",
+   "related": [
+    "PM-12",
+    "CF-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-AM07"
+   ]
+  },
+  {
+   "id": "LL-07",
+   "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
+   "section": "7.2",
+   "type": "F",
+   "statement": "Six learning targets (concept fidelity, extraction correctness, contextual selection, interpretation quality, predictive usefulness, decision quality) must be measured separately.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "evaluation design",
+   "limitations": "Principle.",
+   "related": [
+    "SW-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "LL-08",
+   "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
+   "section": "7.4",
+   "type": "F",
+   "statement": "Label windows must be purged and embargoed relative to test windows; hindsight labels are stored separately and never used as features.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all learning",
+   "limitations": "Embargo sizing unresolved.",
+   "related": [
+    "OS-06",
+    "OS-11"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-academic",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-LDP-SUM",
+    "SRC-QM-PCV"
+   ]
+  },
+  {
+   "id": "LL-09",
+   "file": "07_LEARNING_AND_SELF_IMPROVEMENT.md",
+   "section": "7.11",
+   "type": "F",
+   "statement": "Relevance scores are probabilities only after out-of-sample calibration; uncalibrated scores are not probabilities.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all scores",
+   "limitations": "None.",
+   "related": [
+    "MR-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "HY-04",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.6",
+   "type": "F",
+   "statement": "Hypothesis: FVG and OB candidates overlap in evidence such that their joint count overstates independent support. Untested.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "hypothesis",
+   "limitations": "Untested.",
+   "related": [
+    "MR-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "HY-03",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.6",
+   "type": "F",
+   "statement": "Hypothesis (null): chart-level liquidity candidates are not distinguishable from matched non-level candidates in forward movement. Untested.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "hypothesis",
+   "limitations": "Untested.",
+   "related": [
+    "CF-05",
+    "IC-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "CF-01",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Order block definition conflict between ICT primary and community sources; both are retained as separate generators.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-ICT-OB",
+    "SRC-COMM-OB-KZ",
+    "SRC-COMM-OB-VOL"
+   ],
+   "scope": "OB",
+   "limitations": "Resolution requires more evidence.",
+   "related": [
+    "FZ-03",
+    "FZ-04"
+   ],
+   "conflicts": [],
+   "provenance": "mixed:ICT-primary+secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-03",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Break-implies-reversal is prohibited as universal; community sources often imply it; no verified supporting evidence.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "structure",
+   "limitations": "None.",
+   "related": [
+    "MS-01",
+    "LL-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-05",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Chart-level stop-cluster attraction is a community mechanism with no verified study; microstructure evidence (OS-07) does not address it.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-CKS14",
+    "SRC-COMM-LIQ-4"
+   ],
+   "scope": "liquidity mechanism",
+   "limitations": "Gap, not refutation.",
+   "related": [
+    "HY-03",
+    "OS-07"
+   ],
+   "conflicts": [],
+   "provenance": "mixed:academic+secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-09",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "FVG: primary offered-range description vs community three-candle imbalance; both retained.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-ICT-FVG"
+   ],
+   "scope": "FVG",
+   "limitations": "Transcript partial.",
+   "related": [
+    "FZ-01",
+    "FZ-02"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-10",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "The primary text read states a preference for higher-timeframe references but no method for evaluating alternatives.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-OB"
+   ],
+   "scope": "text read",
+   "limitations": "Partial read.",
+   "related": [
+    "SW-03",
+    "UN-05"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "GP-06",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "No verified empirical study of ICT concepts was found in this session; the largest evidence gap.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "this session",
+   "limitations": "Search scope limited.",
+   "related": [
+    "FZ-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "GP-01",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "Full transcripts of the two primary ICT lessons were not read.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-ICT-FVG",
+    "SRC-ICT-OB"
+   ],
+   "scope": "reading limit",
+   "limitations": "Known limitation.",
+   "related": [
+    "MS-03"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-03",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Tolerance defining equal highs/lows is unresolved and possibly task-dependent.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "liquidity clusters",
+   "limitations": "Open.",
+   "related": [
+    "LQ-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-05",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Whether higher-timeframe references predict better than lower-timeframe references is unknown.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "swings",
+   "limitations": "Open.",
+   "related": [
+    "SW-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CC-HYPO-STRUCT",
+   "file": "08_APPLIED_CHART_CASES.md",
+   "section": "8.2 CH-06",
+   "type": "F",
+   "statement": "Symbolic example: a close below a fine higher low that remains above a coarse higher low supports three readings; evidence at the break bar does not select one.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "hypothetical; no numbers",
+   "limitations": "Hypothetical.",
+   "related": [
+    "MS-01",
+    "MR-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-05",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-05",
+   "type": "D",
+   "statement": "Break events are typed (close-break, wick-break, reclaim) with knowable bar at the closing bar; intrabar ordering is undetermined without finer data.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "structure breaks",
+   "limitations": "Depends on PM-07.",
+   "related": [
+    "PM-07",
+    "MS-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "D",
+   "informed_by": []
+  },
+  {
+   "id": "IC-12",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-12",
+   "type": "F",
+   "statement": "A causal snapshot and replay audit must be built before any learning claim is accepted.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "all",
+   "limitations": "Principle.",
+   "related": [
+    "MR-01",
+    "LL-08"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "CF-02",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Market structure shift / break-of-structure terminology is inconsistent across sources; the primary text read defines neither; no definition is adopted as doctrine.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-COMM-BB"
+   ],
+   "scope": "terminology",
+   "limitations": "Community definitions read partly.",
+   "related": [
+    "MS-02",
+    "MS-03"
+   ],
+   "conflicts": [
+    "MS-02"
+   ],
+   "provenance": "secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-04",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Close-based vs wick-based breaks and swing definitions are both legitimate; empirical performance of either is not established.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "structure and swings",
+   "limitations": "No study verified.",
+   "related": [
+    "MS-04",
+    "SW-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-06",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Sweep definitions conflict (wick-through, close-back, reversal-after-N); 'run vs sweep' depends on subsequent price and is hindsight.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-COMM-LIQ-1"
+   ],
+   "scope": "liquidity events",
+   "limitations": "Snippet-level reading.",
+   "related": [
+    "LQ-04"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-08",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "'Displacement' and 'impulsive' lack a numeric standard in the sources read; any threshold is a parameter, not a fact.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "movement definitions",
+   "limitations": "Community usage only.",
+   "related": [
+    "PM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-11",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Session and kill-zone time windows stated by community sources are convention-dependent and their predictive value is unverified; not used as facts.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-COMM-BIO"
+   ],
+   "scope": "session definitions",
+   "limitations": "Community claims not verified.",
+   "related": [
+    "IC-06"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "CF-12",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.2",
+   "type": "CF",
+   "statement": "Primary lessons read are December 2016 content (re-uploaded 2022); later ICT teaching may differ; attribution must use lesson date.",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-FVG",
+    "SRC-ICT-OB"
+   ],
+   "scope": "attribution",
+   "limitations": "Upload date is not teaching date.",
+   "related": [
+    "GP-01"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "GP-02",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "No chart images or video frames were inspected; visual chart claims are unverified.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "all chart claims",
+   "limitations": "Known limitation.",
+   "related": [
+    "CC-HYPO-STRUCT"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "GP-03",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "No verified timestamps; third-party summary timestamps unchecked.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-SUM-LIQ"
+   ],
+   "scope": "all timestamps",
+   "limitations": "Known limitation.",
+   "related": [
+    "LQ-01"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "GP-04",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "ICT Mitigation Block, Market Maker Model, Divergence and other lessons were seen only as listings.",
+   "grade": "P2",
+   "sources": [
+    "SRC-ICT-MITIG",
+    "SRC-ICT-MMM"
+   ],
+   "scope": "ICT lessons not read",
+   "limitations": "Known limitation.",
+   "related": [
+    "FZ-04"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "informed_by": []
+  },
+  {
+   "id": "GP-05",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "No ICT primary liquidity lesson was read; liquidity definitions rest on secondary sources.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [
+    "SRC-COMM-LIQ-1"
+   ],
+   "scope": "liquidity",
+   "limitations": "Known limitation.",
+   "related": [
+    "LQ-01"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-community",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "GP-07",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "Academic methods were read at abstract level; full methods and experiments not reviewed.",
+   "grade": "AC1",
+   "sources": [
+    "SRC-AM07",
+    "SRC-CKS14",
+    "SRC-HE16",
+    "SRC-TS2V"
+   ],
+   "scope": "academic",
+   "limitations": "Known limitation.",
+   "related": [
+    "OS-01"
+   ],
+   "conflicts": [],
+   "provenance": "academic",
+   "informed_by": []
+  },
+  {
+   "id": "GP-08",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "Some foundational references (HMM, Bai–Perron, segmentation surveys, López de Prado book) need primary verification before citation.",
+   "grade": "AC2",
+   "sources": [
+    "SRC-LDP-AFML"
+   ],
+   "scope": "references",
+   "limitations": "Flagged in OS-08.",
+   "related": [
+    "OS-08",
+    "OS-06"
+   ],
+   "conflicts": [],
+   "provenance": "secondary-academic",
+   "informed_by": []
+  },
+  {
+   "id": "GP-09",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "License status: ruptures (BSD-2-Clause), TS2Vec (MIT) and purgedcv (MIT) now verified from LICENSE files. Remaining open: the license of any dependency not listed here; the current CI status of ruptures.",
+   "grade": "CF",
+   "sources": [
+    "SRC-RUP",
+    "SRC-TS2V-REPO",
+    "SRC-PCV-REPO"
+   ],
+   "scope": "open source",
+   "limitations": "Verification at read time; re-check before any redistribution.",
+   "related": [
+    "OS-09",
+    "OS-10",
+    "OS-11"
+   ],
+   "conflicts": [],
+   "provenance": "open-source",
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "GP-10",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "Intra-bar ordering is not recoverable from OHLC data.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "OHLC data",
+   "limitations": "Structural limit.",
+   "related": [
+    "PM-07"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "GP-11",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.3",
+   "type": "CF",
+   "statement": "No order-book, volume-profile or tick data were examined; participation claims are unsupported.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "data",
+   "limitations": "Known limitation.",
+   "related": [
+    "OS-07"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-01",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "What window defines 'the move' preceding an order-block candidate is unresolved.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "OB generators",
+   "limitations": "Open.",
+   "related": [
+    "FZ-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-02",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Operational meaning of 'near support' and its scale is unresolved.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "G-OB-P",
+   "limitations": "Open.",
+   "related": [
+    "FZ-03",
+    "CF-07"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-04",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Presentation policy when structure views coexist is a design choice, not a market fact.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "interpretation output",
+   "limitations": "Open design question.",
+   "related": [
+    "MR-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "UN-06",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Whether FVG fill status carries predictive information is unknown.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "FVG status",
+   "limitations": "Open.",
+   "related": [
+    "FZ-06",
+    "IC-09"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-07",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Whether session-based liquidity levels are more informative than swing-based levels is unknown.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "liquidity families",
+   "limitations": "Open.",
+   "related": [
+    "IC-07"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-08",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "How overlapping zones from different scales should be combined, if at all, is unknown; default is separate presentation.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "zones",
+   "limitations": "Open.",
+   "related": [
+    "MR-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-09",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Minimal annotated dataset size for contextual selection evaluation is unknown.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "learning",
+   "limitations": "Design question.",
+   "related": [
+    "LL-04",
+    "IC-13"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "UN-10",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.4",
+   "type": "CF",
+   "statement": "Whether intra-bar sequencing matters depends on task and is unresolved.",
+   "grade": "NOT_APPLICABLE",
+   "sources": [],
+   "scope": "tasks",
+   "limitations": "Open.",
+   "related": [
+    "PM-07"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "CF",
+   "informed_by": []
+  },
+  {
+   "id": "HY-01",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.6",
+   "type": "F",
+   "statement": "Hypothesis: causal structure readings at two scales with explicit disagreement explain subsequent movement better than single-scale readings. Untested.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "hypothesis",
+   "limitations": "Untested.",
+   "related": [
+    "MR-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "HY-02",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.6",
+   "type": "F",
+   "statement": "Hypothesis: knowable-at-creation candidates differ in causal evaluation from retrospective candidates. Untested.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "hypothesis",
+   "limitations": "Untested.",
+   "related": [
+    "IC-12"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "HY-05",
+   "file": "10_CONFLICTS_UNCERTAINTIES_AND_LIMITS.md",
+   "section": "10.6",
+   "type": "F",
+   "statement": "Hypothesis: offline segmentation boundaries are not reliable as live structural breaks. Untested.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "hypothesis",
+   "limitations": "Untested.",
+   "related": [
+    "LL-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-KFE12"
+   ]
+  },
+  {
+   "id": "IC-01",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-01",
+   "type": "F",
+   "statement": "Movement state contract: causal, closed bars only; offline methods excluded from live output.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "movement",
+   "limitations": "Contract.",
+   "related": [
+    "PM-12",
+    "LL-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-AM07"
+   ]
+  },
+  {
+   "id": "IC-02",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-02",
+   "type": "F",
+   "statement": "Swing candidate contract: deterministic per family and parameters; each candidate carries occurrence and knowable bars.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "swings",
+   "limitations": "Contract.",
+   "related": [
+    "SW-01",
+    "SW-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-03",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-03",
+   "type": "F",
+   "statement": "Task-specific swing selection contract: selectors are separate, named, and never a single universal 'best swing'.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "swing selection",
+   "limitations": "Contract.",
+   "related": [
+    "SW-04",
+    "MR-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-04",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-04",
+   "type": "F",
+   "statement": "Structure view contract: each (family, scale, break rule) combination is a separate view.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "structure",
+   "limitations": "Contract.",
+   "related": [
+    "MS-01",
+    "CF-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-06",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-06",
+   "type": "F",
+   "statement": "Liquidity candidate contract: families with parameters; output is candidate sets with taken status; no cause asserted.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "liquidity",
+   "limitations": "Contract.",
+   "related": [
+    "LQ-02",
+    "CF-05"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-07",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-07",
+   "type": "F",
+   "statement": "Liquidity relevance contract: annotated attributes and per-task rules; no universal score; learning required.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "liquidity relevance",
+   "limitations": "Contract.",
+   "related": [
+    "UN-07",
+    "LQ-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-08",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-08",
+   "type": "F",
+   "statement": "Zone candidate contract: G-FVG, G-OB-P, G-OB-C as separate generators with stated parameters.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "zones",
+   "limitations": "Contract.",
+   "related": [
+    "FZ-03",
+    "FZ-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-ICT-OB",
+    "SRC-ICT-FVG"
+   ]
+  },
+  {
+   "id": "IC-09",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-09",
+   "type": "F",
+   "statement": "Zone status contract: status history with bars; validation and invalidation logged separately.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "zone status",
+   "limitations": "Contract.",
+   "related": [
+    "UN-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-ICT-OB"
+   ]
+  },
+  {
+   "id": "IC-10",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-10",
+   "type": "F",
+   "statement": "Interpretation ledger contract: competing interpretations with evidence, assumptions, falsifiers; shared bars flagged.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "interpretations",
+   "limitations": "Contract.",
+   "related": [
+    "MR-02",
+    "MR-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-11",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-11",
+   "type": "F",
+   "statement": "Revision propagation contract: dependent statuses recomputed; revisions appended, never overwritten.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "revisions",
+   "limitations": "Contract.",
+   "related": [
+    "MR-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": []
+  },
+  {
+   "id": "IC-13",
+   "file": "11_IMPLEMENTATION_KNOWLEDGE_CONTRACTS.md",
+   "section": "IC-13",
+   "type": "F",
+   "statement": "Learning protocol contract: causal snapshots, pre-outcome annotations, separate hindsight table, purged/embargoed splits.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "learning",
+   "limitations": "Contract.",
+   "related": [
+    "LL-08",
+    "OS-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "grade_previous": "F",
+   "informed_by": [
+    "SRC-LDP-SUM"
+   ]
+  },
+  {
+   "id": "OS-03",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "G",
+   "statement": "ruptures PELT documentation describes complexity O(CKn) under conditions and min_size/jump grid controls.",
+   "grade": "S2",
+   "sources": [
+    "SRC-RUP-DOC"
+   ],
+   "scope": "documentation",
+   "limitations": "Snippet-level.",
+   "related": [
+    "OS-02"
+   ],
+   "conflicts": [],
+   "provenance": "open-source",
+   "informed_by": []
+  },
+  {
+   "id": "OS-08",
+   "file": "09_OPEN_SOURCE_AND_ACADEMIC_METHODS.md",
+   "section": "9.2",
+   "type": "CF",
+   "statement": "Multiscale and segmentation references (HMMs, Bai–Perron, segmentation surveys, wavelets) are expected but not verified this session.",
+   "grade": "AC2",
+   "sources": [],
+   "scope": "references",
+   "limitations": "Must verify.",
+   "related": [
+    "GP-08"
+   ],
+   "conflicts": [],
+   "provenance": "academic",
+   "informed_by": [],
+   "revision": "R2"
+  },
+  {
+   "id": "CSM-01",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.1, 15.7",
+   "type": "F",
+   "statement": "A selection is a declared-task choice of one or more candidates, or an explicit unresolved state; a bare winner without task, exclusions and justification chain is invalid.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-19"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "CSM-02",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.3",
+   "type": "F",
+   "statement": "Every property used in a selection carries a class (F factual, O operational policy, S source-declared, L learned, U unknown); a relevance statement without a class is invalid.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-18"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "CSM-03",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.4",
+   "type": "F",
+   "statement": "Only necessary, task-defined factual relations (knowability, binding by crossing, containment, falsifier definition, taken status) may establish relevance directly; age, touch count, size and distance alone may not.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SWS-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "CSM-04",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.5",
+   "type": "F",
+   "statement": "Exclusions are task-specific, carry a reason code, and remain in an excluded set; no candidate is silently discarded.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-19"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "CSM-05",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.6",
+   "type": "F",
+   "statement": "The dominance filter compares sets of satisfied boolean requirements, uses no weights or scores, and retains ties.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "CSM-06",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.9",
+   "type": "F",
+   "statement": "Joint selections are evaluated sequentially with constraint propagation under an explicit, declared budget with no default value; the three flags (logical consistency, ICT-source fidelity, empirical usefulness) are reported separately and never merged.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-07",
+    "LRN-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "CSM-07",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.10",
+   "type": "F",
+   "statement": "Method layers L0 to L6 have one-way dependencies; a generator that reads a higher layer is a circularity defect.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SWS-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "CSM-08",
+   "file": "15_CONTEXTUAL_SELECTION_METHOD.md",
+   "section": "15.11",
+   "type": "F",
+   "statement": "Learning may supply only L-class preferences and abstention; it may not redefine deterministic F or O properties or override logical checks.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "LRN-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-01",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.8",
+   "type": "F",
+   "statement": "Swing/wave selection outputs are representation-dependent and valid only under a named representation.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-16"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-02",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.3 T-S1",
+   "type": "F",
+   "statement": "The 'origin of the most recent confirmed leg' rule is an operational (O-class) definition, not a market fact.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-03",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.4",
+   "type": "F",
+   "statement": "Containment is a factual nesting relation; it does not by itself establish relevance.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-04",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.5",
+   "type": "F",
+   "statement": "Provisional turning points are excluded from structural references unless a declared policy allows provisional use; supersession and replay consistency are required.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-13"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-05",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.3 T-S2",
+   "type": "F",
+   "statement": "A break event binds to references by crossing; binding does not establish the event's significance.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-03"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-06",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.4",
+   "type": "F",
+   "statement": "Boundary-tie rules for containment (endpoint exactly on a span limit) are an open choice that must be declared.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-05"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-07",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.3 T-S3",
+   "type": "F",
+   "statement": "Recency versus depth for entry-timing legs is an open policy or empirical question, not a fact.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-08",
+    "LRN-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SWS-08",
+   "file": "16_SWING_WAVE_SELECTION.md",
+   "section": "16.3 T-S5",
+   "type": "F",
+   "statement": "An interpretation must be written in reference terms before a structural falsifier can be computed.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-04"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-01",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Knowability gate: a candidate is usable at decision bar t only if its knowable bar is at or before t and its status is admissible.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-02",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Task-scale compatibility uses a declared operational table (O-class); the ICT source states a higher-timeframe preference for support and resistance references but no entry-scale rule.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-03",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Event binding: a closed bar binds to each confirmed reference it crosses on the break side; the binding set is kept whole, with no ranking.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-04",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Falsifier binding: an interpretation written in reference terms maps each structural claim to the reference whose close-based opposite violation contradicts it.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-05",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Containment classification of fine and coarse legs: contained, escaping, or disjoint, by time interval and endpoint location; no relevance judgment.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-06",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Dominance filter on boolean satisfied-requirement sets; strictly dominated candidates are excluded, ties are kept.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-07",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Logical consistency check: invalidation must lie on the far side of the current price from the target for the declared direction; entry legs must be contained.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-08",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Entry-leg window is structural: a fine leg is in the window if its interval lies inside the coarse leg's and it is knowable; no temporal length parameter.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-12",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Sensitivity analysis: outputs are reported across a declared parameter grid; no optimization of parameters against outcomes.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-13",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Turning-point confirmation status and knowable bar are set at the confirmation bar, not the occurrence bar.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-14",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Leg construction from alternating turning points; leg knowable bar is the later endpoint's knowable bar.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-15",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Retracement base is an operational rule (O-class): the most recent confirmed leg in the opposite direction; alternatives are open.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-16",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Representation-dependence reporting: admissible representations are run separately and disagreement is reported, not merged.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-18",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Declared policy registry: every policy used in any output has an ID, a value or 'unset', and a sensitivity report reference.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-19",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Unresolved-state emission: multiple survivors with no applicable policy yield an unresolved state with a reason code, never a silent pick.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-20",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Revision propagation: changed statuses and selections recompute dependents in topological order with a log; in-place patches are not allowed.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-01"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-09",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "E",
+   "statement": "Order-block validation: under the primary transcript wording read in part, an order-block candle is validated at the first later bar that trades through its high (S-class; trade-through basis open, P-V).",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-OB"
+   ],
+   "scope": "order-block candidates (ICT primary wording)",
+   "limitations": "Transcript chunk 0 of 5 read; chunks 1-4 unread. Auto-caption source. Trade-through versus close basis is open (P-V).",
+   "related": [
+    "CC-OB-STOP"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-10",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "E",
+   "statement": "Order-block stop reference: the low of a bullish order block (primary wording); the 50 percent stop-raise reference depends on an undefined 'total range' (UN-11).",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-OB"
+   ],
+   "scope": "order-block candidates (ICT primary wording)",
+   "limitations": "As SP-09; UN-11 open.",
+   "related": [
+    "CC-OB-STOP"
+   ],
+   "conflicts": [],
+   "provenance": "ICT-primary",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-11",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Three-candle fair-value gap geometry is researcher-defined; the ICT primary definition is used as source wording only; the lower-timeframe confirmation condition is unresolved (AI).",
+   "grade": "P1",
+   "sources": [
+    "SRC-ICT-FVG"
+   ],
+   "scope": "FVG candidates",
+   "limitations": "FVG transcript chunk 0 of 3 read and verified in this round; the lower-timeframe 'void' is not defined in the text read.",
+   "related": [
+    "CC-04"
+   ],
+   "conflicts": [],
+   "provenance": "mixed:ICT-primary+researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "SP-17",
+   "file": "17_SEED_PROCEDURES.md",
+   "section": "17.3",
+   "type": "F",
+   "statement": "Liquidity taken status is recorded separately for wick-based and close-based crossings; buy-side and sell-side naming is community usage (E*), not ICT doctrine.",
+   "grade": "S1",
+   "sources": [
+    "SRC-COMM-LIQ-2"
+   ],
+   "scope": "liquidity candidates",
+   "limitations": "Community naming; primary liquidity locations contested (CF-05, IC-06).",
+   "related": [
+    "LQ-01",
+    "CC-04"
+   ],
+   "conflicts": [],
+   "provenance": "mixed:researcher+secondary-community",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "LRN-01",
+   "file": "18_LOCAL_LEARNING_SELECTOR.md",
+   "section": "18.1",
+   "type": "F",
+   "statement": "The learned selector may supply L-class preferences and abstention only; it may not redefine deterministic F or O properties.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-08"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "LRN-02",
+   "file": "18_LOCAL_LEARNING_SELECTOR.md",
+   "section": "18.3",
+   "type": "F",
+   "statement": "Objectives A (fidelity to a declared procedure), B (contextual coherence, annotated), C (predictive usefulness, outcome-defined before training) and D (trading decisions, out of scope) have separate datasets, labels, metrics and approvals.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "CSM-06"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "LRN-03",
+   "file": "18_LOCAL_LEARNING_SELECTOR.md",
+   "section": "18.3",
+   "type": "F",
+   "statement": "Objective A measures replication of a declared procedure, not market truth; if A requires learning, the procedure is under-specified.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-12"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "LRN-04",
+   "file": "18_LOCAL_LEARNING_SELECTOR.md",
+   "section": "18.6",
+   "type": "F",
+   "statement": "Objective C requires outcomes defined before training, purged and embargoed time-blocked splits, and matched controls chosen before outcomes are seen.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Method attribution is secondary (López de Prado summary and purged CV repository); the book was not read in this session.",
+   "related": [
+    "LRN-02"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": [
+    "SRC-LDP-AFML"
+   ]
+  },
+  {
+   "id": "LRN-05",
+   "file": "18_LOCAL_LEARNING_SELECTOR.md",
+   "section": "18.4",
+   "type": "F",
+   "statement": "No universal probability threshold for selection is given; abstention policy is a declared, sensitivity-tested policy.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-18"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  },
+  {
+   "id": "LRN-06",
+   "file": "18_LOCAL_LEARNING_SELECTOR.md",
+   "section": "18.7",
+   "type": "F",
+   "statement": "A regression protocol (golden set, per-objective dashboards, replay buffer, shadow run, authority order, versioned rollback, named approval) is mandatory before a learned component is promoted.",
+   "grade": "NOT_SOURCE_BASED",
+   "sources": [],
+   "scope": "task-independent method",
+   "limitations": "Researcher procedure; not validated on data.",
+   "related": [
+    "SP-19"
+   ],
+   "conflicts": [],
+   "provenance": "researcher",
+   "revision_log": [
+    {
+     "round": "R2",
+     "field": "created",
+     "from": null,
+     "to": "new entry (targeted repair: contextual selection)"
+    }
+   ],
+   "revision": "R2",
+   "informed_by": []
+  }
+ ],
+ "metadata_r2": {
+  "round": "R2",
+  "date": "2026-10-12",
+  "note": "Provenance, grade vocabulary and type corrections applied (F-02); chart-claim prefix renamed CH-* -> CC-* (F-03). Added CSM-01..08, SWS-01..08, SP-01..20, LRN-01..06 for targeted repair (contextual selection)."
+ },
+ "provenance_vocabulary": {
+  "ICT-primary": "ICT lesson/material read in this session (partial transcript allowed; see grade)",
+  "secondary-community": "third-party trading-education or community content",
+  "secondary-academic": "secondary description of an academic method",
+  "academic": "academic paper, abstract/record read this session",
+  "open-source": "repository page or license read this session",
+  "researcher": "derived by this research, no source attribution claimed",
+  "mixed:*": "more than one provenance class; permitted when every cited source ID is listed in 'sources' and each class is consistent with the claim",
+  "informed_by": "list of source IDs that informed a researcher principle (not evidence for it)"
+ },
+ "grade_vocabulary": {
+  "P1": "ICT primary, transcript partially read",
+  "P2": "ICT primary, metadata only",
+  "S1": "secondary read sufficiently to quote",
+  "S2": "secondary, snippet only",
+  "AC1": "academic, abstract/record read",
+  "AC2": "academic, not re-verified",
+  "OS1": "open-source landing page / license read",
+  "NOT_SOURCE_BASED": "researcher or data-convention claim; no source grade applies",
+  "NOT_APPLICABLE": "conflict/gap/limitation record"
+ },
+ "field_definitions": {
+  "sources": "source IDs from which the statement's content is reported",
+  "informed_by": "source IDs that informed a researcher principle; not evidence",
+  "provenance": "class of the sources, see provenance_vocabulary",
+  "revision": "R2 = changed in the targeted repair round"
+ }
 }
