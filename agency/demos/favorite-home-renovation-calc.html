@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Favorite Home Contracting LLC — Dubai Villa &amp; Interior Fit-Out Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f7f5f0;
+      --surface: #ffffff;
+      --charcoal: #1e201d;
+      --olive: #4a5943;
+      --amber: #b87a3d;
+      --muted: #62665e;
+      --border: #e3ded4;
+      --wa: #128c7e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', 'Tajawal', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--charcoal);
+      line-height: 1.55;
+    }
+    html[dir="rtl"] body { font-family: 'Tajawal', 'Inter', sans-serif; }
+    .serif { font-family: 'DM Serif Display', Georgia, serif; }
+    html[dir="rtl"] .serif { font-family: 'Tajawal', serif; }
+
+    .audit-bar {
+      background: #171815;
+      color: #eae5dc;
+      padding: 10px 18px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .audit-bar strong { color: #e2a463; }
+    .pill {
+      background: rgba(226, 164, 99, 0.16);
+      color: #f3c492;
+      border: 1px solid rgba(226, 164, 99, 0.35);
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .audit-drawer {
+      display: none;
+      background: #232520;
+      color: #ece8df;
+      padding: 16px 20px;
+      border-top: 1px solid #373a32;
+      font-size: 13.5px;
+    }
+    .audit-drawer.open { display: block; }
+    .audit-grid {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .audit-box {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .audit-box h4 { color: #f3c492; font-size: 13px; margin-bottom: 4px; }
+
+    header {
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .nav {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand { font-weight: 800; font-size: 19px; letter-spacing: -0.02em; }
+    .brand small { display: block; font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 18px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-wa { background: var(--wa); color: #fff; }
+    .btn-outline { background: var(--surface); border-color: var(--border); color: var(--charcoal); }
+
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+    .hero {
+      padding: 44px 0 56px;
+      display: grid;
+      grid-template-columns: 1fr 1.05fr;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
+    .eyebrow {
+      display: inline-block;
+      background: #ede6da;
+      color: #825221;
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: clamp(32px, 4.3vw, 50px);
+      line-height: 1.08;
+      margin-bottom: 16px;
+      font-weight: 400;
+    }
+    .lead { color: var(--muted); font-size: 16.5px; margin-bottom: 24px; }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      margin-top: 22px;
+    }
+    .stat strong { display: block; font-size: 24px; color: var(--charcoal); }
+    .stat span { font-size: 12px; color: var(--muted); }
+
+    .calc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 24px 48px rgba(30,32,29,0.08);
+    }
+    .field { margin-bottom: 15px; }
+    .field label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    select {
+      width: 100%;
+      padding: 11px 12px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .tier-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .tier-btn {
+      padding: 10px 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tier-btn.active { background: var(--charcoal); color: #fff; border-color: var(--charcoal); }
+
+    .range-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    input[type="range"] { width: 100%; accent-color: var(--amber); }
+
+    .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .chk-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .quote-box {
+      background: #1e201d;
+      color: #f7f5f0;
+      border-radius: 14px;
+      padding: 18px;
+      margin: 18px 0 14px;
+    }
+    .quote-num { font-size: 27px; font-weight: 800; color: #ebb272; margin: 4px 0; }
+    .quote-sub { font-size: 12.5px; color: #cbc6bc; }
+
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      padding-bottom: 50px;
+    }
+    .pillar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .pillar h3 { font-size: 17px; margin-bottom: 6px; }
+    .pillar p { font-size: 13.5px; color: var(--muted); }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 26px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="audit-bar">
+    <div>
+      <strong>Interactive Conversion Upgrade</strong> prepared for <strong>Favorite Home Contracting LLC</strong> (<code>favoritehome.ae</code>)
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="pill" id="auditBtn">3 Live Site Bugs Fixed Here ▾</button>
+      <button class="pill" id="langBtn">العربية / EN</button>
+    </div>
+  </div>
+  <div class="audit-drawer" id="auditDrawer">
+    <div class="audit-grid">
+      <div class="audit-box">
+        <h4>1. Fixed Embarrassing "0 Years Experience" Counter</h4>
+        <p>Your live homepage currently shows <code>Years of experience: 0</code> and <code>Office around the world: 0+</code> right under "from 2009". Here it accurately showcases <strong>Since 2009 · 17+ Years</strong> and <strong>108+ Projects</strong>.</p>
+      </div>
+      <div class="audit-box">
+        <h4>2. Interactive Villa Renovation Budget Estimator</h4>
+        <p>Dubai Hills, Meadows, Arabian Ranches &amp; Jumeirah owners want ballpark BOQ costs before booking a site visit. This tool qualifies sq.ft + finish tier and sends a structured scope to <strong>+971 50 392 2777</strong>.</p>
+      </div>
+      <div class="audit-box">
+        <h4>3. Clean Navigation (No /new/ Links) + Arabic Mode</h4>
+        <p>Replaces the 30-link cluttered header and <code>/new/</code> URLs with a focused conversion flow and bilingual Arabic toggle.</p>
+      </div>
+    </div>
+  </div>
+
+  <header>
+    <div class="nav">
+      <div class="brand">
+        Favorite Home <small data-en="Contracting &amp; Interior Fit-Out · Since 2009" data-ar="مقاولات وديكور داخلي في دبي · منذ 2009">Contracting &amp; Interior Fit-Out · Since 2009</small>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn btn-outline" href="tel:+971555339596">📞 +971 55 533 9596</a>
+        <a class="btn btn-wa" href="https://wa.me/971503922777?text=Hi%20Favorite%20Home%2C%20I%27d%20like%20to%20book%20a%20free%20villa%20inspection%20in%20Dubai." target="_blank" rel="noopener" data-en="Book Free Site Visit" data-ar="احجز معاينة مجانية">Book Free Site Visit</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <span class="eyebrow" data-en="Dubai Municipality · Trakhees · DEWA Approvals Handled" data-ar="ننجز موافقات بلدية دبي، تراخيص وديوا بالكامل">Dubai Municipality · Trakhees · DEWA Approvals Handled</span>
+        <h1 class="serif" data-en="Turnkey Villa Renovations &amp; Luxury Fit-Outs Across Dubai." data-ar="تجديد الفلل والتصميم الداخلي المتكامل في دبي.">Turnkey Villa Renovations &amp; Luxury Fit-Outs Across Dubai.</h1>
+        <p class="lead" data-en="Trusted across Dubai Hills, Arabian Ranches, Meadows, Springs &amp; Jumeirah since 2009. Estimate your renovation budget and authority timeline in 25 seconds — then receive an itemised BOQ after a free site survey." data-ar="خبرة موثوقة في دبي هيلز، المرابع العربية، السبرينغز، ميدوز وجميرا منذ عام 2009. احسب ميزانية التجديد والمدة التقديرية خلال 25 ثانية واحصل على جدول كميات مفصل.">Trusted across Dubai Hills, Arabian Ranches, Meadows, Springs &amp; Jumeirah since 2009. Estimate your renovation budget and authority timeline in 25 seconds — then receive an itemised BOQ after a free site survey.</p>
+
+        <div class="stats-row">
+          <div class="stat">
+            <strong>108+</strong>
+            <span data-en="Projects Completed" data-ar="مشروع منجز">Projects Completed</span>
+          </div>
+          <div class="stat">
+            <strong>Since 2009</strong>
+            <span data-en="17+ Years UAE Track Record" data-ar="أكثر من 17 عاماً بالإمارات">17+ Years UAE Track Record</span>
+          </div>
+          <div class="stat">
+            <strong>Dubai &amp; SHJ</strong>
+            <span data-en="Full Contracting + Approvals" data-ar="تنفيذ وموافقات رسمية">Full Contracting + Approvals</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Villa Renovation Estimator -->
+      <div class="calc-card">
+        <h2 style="font-size:21px; margin-bottom:4px;" data-en="Dubai Villa &amp; Fit-Out Budget Estimator" data-ar="حاسبة ميزانية تجديد الفلل والديكور في دبي">Dubai Villa &amp; Fit-Out Budget Estimator</h2>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:16px;" data-en="Configure your property area and finishing level for an instant AED range" data-ar="حدد مساحة العقار ومستوى التشطيب للحصول على تقدير فوري بالدرهم">Configure your property area and finishing level for an instant AED range</p>
+
+        <div class="field">
+          <label for="communitySel" data-en="1. Community / Property Type" data-ar="1. المنطقة / نوع العقار">1. Community / Property Type</label>
+          <select id="communitySel">
+            <option value="Dubai Hills / Arabian Ranches Villa">Dubai Hills / Arabian Ranches Villa</option>
+            <option value="Meadows / Springs / Jumeirah Villa">Meadows / Springs / Jumeirah Villa</option>
+            <option value="DAMAC Hills / Palm Jumeirah Residence">DAMAC Hills / Palm Jumeirah Residence</option>
+            <option value="Commercial Salon / Restaurant / Office">Commercial Salon / Restaurant / Office</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="range-head">
+            <span data-en="2. Renovation Area (sq.ft):" data-ar="2. المساحة المطلوب تجديدها (قدم مربع):">2. Renovation Area (sq.ft):</span>
+            <span id="sqftLabel">2,400 sq.ft</span>
+          </div>
+          <input type="range" id="sqftRange" min="400" max="7000" step="100" value="2400" />
+        </div>
+
+        <div class="field">
+          <label data-en="3. Finishing Specification" data-ar="3. مستوى التشطيب والمواد">3. Finishing Specification</label>
+          <div class="tier-grid" id="finishGrid">
+            <button type="button" class="tier-btn" data-rate="140" data-label="Modern Standard" data-en="Standard" data-ar="عصري قياسي">Standard</button>
+            <button type="button" class="tier-btn active" data-rate="215" data-label="Premium Designer" data-en="Premium" data-ar="فاخر مميز">Premium</button>
+            <button type="button" class="tier-btn" data-rate="320" data-label="Bespoke Luxury" data-en="Luxury" data-ar="ملكي مخصص">Luxury</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label data-en="4. Key Scopes Included" data-ar="4. نطاقات العمل المشمولة">4. Key Scopes Included</label>
+          <div class="checks">
+            <label class="chk-item"><input type="checkbox" class="scope-chk" value="Kitchen Remodel" data-add="35000" checked /> <span data-en="Kitchen Remodel" data-ar="تحديث المطبخ">Kitchen Remodel</span></label>
+            <label class="chk-item"><input type="checkbox" class="scope-chk" value="Bathrooms (x2+)" data-add="28000" checked /> <span data-en="Luxury Bathrooms" data-ar="الحمامات الفاخرة">Luxury Bathrooms</span></label>
+            <label class="chk-item"><input type="checkbox" class="scope-chk" value="Authority Approvals (DM/DEWA)" data-add="9500" checked /> <span data-en="DM / DEWA Approvals" data-ar="موافقات البلدية وديوا">DM / DEWA Approvals</span></label>
+            <label class="chk-item"><input type="checkbox" class="scope-chk" value="Smart Lighting &amp; Joinery" data-add="22000" /> <span data-en="Bespoke Joinery" data-ar="نجارة وخزائن مخصصة">Bespoke Joinery</span></label>
+          </div>
+        </div>
+
+        <div class="quote-box">
+          <div style="font-size:12px; color:#cbc6bc;" data-en="Estimated Turnkey Investment Range" data-ar="النطاق التقديري لتسليم المفتاح">Estimated Turnkey Investment Range</div>
+          <div class="quote-num" id="totalOut">AED 530,000 – 640,000</div>
+          <div class="quote-sub" id="timeOut">Estimated Timeline: 10 – 14 weeks (incl. approvals &amp; handover)</div>
+        </div>
+
+        <a id="waBtn" class="btn btn-wa" style="width:100%;" target="_blank" rel="noopener" href="#">
+          <span data-en="Send Scope to Favorite Home on WhatsApp →" data-ar="أرسل النطاق لـ Favorite Home عبر واتساب ←">Send Scope to Favorite Home on WhatsApp →</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="pillars">
+      <div class="pillar">
+        <h3 data-en="1. Interior &amp; Villa Renovation" data-ar="1. تجديد الفلل والتصميم الداخلي">1. Interior &amp; Villa Renovation</h3>
+        <p data-en="Complete residential remodeling across Dubai Hills, Meadows, Springs, Arabian Ranches, and Jumeirah." data-ar="تجديد شامل للفلل والشقق الفاخرة في أرقى مجمعات دبي.">Complete residential remodeling across Dubai Hills, Meadows, Springs, Arabian Ranches, and Jumeirah.</p>
+      </div>
+      <div class="pillar">
+        <h3 data-en="2. Commercial &amp; Hospitality Fit-Out" data-ar="2. تجهيز المكاتب والمطاعم والصالونات">2. Commercial &amp; Hospitality Fit-Out</h3>
+        <p data-en="Turnkey fit-outs for offices, salons, spas, retail outlets, and restaurants with clean handover." data-ar="تنفيذ كامل للمحلات، المطاعم، العيادات والمكاتب التجارية.">Turnkey fit-outs for offices, salons, spas, retail outlets, and restaurants with clean handover.</p>
+      </div>
+      <div class="pillar">
+        <h3 data-en="3. Dubai Government Approvals" data-ar="3. تخليص الموافقات الحكومية في دبي">3. Dubai Government Approvals</h3>
+        <p data-en="In-house coordination for Dubai Municipality, Trakhees, DEWA, and Dubai Civil Defence approvals." data-ar="إدارة معاملات بلدية دبي، تراخيص، ديوا والدفاع المدني دون تأخير.">In-house coordination for Dubai Municipality, Trakhees, DEWA, and Dubai Civil Defence approvals.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <strong>FAVORITE HOME Contracting LLC</strong> · Office 102, Al Mulla Building, Muteena St, Deira, Dubai · WhatsApp: +971 50 392 2777 · Call: +971 55 533 9596 · info@favoritehome.ae
+    </div>
+  </footer>
+
+  <script>
+    let rate = 215;
+    let finishLabel = 'Premium Designer';
+    let lang = 'en';
+
+    const communitySel = document.getElementById('communitySel');
+    const sqftRange = document.getElementById('sqftRange');
+    const sqftLabel = document.getElementById('sqftLabel');
+    const totalOut = document.getElementById('totalOut');
+    const timeOut = document.getElementById('timeOut');
+    const waBtn = document.getElementById('waBtn');
+
+    function recalc() {
+      const sqft = parseInt(sqftRange.value, 10);
+      sqftLabel.textContent = lang === 'ar'
+        ? `${sqft.toLocaleString()} قدم²`
+        : `${sqft.toLocaleString()} sq.ft`;
+
+      let addOns = 0;
+      const selectedScopes = [];
+      document.querySelectorAll('.scope-chk:checked').forEach(chk => {
+        addOns += parseInt(chk.dataset.add, 10);
+        selectedScopes.push(chk.value);
+      });
+
+      const base = sqft * rate + addOns;
+      const low = Math.round((base * 0.92) / 1000) * 1000;
+      const high = Math.round((base * 1.12) / 1000) * 1000;
+      const weeksLow = Math.max(4, Math.round(sqft / 320) + (selectedScopes.length >= 3 ? 2 : 0));
+      const weeksHigh = weeksLow + 4;
+
+      const rangeTxt = `AED ${low.toLocaleString()} – ${high.toLocaleString()}`;
+      totalOut.textContent = rangeTxt;
+      timeOut.textContent = lang === 'ar'
+        ? `المدة التقديرية للتنفيذ: ${weeksLow} – ${weeksHigh} أسبوعاً (شامل الموافقات)`
+        : `Estimated Timeline: ${weeksLow} – ${weeksHigh} weeks (incl. approvals & handover)`;
+
+      const scopeList = selectedScopes.length ? selectedScopes.join(', ') : 'General Fit-Out';
+      const msg = lang === 'ar'
+        ? `مرحباً Favorite Home، حسبت ميزانية تجديد (${communitySel.value}) بمساحة ${sqft} قدم² وتشطيب (${finishLabel})، النطاق: ${scopeList}. التقدير: ${rangeTxt}. نود حجز معاينة مجانية.`
+        : `Hi Favorite Home team, I used your Renovation Estimator: Property (${communitySel.value}), Area (${sqft} sq.ft), Finish (${finishLabel}), Scopes (${scopeList}), Est Range (${rangeTxt}). Please arrange a free site visit.`;
+      waBtn.href = `https://wa.me/971503922777?text=${encodeURIComponent(msg)}`;
+    }
+
+    document.getElementById('finishGrid').addEventListener('click', (e) => {
+      const btn = e.target.closest('.tier-btn');
+      if (!btn) return;
+      document.querySelectorAll('#finishGrid .tier-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      rate = parseInt(btn.dataset.rate, 10);
+      finishLabel = btn.dataset.label;
+      recalc();
+    });
+
+    [communitySel, sqftRange].forEach(el => el.addEventListener('input', recalc));
+    document.querySelectorAll('.scope-chk').forEach(el => el.addEventListener('change', recalc));
+
+    document.getElementById('auditBtn').addEventListener('click', () => {
+      document.getElementById('auditDrawer').classList.toggle('open');
+    });
+
+    document.getElementById('langBtn').addEventListener('click', () => {
+      lang = lang === 'en' ? 'ar' : 'en';
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+      document.querySelectorAll('[data-en][data-ar]').forEach(el => {
+        el.textContent = lang === 'ar' ? el.dataset.ar : el.dataset.en;
+      });
+      recalc();
+    });
+
+    recalc();
+  </script>
+</body>
+</html>

@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>غرفة العمليات | صيد عملاء دبي بتكلفة 0$</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b111b;
+      --panel: #121a28;
+      --panel-2: #182336;
+      --border: #25344d;
+      --text: #eef3fb;
+      --muted: #98abc7;
+      --gold: #f0b949;
+      --green: #16a34a;
+      --wa: #128c7e;
+      --blue: #3b82f6;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Tajawal', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    a { color: inherit; }
+
+    .topbar {
+      background: rgba(18, 26, 40, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .topbar-inner {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand-title { font-size: 19px; font-weight: 800; }
+    .brand-title span { color: var(--gold); }
+    .brand-sub { font-size: 12.5px; color: var(--muted); }
+
+    .container { max-width: 1220px; margin: 0 auto; padding: 26px 20px 64px; }
+
+    /* KPI Strip */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+    }
+    .kpi small { color: var(--muted); font-size: 12.5px; display: block; margin-bottom: 4px; }
+    .kpi strong { font-size: 24px; color: #fff; }
+    .kpi strong.gold { color: var(--gold); }
+
+    /* Playbook Banner */
+    .playbook {
+      background: linear-gradient(135deg, #131e31 0%, #192944 100%);
+      border: 1px solid #2b4269;
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 24px;
+    }
+    .playbook h2 { font-size: 19px; margin-bottom: 10px; color: var(--gold); }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+    }
+    .step-box {
+      background: rgba(11, 17, 27, 0.55);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 13px;
+      padding: 14px;
+      font-size: 13.5px;
+    }
+    .step-box strong { display: block; color: #fff; margin-bottom: 4px; }
+    .step-box p { color: var(--muted); font-size: 13px; }
+
+    /* Ready Demos Strip */
+    .demos-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .demo-card {
+      background: var(--panel);
+      border: 1px solid rgba(240, 185, 73, 0.35);
+      border-radius: 16px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .demo-tag {
+      display: inline-block;
+      background: rgba(240, 185, 73, 0.14);
+      color: var(--gold);
+      border: 1px solid rgba(240, 185, 73, 0.35);
+      font-size: 11.5px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 6px;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .filter-btn {
+      background: var(--panel);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .filter-btn.active {
+      background: var(--gold);
+      color: #111827;
+      border-color: var(--gold);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 14px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: opacity 0.15s ease;
+    }
+    .btn:hover { opacity: 0.92; }
+    .btn-wa { background: var(--wa); color: #fff; }
+    .btn-gold { background: var(--gold); color: #111827; }
+    .btn-dark { background: var(--panel-2); color: var(--text); border-color: var(--border); }
+
+    /* Lead Cards */
+    .leads-list { display: grid; gap: 16px; }
+    .lead-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .lead-card.hot { border-color: rgba(240, 185, 73, 0.45); }
+    .lead-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .lead-name { font-size: 19px; font-weight: 800; color: #fff; }
+    .lead-meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .pill-hot {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 800;
+    }
+    .pill-warm {
+      background: rgba(59, 130, 246, 0.15);
+      color: #93c5fd;
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 800;
+    }
+    .bug-box {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-size: 13.5px;
+    }
+    .bug-box strong { color: #fca5a5; }
+    .offer-box {
+      background: rgba(22, 163, 74, 0.08);
+      border: 1px solid rgba(22, 163, 74, 0.25);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      font-size: 13.5px;
+    }
+    .offer-box strong { color: #86efac; }
+
+    .pitch-wrap {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .pitch-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .pitch-tabs { display: flex; gap: 6px; }
+    .tab-btn {
+      background: var(--panel-2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tab-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .pitch-text {
+      font-size: 13.5px;
+      color: #dbe6f5;
+      white-space: pre-wrap;
+      direction: ltr;
+      text-align: left;
+    }
+    .pitch-text.rtl { direction: rtl; text-align: right; }
+
+    .lead-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .status-select {
+      background: var(--panel-2);
+      color: #fff;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 8px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: #16a34a;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 13.5px;
+      display: none;
+      z-index: 99;
+      box-shadow: 0 12px 24px rgba(0,0,0,0.35);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div>
+        <div class="brand-title">غرفة عمليات <span>دبي B2B</span> — تكلفة 0$</div>
+        <div class="brand-sub">12 شركة حقيقية في أغنى سوق بالمنطقة + ثغرات موثقة على مواقعهم + 3 عينات حية جاهزة للإرسال اليوم</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a class="btn btn-wa" href="./jarvis.html">🤖 تشغيل جارفس (صوت + ذكاء مجاني)</a>
+        <a class="btn btn-dark" href="./dubai_high_ticket_leads.csv" download>📥 تحميل ملف CSV</a>
+        <button class="btn btn-gold" id="resetTrackBtn">إعادة ضبط حالة التواصل</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- KPIs -->
+    <section class="kpi-grid">
+      <div class="kpi">
+        <small>تكلفة الأدوات والاستضافة</small>
+        <strong class="gold">$0.00</strong>
+      </div>
+      <div class="kpi">
+        <small>أهداف حقيقية مفحوصة</small>
+        <strong id="kpiTotal">12 شركة</strong>
+      </div>
+      <div class="kpi">
+        <small>تمت مراسلتهم / قيد المتابعة</small>
+        <strong id="kpiContacted">0</strong>
+      </div>
+      <div class="kpi">
+        <small>صفقات مهتمة أو مغلقة 💰</small>
+        <strong id="kpiWon" class="gold">0</strong>
+      </div>
+    </section>
+
+    <!-- Zero-Cost Execution Playbook -->
+    <section class="playbook">
+      <h2>خطة الإغلاق اليوم بـ 0$ (لماذا تم اختيار دبي + هذه الشركات الـ 12 تحديداً؟)</h2>
+      <p style="font-size:13.5px; color:#cbd8eb;">
+        أغلب الناس يفشلون لأنهم يراسلون شركات عشوائية بعروض نظرية. هنا اخترنا <strong>دبي</strong> (واحدة من أغنى الأسواق، ثقافة تواصل مباشر عبر <strong>واتساب</strong>، متوسط قيمة العميل الواحد للشركات المختارة بين <strong>$1,000 و$50,000+</strong>)، وفحصنا مواقعهم الحقيقية فوجدنا <strong>أخطاءً تقنية واضحة تضيّع عليهم زبائن الآن</strong>.
+      </p>
+      <div class="steps-grid">
+        <div class="step-box">
+          <strong>الخطوة 1: تجهيز رابط العينة مجاناً ($0)</strong>
+          <p>افتح أي عينة من الـ 3 بالأسفل. اسحب ملف الـ HTML إلى موقع <strong>app.netlify.com/drop</strong> (مجاني 100% ويعطيك رابطاً فورياً)، أو صوّر فيديو شاشة 35 ثانية وأنت تجرب الأداة باسم شركتهم.</p>
+        </div>
+        <div class="step-box">
+          <strong>الخطوة 2: إرسال الرسالة المخصصة (الطُعم)</strong>
+          <p>لا تقل "أنا مصمم مواقع". أشر للخطأ الموجود في موقعهم الآن (مثلاً: روابط الواتساب المعطلة أو عبارة 0 سنوات خبرة) وأرفق رابط/فيديو النسخة الجاهزة باسمهم.</p>
+        </div>
+        <div class="step-box">
+          <strong>الخطوة 3: التسعير الذكي لأول 3 عملاء</strong>
+          <p>اعرض تركيب النسخة كاملة على موقعهم بـ <strong>$200–$350</strong> (بدل $700) كعرض بداية سريع، واطلب 50% عند الاتفاق و50% عند التسليم عبر PayPal / Payoneer / تحويل.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 Live Ready-to-Send Demos -->
+    <h2 style="font-size:18px; margin-bottom:12px;">🔥 أقوى 3 عينات مبنية وجاهزة للإرسال الآن (Hot Demos)</h2>
+    <section class="demos-strip">
+      <div class="demo-card">
+        <div>
+          <span class="demo-tag">عينة #1 · تجميل وزراعة شعر</span>
+          <h3 style="font-size:17px; margin-bottom:4px;">EsthetiCare Clinic Dubai</h3>
+          <p style="font-size:13px; color:var(--muted);">الموقع الفعلي فيه أزرار حجز معطلة (<code>#</code>) + بدون حاسبة تكلفة. جهزنا لهم صفحة تحويل فخمة + حاسبة زراعة شعر وتجميل ثنائية اللغة.</p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a class="btn btn-gold" href="./demos/estheticare-dubai-demo.html" target="_blank">👁️ معاينة العينة الحية</a>
+          <a class="btn btn-wa" href="https://wa.me/971559128418" target="_blank">💬 واتساب العيادة</a>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <div>
+          <span class="demo-tag">عينة #2 · تأسيس شركات وإقامة ذهبية</span>
+          <h3 style="font-size:17px; margin-bottom:4px;">NAM Consultant</h3>
+          <p style="font-size:13px; color:var(--muted);">كل أزرار الواتساب بموقعهم فيها خطأ <code>wa.me/00971...</code> يسبب تعطل الرابط بالموبايل! جهزنا صفحة مصلّحة + حاسبة تكلفة تأسيس فورية.</p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a class="btn btn-gold" href="./demos/nam-consultant-calculator.html" target="_blank">👁️ معاينة العينة الحية</a>
+          <a class="btn btn-wa" href="https://wa.me/971524315575" target="_blank">💬 واتساب الشركة</a>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <div>
+          <span class="demo-tag">عينة #3 · تجديد فلل (صفقات $40K–$200K)</span>
+          <h3 style="font-size:17px; margin-bottom:4px;">Favorite Home Contracting</h3>
+          <p style="font-size:13px; color:var(--muted);">صفحتهم الرئيسية تعرض بالخطأ <strong>"Years of experience: 0"</strong>! جهزنا واجهة موثوقة + حاسبة ميزانية تجديد الفلل ترسل النطاق للواتساب.</p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a class="btn btn-gold" href="./demos/favorite-home-renovation-calc.html" target="_blank">👁️ معاينة العينة الحية</a>
+          <a class="btn btn-wa" href="https://wa.me/971503922777" target="_blank">💬 واتساب الشركة</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filter Controls -->
+    <div class="controls">
+      <div class="filter-row" id="filterRow">
+        <button class="filter-btn active" data-cat="all">الكل (12)</button>
+        <button class="filter-btn" data-cat="clinic">تجميل وأسنان (4)</button>
+        <button class="filter-btn" data-cat="reno">تجديد فلل ومقاولات (3)</button>
+        <button class="filter-btn" data-cat="setup">تأسيس شركات (1)</button>
+        <button class="filter-btn" data-cat="luxury">يخوت، سيارات وعقار (4)</button>
+      </div>
+    </div>
+
+    <!-- Leads Container -->
+    <section class="leads-list" id="leadsList"></section>
+  </main>
+
+  <div class="toast" id="toast">تم النسخ بنجاح ✓</div>
+
+  <script>
+    const leads = [
+      {
+        id: "estheticare",
+        cat: "clinic",
+        priority: "hot",
+        name: "EsthetiCare Clinic Dubai",
+        sector: "جراحة تجميل وزراعة شعر وجلدية",
+        deal: "AED 8,000 – 35,000+ للمريض",
+        area: "فيلا 1166، شارع الوصل، جميرا",
+        url: "https://www.estheticaredubai.ae/en/",
+        wa: "971559128418",
+        phone: "+971 4 214 0700",
+        email: "info@estheticaredubai.ae",
+        demo: "./demos/estheticare-dubai-demo.html",
+        bugs: "أزرار الحجز الرئيسية ('Book A Consultation', 'Book Appointment', 'Enter Gallery') كلها مربوطة بـ '#' لا تفتح أي شيء! + واجهة الهيرو تعرض حروفاً عمودية بدون عرض واضح + رابط wa.me يحتوي '+' + غياب حاسبة تكلفة زراعة الشعر والتجميل.",
+        offer: "تركيب صفحة التحويل المخصصة + حاسبة تكلفة الإجراءات وزراعة الشعر ثنائية اللغة (عربي/إنجليزي) بـ $250–$450.",
+        pitchEn: `Hi EsthetiCare Dubai team,\n\nI was reviewing your website (estheticaredubai.ae/en/) and noticed a conversion leak that may be costing you Jumeirah consultation bookings: your main "Book A Consultation", "Book Appointment", and "Enter Gallery" buttons currently point to "#" dead links, and there is no quick cost estimator for patients comparing Hair Transplant or aesthetic packages.\n\nBecause I wanted to show rather than tell, I built a live interactive conversion prototype specifically for EsthetiCare Dubai (with fixed WhatsApp booking links, EN/AR switcher, and an instant Hair Transplant & Treatment Estimator).\n\nHappy to share the 30-second preview link/video for free — would you like me to send it over?`,
+        pitchAr: `مرحباً فريق عيادة إستيتي كير دبي،\n\nأثناء اطلاعي على موقعكم لاحظت خللاً تقنياً قد يضيّع عليكم حجوزات مرضى جميرا: أزرار "Book A Consultation" و"Book Appointment" و"Enter Gallery" في الصفحة الرئيسية تشير حالياً إلى رابط معطل (#) ولا تفتح الحجز، كما لا توجد حاسبة تقديرية للزوار الباحثين عن تكلفة زراعة الشعر والتجميل.\n\nلذلك قمت بتجهيز نموذج عملي تفاعلي باسم عيادتكم يُصلح روابط الحجز ويضيف حاسبة تكلفة فورية باللغتين العربية والإنجليزية ترسل الطلب مباشرة لواتساب الاستقبال.\n\nهل أرسل لكم رابط المعاينة الجاهز لتجربته مجاناً؟`,
+        followup: `Hi EsthetiCare team — quick follow up on the interactive prototype I built for your Al Wasl clinic page (fixing the # consultation buttons + adding a treatment estimator). Would you like me to drop the preview link here so your manager can take a 30-second look?`
+      },
+      {
+        id: "nam",
+        cat: "setup",
+        priority: "hot",
+        name: "NAM Consultant",
+        sector: "تأسيس شركات في دبي وإقامة ذهبية",
+        deal: "AED 15,000 – 45,000+ للعميل",
+        area: "دبي (تغطية شاملة)",
+        url: "https://www.namconsultant.com/",
+        wa: "971524315575",
+        phone: "+971 52 431 5575",
+        email: "info@namconsultant.com",
+        demo: "./demos/nam-consultant-calculator.html",
+        bugs: "خطأ تقني خطير: جميع أزرار الواتساب في صفحتهم الرئيسية تستخدم الرابط wa.me/00971524315575 (صيغة 00 تسبب فشل فتح المحادثة في كثير من الهواتف!) + عدم وجود حاسبة مقارنة فورية لتكلفة Mainland مقابل Freezone والإقامة الذهبية.",
+        offer: "إصلاح روابط الواتساب + حاسبة تأسيس شركات دبي ثنائية اللغة ترسل تفاصيل العميل جاهزة للواتساب بـ $250–$500.",
+        pitchEn: `Hi NAM Consultant team,\n\nQuick heads up while checking namconsultant.com: all of your homepage "Ask on WhatsApp" buttons currently link to wa.me/00971524315575. Using the "00" prefix breaks WhatsApp deep links on many iOS/Android browsers, meaning interested founders can hit an invalid number error and leave.\n\nI went ahead and built a working prototype for NAM Consultant that fixes every WhatsApp deep link AND includes an interactive Dubai Mainland vs. Freezone & Golden Visa Cost Estimator (EN/AR) that sends qualified founder leads straight to your WhatsApp.\n\nWant me to share the live preview link so you can test it?`,
+        pitchAr: `مرحباً فريق NAM Consultant،\n\nملاحظة سريعة ومهمة بموقعكم: جميع أزرار الواتساب في صفحتكم الرئيسية مربوطة بـ wa.me/00971524315575، وبادئة (00) تسبب فشل فتح رابط واتساب على كثير من الهواتف وضياع عملاء جاهزين.\n\nجهزت لكم نموذجاً عملياً جاهزاً باسم NAM Consultant يُصلح روابط الواتساب ويضيف حاسبة تفاعلية لتكلفة تأسيس الشركات (Mainland / Freezone / الإقامة الذهبية) باللغتين العربية والإنجليزية.\n\nهل أرسل لكم رابط التجربة الحية الآن؟`,
+        followup: `Hi NAM team — just checking if you saw my note about the wa.me/00971... link issue on your homepage. Happy to share the working Dubai Setup Calculator demo I built for your brand whenever you have 1 minute.`
+      },
+      {
+        id: "favoritehome",
+        cat: "reno",
+        priority: "hot",
+        name: "Favorite Home Contracting LLC",
+        sector: "تجديد الفلل والديكور الفاخر",
+        deal: "AED 150,000 – 800,000+ للمشروع",
+        area: "ديرة / دبي هيلز / العوير",
+        url: "https://favoritehome.ae/",
+        wa: "971503922777",
+        phone: "+971 55 533 9596",
+        email: "info@favoritehome.ae",
+        demo: "./demos/favorite-home-renovation-calc.html",
+        bugs: "إحصائيات صفحتهم الرئيسية تعرض حالياً: 'Years of experience: 0' و'Office around the world: 0+' رغم أنهم يعملون منذ 2009! + روابط /new/ في القائمة + غياب حاسبة تكلفة تجديد فورية للعملاء.",
+        offer: "تحديث واجهة الثقة + حاسبة ميزانية ومدة تجديد الفلل ترسل نطاق المشروع للواتساب بـ $350–$700.",
+        pitchEn: `Hi Favorite Home team,\n\nI noticed something on favoritehome.ae that might hurt trust with Dubai villa owners: right under your "since 2009" story, your live homepage counter currently displays "Years of experience: 0" and "Office around the world: 0+".\n\nTo show what an immediate upgrade looks like, I put together a clean prototype for Favorite Home that highlights your 17+ years & 108+ projects properly AND adds an Interactive Dubai Villa Renovation Budget & Timeline Estimator sending qualified scopes straight to +971 50 392 2777.\n\nCan I send you the live preview link to check out?`,
+        pitchAr: `مرحباً فريق Favorite Home،\n\nأثناء تصفح موقعكم لاحظت نقطة قد تؤثر على ثقة أصحاب الفلل: عدّاد الأرقام في صفحتكم الرئيسية يعرض حالياً "Years of experience: 0" و"Office around the world: 0+" رغم خبرتكم القوية منذ عام 2009!\n\nقمت بتجهيز نموذج مخصص لشركتكم يصحح واجهة الثقة ويضيف حاسبة فورية لميزانية ومدة تجديد الفلل ترسل تفاصيل المساحة والتشطيب مباشرة إلى واتسابكم.\n\nهل أرسل لكم رابط المعاينة لتجربته؟`,
+        followup: `Hi Favorite Home team — just following up on the homepage "0 Years of experience" counter and the Villa Renovation Budget Estimator prototype I built for your company. Let me know if you'd like the preview link.`
+      },
+      {
+        id: "vipluxurycar",
+        cat: "luxury",
+        priority: "hot",
+        name: "VIP Luxury Car Rental Dubai",
+        sector: "تأجير سيارات فاخرة ورياضية",
+        deal: "AED 3,000 – 25,000+ للحجز",
+        area: "البرشاء (قرب مول الإمارات)",
+        url: "https://vipluxurycarrental.com/",
+        wa: "971501564849",
+        phone: "+971 50 156 4849",
+        email: "booking@vipluxurycarrental.com",
+        demo: "",
+        bugs: "شريط الأرقام في أعلى الموقع يظهر حرفياً: '0★ Google Rating' و'0+ Premium Cars In Fleet' و'0 24/7 Support' و'0+ Car Brands'! + خطأ في العنوان 'DriveBeyondLUXURY CAR RENTAL DUBAI' + بدون حاسبة أسعار متعددة الأيام.",
+        offer: "بناء صفحة هبوط فاخرة + حاسبة إيجار يومي/أسبوعي مع التأمين والتوصيل الفوري لواتساب بـ $200–$450.",
+        pitchEn: `Hi VIP Luxury Car Rental team,\n\nQuick heads up: on vipluxurycarrental.com, your top hero KPI bar currently renders "0★ Google Rating", "0+ Premium Cars In Fleet", and "0+ Car Brands" (plus the headline "DriveBeyondLUXURY..." runs together without spacing).\n\nI can build you a sleek conversion landing page & Multi-Day Supercar Quote Calculator (calculating daily/weekly rates + delivery directly into pre-filled WhatsApp bookings) ready in 48 hours.\n\nWould you like me to prepare a free live demo tailored to your fleet?`,
+        pitchAr: `مرحباً فريق VIP Luxury Car Rental،\n\nلاحظت في واجهة موقعكم الحالية أن أرقام الثقة في الأعلى تظهر أصفاراً ("0★ Google Rating" و"0+ Premium Cars") مع تداخل نص العنوان الرئيسي.\n\nأقدر أجهز لكم نسخة صفحة هبوط فاخرة مخصصة + حاسبة فورية لتكلفة الإيجار لعدة أيام وتوصيل السيارة ترسل تفاصيل الحجز مباشرة إلى واتسابكم.\n\nهل تحبون أجهز لكم عينة مبدئية مجانية باسم شركتكم لتجربتها؟`,
+        followup: `Hi VIP Luxury Car Rental team — checking in on the "0★ Google Rating / 0+ Cars" display issue on your homepage. Happy to send a quick visual fix + quote calculator concept if helpful.`
+      },
+      {
+        id: "usbc",
+        cat: "reno",
+        priority: "hot",
+        name: "USBC Interiors",
+        sector: "تصميم وتنفيذ ديكور الفلل",
+        deal: "AED 150,000 – 1,000,000+",
+        area: "القوز الصناعية 3، دبي",
+        url: "https://www.usbcinteriors.com/villa-fitout/",
+        wa: "971502536606",
+        phone: "+971 4 552 5858",
+        email: "enquiry@usbcinteriors.com",
+        demo: "",
+        bugs: "في صفحة Villa Fitout تتكرر مراحل العمل (Phase 1–4) عدة مرات بترتيب خاطئ (Phase 3 ثم 4 ثم 1 ثم 2 ثم 3 و4 مجدداً!) + عنوان 'Best Villa Fitout Company in dubai' بحرف صغير + خطأ 'Our Portolio' + رابط واتساب يرسل رسالة فارغة تماماً.",
+        offer: "إعادة هيكلة صفحة Villa Fitout + أداة تأهيل العملاء (مساحة الفيلا، الميزانية، الموقع) بـ $350–$650.",
+        pitchEn: `Hi USBC Interiors team,\n\nWhile reviewing your Villa Fitout page (usbcinteriors.com/villa-fitout/), I noticed Phase 1–4 sections appear duplicated out of order (Phase 3 & 4 appear before Phase 1 & 2, then repeat), alongside minor copy slips ("in dubai", "Our Portolio") and a blank WhatsApp link.\n\nI specialize in building high-converting Villa Fit-Out landing pages & Scope/Budget Pre-Qualifiers that filter serious Palm/Dubai Hills homeowners straight to your WhatsApp.\n\nWould you like me to build a free mockup fix for this page so you can review it?`,
+        pitchAr: `مرحباً فريق USBC Interiors،\n\nأثناء تصفح صفحة Villa Fitout بموقعكم لاحظت تكرار أقسام المراحل (Phase 1–4) بترتيب متكرر، مع بعض الأخطاء الإملائية (Our Portolio) ورابط واتساب لا يجهز تفاصيل طلب العميل.\n\nأستطيع تجهيز نموذج صفحة محسن لخدمات تجديد الفلل مع أداة تأهيل سريعة للمساحة والميزانية. هل تحبون أن أجهز لكم عينة مجانية لمعاينتها؟`,
+        followup: `Hi USBC team — following up on the duplicated Phase 1–4 layout on your Villa Fitout page. Let me know if you'd like to see a quick clean redesign prototype.`
+      },
+      {
+        id: "laperla",
+        cat: "clinic",
+        priority: "warm",
+        name: "La Perla Dental Clinic",
+        sector: "تجميل وزراعة الأسنان",
+        deal: "AED 4,000 – 30,000+",
+        area: "أبراج بحيرات جميرا JLT - Cluster V",
+        url: "https://laperladental.com/",
+        wa: "971564662598",
+        phone: "+971 4 432 1732",
+        email: "reception@laperladental.com",
+        demo: "",
+        bugs: "قسم التواصل وساعات العمل مكرر 3 مرات متطابقة في الصفحة الرئيسية! + زر 'Mob/Whatsapp' مربوط بـ tel: اتصال هاتفي وليس رابط واتساب wa.me + السلايدر يكرر نفس النص 3 مرات.",
+        offer: "تحديث الصفحة الرئيسية + إصلاح زر الواتساب + حاسبة تكلفة الفينير وزراعة الأسنان بـ $200–$400.",
+        pitchEn: `Hi La Perla Dental team,\n\nQuick tip while viewing laperladental.com: your Contact & Working Hours block currently repeats 3 identical times on the homepage, and your "Mob/Whatsapp" link opens a phone dialer (tel:) instead of opening a WhatsApp chat.\n\nI can build you a modern JLT Dental Conversion Page with fixed WhatsApp booking and an instant Veneers & Implant Estimator. Want me to put together a free sample layout for your clinic?`,
+        pitchAr: `مرحباً فريق عيادة لا بيرلا للأسنان (JLT)،\n\nملاحظة سريعة بموقعكم: بلوك ساعات العمل وبيانات التواصل مكرر 3 مرات في الصفحة الرئيسية، كما أن زر "Mob/Whatsapp" يفتح اتصالاً هاتفياً وليس محادثة واتساب مباشرة!\n\nأقدر أجهز لكم عينة صفحة حديثة بـ حاسبة تكلفة الفينير والزراعة مع ربط واتساب فوري. هل أجهز لكم نموذجاً مجانياً؟`,
+        followup: `Hi La Perla team — following up on the 3x duplicated contact block & tel: WhatsApp button on your homepage. Happy to send a clean preview mockup if interested.`
+      },
+      {
+        id: "bayavenue",
+        cat: "clinic",
+        priority: "warm",
+        name: "Bay Avenue Dental Centre",
+        sector: "تجميل وتقويم وزراعة الأسنان",
+        deal: "AED 3,500 – 25,000+",
+        area: "برج ريجال، الخليج التجاري Business Bay",
+        url: "https://www.bayavenuedentalcentre.com/",
+        wa: "971551465512",
+        phone: "+971 4 277 0247",
+        email: "info@bayavenuedc.com",
+        demo: "",
+        bugs: "الصفحة الرئيسية تكرر 4 بطاقات خدمات مرتين (Teeth Whitening, Root Canal, Gum Disease, Pediatric Dentistry) + تستخدم رابط wa.link خارجي عام بدون رسالة جاهزة + غياب حاسبة تكلفة ابتسامة هوليوود/التقويم.",
+        offer: "تنظيف الصفحة + حاسبة تقسيط وتكلفة الابتسامة (EN/AR) لمرضى الخليج التجاري بـ $200–$400.",
+        pitchEn: `Hi Bay Avenue Dental team,\n\nI noticed on bayavenuedentalcentre.com that four service blocks (Teeth Whitening, Root Canal, Gum Disease, Pediatric Dentistry) appear duplicated twice on the homepage, and patients looking for Veneers/Aligners have no interactive cost/installment estimator before messaging.\n\nI'd love to build a free sample conversion page with a Smile Makeover Estimator tailored to your Business Bay clinic. Should I send a demo over?`,
+        pitchAr: `مرحباً فريق Bay Avenue Dental Centre،\n\nلاحظت في صفحتكم الرئيسية تكرار 4 بطاقات خدمات مرتين بشكل متطابق، مع عدم وجود حاسبة فورية لتقدير تكلفة الفينير أو التقويم قبل تواصل المريض.\n\nأقدر أجهز لكم عينة صفحة تحويل مع حاسبة ابتسامة ثنائية اللغة مجاناً لتجربتها. هل تحبون أرسلها لكم؟`,
+        followup: `Hi Bay Avenue team — just checking in regarding the duplicated service cards on your homepage and the Smile Estimator concept.`
+      },
+      {
+        id: "yachtrentaluae",
+        cat: "luxury",
+        priority: "warm",
+        name: "Yacht Rental UAE",
+        sector: "تأجير يخوت فاخرة في دبي",
+        deal: "AED 3,000 – 160,000+ للرحلة",
+        area: "دبي مارينا ودبي هاربر",
+        url: "https://yachtrentaluae.ae/",
+        wa: "971585513070",
+        phone: "+971 58 551 3070",
+        email: "info@yachtrentaluae.com",
+        demo: "",
+        bugs: "رابط الواتساب العلوي يحتوي + ومسافات (%20) في رقم الهاتف + عبارة 'get per personalised Deals' + عدم وجود حاسبة فورية لباقات اليخوت (عدد الساعات + الضيوف + الضيافة/الجت سكي/الدي جي).",
+        offer: "بناء حاسبة باقات اليخوت والحفلات التفاعلية ترسل طلباً مفصلاً للواتساب بـ $250–$450.",
+        pitchEn: `Hi Yacht Rental UAE team,\n\nWith 100+ yachts on yachtrentaluae.ae, guests often ask the same questions on WhatsApp before booking (hours + guest count + catering + DJ/jet ski). Right now there is no instant Charter Package Estimator, and your header WhatsApp link uses spaces/%20 inside the phone parameter.\n\nI can build an Interactive Yacht Charter & Party Calculator branded for Yacht Rental UAE that sends complete, ready-to-close booking details straight to +971 58 551 3070.\n\nWant to see a live demo tailored to your fleet?`,
+        pitchAr: `مرحباً فريق Yacht Rental UAE،\n\nمع امتلاككم أسطولاً ضخماً من اليخوت، يقضي العملاء وقتاً طويلاً بالسؤال عن السعر حسب عدد الضيوف والساعات والإضافات، كما أن رابط الواتساب العلوي يحتوي مسافات قد تعيق الفتح المباشر.\n\nأقدر أجهز لكم حاسبة تفاعلية لباقات اليخوت والحفلات ترسل الطلب مكتملاً إلى واتسابكم فوراً. هل تحبون معاينة نموذج مبدئي؟`,
+        followup: `Hi Yacht Rental UAE team — quick follow up on building an Interactive Yacht Package Calculator that pre-qualifies guest count, hours & add-ons straight to your WhatsApp.`
+      },
+      {
+        id: "sasha",
+        cat: "clinic",
+        priority: "warm",
+        name: "Sasha Aesthetic Clinic",
+        sector: "تجميل، ليزر، زراعة شعر وأسنان",
+        deal: "AED 1,000 – 15,000+",
+        area: "قرية جميرا الدائرية JVC",
+        url: "https://sashaaestheticclinic.ae/",
+        wa: "971586907865",
+        phone: "+971 4 458 2226",
+        email: "info@sashaaestheticclinic.ae",
+        demo: "",
+        bugs: "صورة أحد الأطباء في الصفحة الرئيسية (Dr Majd Khalid Alsaadi) تعرض صورة فارغة 'Placeholder_Image-1.png' + غياب حاسبة عروض (Buy 1 Get 1 Builder) + الموقع إنجليزي فقط دون واجهة عربية لعملاء JVC.",
+        offer: "بناء صفحة عروض BOGO تفاعلية باللغتين العربية والإنجليزية + إصلاح واجهة الفريق الطبي بـ $200–$350.",
+        pitchEn: `Hi Sasha Aesthetic Clinic team,\n\nQuick heads up: on sashaaestheticclinic.ae, Dr. Majd Khalid Alsaadi's card on your homepage currently displays a grey "Placeholder_Image-1.png" avatar. Also, adding an interactive "Build Your Buy-1-Get-1 Package" widget with an Arabic toggle would convert much more traffic from your JVC ads.\n\nWant me to put together a quick prototype you can test?`,
+        pitchAr: `مرحباً فريق عيادة ساشا للتجميل (JVC)،\n\nملاحظة سريعة بموقعكم: بطاقة د. مجد خالد السعدي تعرض صورة رمادية افتراضية (Placeholder) في الصفحة الرئيسية، كما أن إضافة حاسبة تفاعلية لعروض (Buy 1 Get 1) باللغتين العربية والإنجليزية ستضاعف التحويلات من إعلاناتكم.\n\nهل تحبون أجهز لكم عينة تجريبية مجانية؟`,
+        followup: `Hi Sasha Clinic team — just following up on the placeholder doctor image on your homepage and the Arabic/English BOGO Offer Builder idea.`
+      },
+      {
+        id: "bestreno",
+        cat: "reno",
+        priority: "warm",
+        name: "Best Renovation Dubai",
+        sector: "تجديد الفلل والمطابخ والحمامات",
+        deal: "AED 50,000 – 500,000+",
+        area: "دبي هيلز، نخلة جميرا، داون تاون",
+        url: "https://www.bestrenovation.ae/",
+        wa: "971566123317",
+        phone: "+971 56 612 3317",
+        email: "info@bestrenovation.ae",
+        demo: "",
+        bugs: "أعلى الصفحة الرئيسية يطبع سطر مقال ووردبريس الخام ('Best Renovation Dubai HomePage jason 2026-07-04...') + روابط صور مكررة اللاحقة (.webp.webp) + خيارات ميزانية ثابتة بدون حاسبة BOQ تفاعلية.",
+        offer: "إزالة أخطاء ووردبريس من الهيرو + بناء حاسبة تجديد حسب الغرف والمساحة (EN/AR) بـ $250–$500.",
+        pitchEn: `Hi Best Renovation Dubai team,\n\nI noticed your homepage (bestrenovation.ae) currently displays a raw WordPress author/date line ("HomePage jason 2026-07-04...") right at the top of the page. Replacing that header and upgrading your static budget pills into an interactive Room-by-Room Villa Estimator can noticeably lift qualified WhatsApp leads.\n\nWould you like to see a quick custom prototype?`,
+        pitchAr: `مرحباً فريق Best Renovation Dubai،\n\nلاحظت في أعلى صفحتكم الرئيسية ظهور سطر بيانات مقال ووردبريس خام ("HomePage jason 2026-07-04...")، كما أن أزرار الميزانية حالياً ثابتة. يمكننا تحويلها إلى حاسبة تجديد فلل وغرف تفاعلية ترسل المواصفات للواتساب مباشرة.\n\nهل ترغبون بمعاينة نموذج تجريبي؟`,
+        followup: `Hi Best Renovation team — quick follow up on cleaning up the WordPress author line on your homepage and adding a live BOQ estimator.`
+      },
+      {
+        id: "rsyyachts",
+        cat: "luxury",
+        priority: "warm",
+        name: "RSY Yachts",
+        sector: "تأجير يخوت وحفلات VIP",
+        deal: "AED 2,500 – 50,000+ للحجز",
+        area: "دبي مارينا ودبي هاربر",
+        url: "https://rsyyachts.com/",
+        wa: "971555786772",
+        phone: "+971 55 578 6772",
+        email: "booking@rsyyachts.com",
+        demo: "",
+        bugs: "المؤقت الترويجي يبدأ عدّاً ثابتاً (39 يوم 23 ساعة) عند الفتح + الموقع يحتاج حاسبة باقات فورية تجمع (حجم اليخت + عدد الساعات + جت سكي + كيكة وحفل) لتجهيز عرض السعر في الواتساب فوراً.",
+        offer: "بناء حاسبة باقات أعياد الميلاد واليخوت الفاخرة + صفحة عروض عربية/إنجليزية بـ $250–$450.",
+        pitchEn: `Hi RSY Yachts team,\n\nI checked rsyyachts.com — your fleet & Crypto/Apple Pay options look great, and adding an Interactive Event & Yacht Quote Builder (letting clients pick yacht size, hours, free hour promo, jet ski & birthday setup and get an instant AED/USD total sent straight to +971 55 578 6772) can save your sales desk hours of back-and-forth.\n\nWant me to build a quick interactive prototype for RSY Yachts?`,
+        pitchAr: `مرحباً فريق RSY Yachts،\n\nاطلعت على موقعكم ومزايا الدفع والعروض المميزة، وإضافة حاسبة فورية لتخصيص باقة اليخت (الحجم، الساعات، الجت سكي، تجهيز الحفل) سترسل لكم طلبات عملاء جاهزين للدفع مباشرة على الواتساب دون إضاعة وقت.\n\nهل أجهز لكم عينة تفاعلية مجانية باسم RSY Yachts؟`,
+        followup: `Hi RSY Yachts team — checking back to see if you'd like a free interactive Event & Yacht Quote Builder prototype for your Dubai Marina charters.`
+      },
+      {
+        id: "oneperfectstay",
+        cat: "luxury",
+        priority: "warm",
+        name: "One Perfect Stay",
+        sector: "إدارة بيوت العطلات و Airbnb في دبي",
+        deal: "AED 15,000 – 80,000+ عمولة سنوية للمالك",
+        area: "دبي مارينا، النخلة، داون تاون، JBR",
+        url: "https://oneperfectstay.com/",
+        wa: "971565663842",
+        phone: "+971 52 566 4648",
+        email: "homes@oneperfectstay.com",
+        demo: "",
+        bugs: "العملاء من ملاك العقارات في النخلة والمارينا يُحوّلون لنموذج عام دون أداة فورية على الصفحة تحسب لهم فرق العائد بين الإيجار السنوي وإدارة العطلات + غياب نسخة عربية لملاك العقارات الإماراتيين والخليجيين.",
+        offer: "بناء حاسبة عائد الملاك التفاعلية (Airbnb vs Long-Term ROI) + صفحة عربية للملاك بـ $300–$600.",
+        pitchEn: `Hi One Perfect Stay team,\n\nDubai landlords in Palm Jumeirah, Marina & Downtown love seeing numbers immediately before filling out a form. Adding an interactive "Short-Term vs. Long-Term Dubai Yield Estimator" + Arabic Owner Landing Page can capture GCC landlords directly into WhatsApp (+971 56 566 3842).\n\nWould you like me to put together a quick live prototype for One Perfect Stay?`,
+        pitchAr: `مرحباً فريق One Perfect Stay،\n\nملاك العقارات في النخلة ودبي مارينا وداون تاون يفضلون رؤية أرقام العائد المتوقع قبل تعبئة أي نموذج. أستطيع تجهيز حاسبة مقارنة العائد الفورية (تأجير يومي مقابل سنوي) مع صفحة هبوط عربية موجهة لملاك العقارات الإماراتيين والخليجيين.\n\nهل تحبون معاينة نموذج مبدئي باسم شركتكم؟`,
+        followup: `Hi One Perfect Stay team — just following up on the Dubai Landlord Short-Term Yield Calculator + Arabic owner funnel concept.`
+      }
+    ];
+
+    const STORAGE_KEY = 'dubai_agency_tracker_v1';
+    let savedStatus = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    let activeCat = 'all';
+    let langByLead = {};
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 2000);
+    }
+
+    function updateKPIs() {
+      const vals = Object.values(savedStatus);
+      const contacted = vals.filter(v => v && v !== 'new').length;
+      const won = vals.filter(v => v === 'interested' || v === 'won').length;
+      document.getElementById('kpiContacted').textContent = `${contacted} / ${leads.length}`;
+      document.getElementById('kpiWon').textContent = won;
+    }
+
+    function render() {
+      const list = document.getElementById('leadsList');
+      list.innerHTML = '';
+
+      const filtered = activeCat === 'all' ? leads : leads.filter(l => l.cat === activeCat);
+
+      filtered.forEach(lead => {
+        const status = savedStatus[lead.id] || 'new';
+        const mode = langByLead[lead.id] || 'en';
+        const textToShow = mode === 'en' ? lead.pitchEn : (mode === 'ar' ? lead.pitchAr : lead.followup);
+
+        const card = document.createElement('article');
+        card.className = `lead-card ${lead.priority === 'hot' ? 'hot' : ''}`;
+        card.innerHTML = `
+          <div class="lead-top">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span class="lead-name">${lead.name}</span>
+                <span class="${lead.priority === 'hot' ? 'pill-hot' : 'pill-warm'}">
+                  ${lead.priority === 'hot' ? '🔥 أولوية قصوى' : '⭐ فرصة قوية'}
+                </span>
+              </div>
+              <div class="lead-meta">
+                ${lead.sector} · <strong>${lead.deal}</strong> · ${lead.area}<br/>
+                الموقع: <a href="${lead.url}" target="_blank" rel="noopener" style="color:#93c5fd; text-decoration:underline;">${lead.url}</a> ·
+                إيميل: <strong>${lead.email}</strong> ·
+                واتساب: <strong dir="ltr">+${lead.wa}</strong>
+              </div>
+            </div>
+            <select class="status-select" data-id="${lead.id}">
+              <option value="new" ${status === 'new' ? 'selected' : ''}>⚪ لم يُراسل بعد</option>
+              <option value="sent" ${status === 'sent' ? 'selected' : ''}>🔵 تم إرسال العينة</option>
+              <option value="followup" ${status === 'followup' ? 'selected' : ''}>🟡 بانتظار متابعة 48س</option>
+              <option value="interested" ${status === 'interested' ? 'selected' : ''}>🟠 رد مهتم / نقاش سعر</option>
+              <option value="won" ${status === 'won' ? 'selected' : ''}>🟢 تم إغلاق الصفقة 💰</option>
+            </select>
+          </div>
+
+          <div class="bug-box">
+            <strong>🔍 الثغرة الحقيقية المكتشفة في موقعهم:</strong> ${lead.bugs}
+          </div>
+          <div class="offer-box">
+            <strong>💡 العرض الجاهز للبيع:</strong> ${lead.offer}
+          </div>
+
+          <div class="pitch-wrap">
+            <div class="pitch-head">
+              <div class="pitch-tabs">
+                <button class="tab-btn ${mode === 'en' ? 'active' : ''}" data-lead="${lead.id}" data-mode="en">رسالة إنجليزية (موصى بها بدبي)</button>
+                <button class="tab-btn ${mode === 'ar' ? 'active' : ''}" data-lead="${lead.id}" data-mode="ar">رسالة عربية</button>
+                <button class="tab-btn ${mode === 'fu' ? 'active' : ''}" data-lead="${lead.id}" data-mode="fu">متابعة بعد 48 ساعة</button>
+              </div>
+              <button class="btn btn-dark copy-btn" data-lead="${lead.id}">📋 نسخ النص</button>
+            </div>
+            <div class="pitch-text ${mode === 'ar' ? 'rtl' : ''}">${textToShow}</div>
+          </div>
+
+          <div class="lead-actions">
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              ${lead.demo ? `<a class="btn btn-gold" href="${lead.demo}" target="_blank">👁️ فتح العينة المبنية لهم</a>` : ''}
+              <a class="btn btn-wa" href="https://wa.me/${lead.wa}?text=${encodeURIComponent(textToShow)}" target="_blank" rel="noopener">💬 افتح واتساب مع الرسالة جاهزة</a>
+              <a class="btn btn-dark" href="mailto:${lead.email}?subject=${encodeURIComponent('Quick fix for ' + lead.name + ' website')}&body=${encodeURIComponent(textToShow)}">✉️ إرسال إيميل</a>
+            </div>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+
+      updateKPIs();
+    }
+
+    document.getElementById('filterRow').addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeCat = btn.dataset.cat;
+      render();
+    });
+
+    document.getElementById('leadsList').addEventListener('click', (e) => {
+      const tab = e.target.closest('.tab-btn');
+      if (tab) {
+        langByLead[tab.dataset.lead] = tab.dataset.mode;
+        render();
+        return;
+      }
+      const copy = e.target.closest('.copy-btn');
+      if (copy) {
+        const lead = leads.find(l => l.id === copy.dataset.lead);
+        const mode = langByLead[lead.id] || 'en';
+        const txt = mode === 'en' ? lead.pitchEn : (mode === 'ar' ? lead.pitchAr : lead.followup);
+        const fallbackCopy = (t) => {
+          const ta = document.createElement('textarea');
+          ta.value = t;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showToast('تم نسخ الرسالة المخصصة ✓');
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(() => showToast('تم نسخ الرسالة المخصصة ✓')).catch(() => fallbackCopy(txt));
+        } else {
+          fallbackCopy(txt);
+        }
+      }
+    });
+
+    document.getElementById('leadsList').addEventListener('change', (e) => {
+      const sel = e.target.closest('.status-select');
+      if (!sel) return;
+      savedStatus[sel.dataset.id] = sel.value;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedStatus));
+      updateKPIs();
+      showToast('تم حفظ حالة العميل ✓');
+    });
+
+    document.getElementById('resetTrackBtn').addEventListener('click', () => {
+      savedStatus = {};
+      localStorage.removeItem(STORAGE_KEY);
+      render();
+      showToast('تم تصفير سجل المتابعة');
+    });
+
+    render();
+  </script>
+</body>
+</html>

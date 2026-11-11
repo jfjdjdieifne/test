@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>J.A.R.V.I.S | مساعدك الشخصي الصوتي والذكي — تكلفة $0</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #050a12;
+      --panel: #0b1424;
+      --panel-2: #101d33;
+      --border: #1d3557;
+      --cyan: #38bdf8;
+      --cyan-glow: rgba(56, 189, 248, 0.35);
+      --gold: #f59e0b;
+      --text: #eef6ff;
+      --muted: #8ea7c7;
+      --wa: #128c7e;
+      --green: #22c55e;
+      --red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Tajawal', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top center, #0e1d36 0%, var(--bg) 60%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Header */
+    header {
+      border-bottom: 1px solid var(--border);
+      background: rgba(11, 20, 36, 0.9);
+      backdrop-filter: blur(10px);
+      padding: 12px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .nav {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .arc-mini {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid var(--cyan);
+      box-shadow: 0 0 14px var(--cyan-glow), inset 0 0 8px var(--cyan-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 13px;
+      color: var(--cyan);
+    }
+    .brand h1 { font-size: 18px; font-weight: 800; letter-spacing: 0.02em; }
+    .brand small { display: block; font-size: 12px; color: var(--muted); }
+
+    .nav-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 13px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .btn:hover { border-color: var(--cyan); }
+    .btn-cyan { background: var(--cyan); color: #04101f; border-color: var(--cyan); }
+    .btn-gold { background: var(--gold); color: #111827; border-color: var(--gold); }
+    .btn-wa { background: var(--wa); color: #fff; border-color: var(--wa); }
+
+    /* Main Layout */
+    .workspace {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 18px 20px 28px;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 18px;
+      flex: 1;
+    }
+    @media (max-width: 920px) {
+      .workspace { grid-template-columns: 1fr; }
+    }
+
+    /* Left Jarvis Core & Status */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .core-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 20px;
+      text-align: center;
+    }
+    .reactor-btn {
+      width: 112px;
+      height: 112px;
+      border-radius: 50%;
+      margin: 6px auto 14px;
+      border: 3px solid var(--cyan);
+      background: radial-gradient(circle, rgba(56,189,248,0.22) 0%, rgba(11,20,36,0.95) 70%);
+      box-shadow: 0 0 28px var(--cyan-glow), inset 0 0 20px var(--cyan-glow);
+      color: #fff;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .reactor-btn:hover { transform: scale(1.03); }
+    .reactor-btn.listening {
+      border-color: var(--red);
+      box-shadow: 0 0 36px rgba(239, 68, 68, 0.55), inset 0 0 22px rgba(239, 68, 68, 0.4);
+      animation: pulse 1.2s infinite;
+    }
+    .reactor-btn.speaking {
+      border-color: var(--gold);
+      box-shadow: 0 0 34px rgba(245, 158, 11, 0.55), inset 0 0 22px rgba(245, 158, 11, 0.35);
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    .core-status { font-size: 13px; color: var(--cyan); font-weight: 700; margin-bottom: 10px; }
+    .mode-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+      background: rgba(34, 197, 94, 0.14);
+      color: #86efac;
+      border: 1px solid rgba(34, 197, 94, 0.35);
+    }
+
+    .side-box {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .side-box h3 { font-size: 14.5px; margin-bottom: 10px; color: var(--cyan); }
+    .quick-list { display: grid; gap: 7px; }
+    .q-btn {
+      width: 100%;
+      text-align: right;
+      padding: 9px 11px;
+      border-radius: 10px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .q-btn:hover { border-color: var(--cyan); }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .mini-stat {
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+    }
+    .mini-stat strong { display: block; font-size: 18px; color: var(--gold); }
+    .mini-stat span { font-size: 11.5px; color: var(--muted); }
+
+    /* Chat Area */
+    .chat-shell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 115px);
+      min-height: 540px;
+      overflow: hidden;
+    }
+    .chat-top {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      background: rgba(16, 29, 51, 0.7);
+    }
+    .chat-log {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .msg {
+      max-width: 88%;
+      padding: 13px 15px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .msg.jarvis {
+      align-self: flex-start;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-top-right-radius: 4px;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #0c4a6e 0%, #075985 100%);
+      border: 1px solid #0284c7;
+      border-top-left-radius: 4px;
+    }
+    .msg-head {
+      font-size: 11.5px;
+      font-weight: 800;
+      color: var(--cyan);
+      margin-bottom: 4px;
+    }
+    .msg.user .msg-head { color: #bae6fd; }
+    .msg-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .chat-input-bar {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      background: rgba(16, 29, 51, 0.85);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .chat-input-bar input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 11px 14px;
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .chat-input-bar input:focus { outline: none; border-color: var(--cyan); }
+
+    /* Settings Modal */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 14, 0.78);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      z-index: 80;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      max-width: 560px;
+      width: 100%;
+      padding: 22px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 { font-size: 18px; margin-bottom: 6px; color: var(--cyan); }
+    .field { margin-top: 12px; }
+    .field label { display: block; font-size: 12.5px; font-weight: 700; margin-bottom: 5px; color: var(--muted); }
+    .field input, .field select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 13.5px;
+    }
+    .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: var(--green);
+      color: #031509;
+      font-weight: 800;
+      padding: 9px 16px;
+      border-radius: 10px;
+      display: none;
+      z-index: 99;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="nav">
+      <div class="brand">
+        <div class="arc-mini">J.V</div>
+        <div>
+          <h1>J.A.R.V.I.S — مساعد الوكالة الشخصي</h1>
+          <small>تحدث معه بالصوت والكتابة · متصل بعملاء دبي · تكلفة $0</small>
+        </div>
+      </div>
+      <div class="nav-btns">
+        <a class="btn" href="./index.html">📊 غرفة العمليات (12 عميل)</a>
+        <a class="btn btn-primary" href="./call.html">📞 مكالمة صوتية حية</a>
+        <button class="btn" id="voiceOutToggle">🔊 الصوت التلقائي: مفعّل</button>
+        <button class="btn btn-gold" id="openSettingsBtn">⚙️ ربط الذكاء المجاني (Gemini / Groq)</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="core-card">
+        <button class="reactor-btn" id="micBtn">
+          <span style="font-size:26px;">🎙️</span>
+          <span id="micBtnTxt">اضغط وتحدث</span>
+        </button>
+        <div class="core-status" id="coreStatus">جارفس جاهز لأوامرك</div>
+        <span class="mode-pill" id="brainBadge">الوضع المجاني الفوري (بدون مفاتيح)</span>
+        <p style="font-size:12px; color:var(--muted); margin-top:10px;" id="micHint">
+          يعمل الميكروفون مباشرة على Chrome / Edge (عربي وإنجليزي).
+        </p>
+
+        <div class="mini-stats">
+          <div class="mini-stat">
+            <strong id="statPending">12</strong>
+            <span>بانتظار المراسلة</span>
+          </div>
+          <div class="mini-stat">
+            <strong id="statActive">0</strong>
+            <span>تم التواصل / مهتم</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-box">
+        <h3>⚡ أوامر سريعة بضغطة زر</h3>
+        <div class="quick-list">
+          <button class="q-btn" data-cmd="صباح الخير جارفس، أعطني خطة اليوم ومن نراسل أولاً">☀️ خطة اليوم ومن نراسل الآن؟</button>
+          <button class="q-btn" data-cmd="أعطني العميل التالي الجاهز للمراسلة">🎯 هات العميل التالي الجاهز</button>
+          <button class="q-btn" data-cmd="ماذا أرد إذا قال العميل السعر غالي أو أرسل لي التفاصيل؟">💬 رد جاهز إذا سأل العميل عن السعر</button>
+          <button class="q-btn" data-cmd="جهز لي أمر إرسله لمساعد Arena لبناء عينة جديدة أو البحث في مدينة جديدة">🤖 جهّز أمر عمل ثقيل لـ Arena</button>
+          <button class="q-btn" data-cmd="تقرير الحالة الحالي لعملاء دبي">📈 تقرير حالة العملاء</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Chat Interface -->
+    <section class="chat-shell">
+      <div class="chat-top">
+        <div style="font-size:13.5px; font-weight:700;">قناة الأوامر المباشرة مع جارفس</div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <select id="speechLang" style="background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:5px 8px; font-family:inherit; font-size:12px;">
+            <option value="ar-AE">🎙️ عربي (الإمارات/الخليج/عام)</option>
+            <option value="ar-JO">🎙️ عربي (الشام)</option>
+            <option value="en-US">🎙️ English</option>
+          </select>
+          <button class="btn" id="clearChatBtn" style="padding:5px 10px; font-size:12px;">مسح</button>
+        </div>
+      </div>
+
+      <div class="chat-log" id="chatLog"></div>
+
+      <form class="chat-input-bar" id="chatForm">
+        <input type="text" id="chatInput" placeholder="اكتب أو اضغط المايك... مثلاً: 'هات شركة NAM Consultant' أو 'العميل رد بسعر'..." autocomplete="off" />
+        <button type="button" class="btn" id="micInlineBtn" title="تحدث بالمايك">🎙️</button>
+        <button type="submit" class="btn btn-cyan">إرسال</button>
+      </form>
+    </section>
+  </main>
+
+  <!-- Free Integrations Settings Modal -->
+  <div class="modal-bg" id="settingsModal">
+    <div class="modal">
+      <h2>⚙️ ربط جارفس بالذكاء المجاني والأتمتة ($0)</h2>
+      <p class="hint" style="margin-bottom:10px;">
+        جارفس يعمل الآن مجاناً بدون أي مفتاح لقيادة مبيعات دبي. وإذا أردت منحه <strong>ذكاء محادثة حرّ مثل ChatGPT مجاناً</strong>، ضع مفتاحاً مجانياً من أحد المزودين المجانيين بالأسفل (تُحفظ المفاتيح في متصفحك فقط):
+      </p>
+
+      <div class="field">
+        <label>مزود الذكاء الاصطناعي</label>
+        <select id="providerSel">
+          <option value="offline">الوضع المحلي الفوري (بدون API - $0 دائماً)</option>
+          <option value="gemini">Google Gemini 2.5 Flash (طبقة مجانية من aistudio.google.com)</option>
+          <option value="groq">Groq Llama 3.3 70B (طبقة مجانية سريعة من console.groq.com)</option>
+          <option value="openrouter">OpenRouter Free Router — openrouter/free (مجاني من openrouter.ai)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>مفتاح API المجاني (اتركه فارغاً للوضع المحلي)</label>
+        <input type="password" id="apiKeyInput" placeholder="AIza... أو gsk_... أو sk-or-..." />
+        <div class="hint">تحصل عليه مجاناً بدون بطاقة بنكية من Google AI Studio أو Groq أو OpenRouter.</div>
+      </div>
+
+      <div class="field">
+        <label>رابط Webhook للأتمتة (اختياري — Make.com / n8n / Telegram Bot)</label>
+        <input type="url" id="webhookInput" placeholder="https://hook.eu2.make.com/..." />
+        <div class="hint">إذا ربطت Make.com أو n8n مجاناً، سيرسل جارفس تحديثات العملاء والصفقات إليه تلقائياً.</div>
+      </div>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:18px;">
+        <button class="btn" id="closeSettingsBtn">إغلاق</button>
+        <button class="btn btn-cyan" id="saveSettingsBtn">حفظ وتفعيل</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">تم ✓</div>
+
+  <script>
+    const LEADS = [
+      { id: "estheticare", name: "EsthetiCare Clinic Dubai", sector: "تجميل وزراعة شعر", wa: "971559128418", email: "info@estheticaredubai.ae", deal: "$250 - $450", demo: "./demos/estheticare-dubai-demo.html", bug: "أزرار Book Consultation معطلة (#) ولا توجد حاسبة تكلفة.", pitch: "Hi EsthetiCare Dubai team, while reviewing estheticaredubai.ae/en/ I noticed your main \"Book A Consultation\" and \"Book Appointment\" buttons currently point to \"#\" dead links. I built a free interactive prototype specifically for EsthetiCare Dubai fixing the booking buttons and adding a Hair Transplant & Treatment Cost Estimator (EN/AR). Can I share the preview with you?" },
+      { id: "nam", name: "NAM Consultant", sector: "تأسيس شركات وإقامة ذهبية", wa: "971524315575", email: "info@namconsultant.com", deal: "$250 - $500", demo: "./demos/nam-consultant-calculator.html", bug: "كل روابط الواتساب تحتوي بادئة 00971... الخاطئة التي تعطل الفتح على الهواتف.", pitch: "Hi NAM Consultant team, quick heads up while checking namconsultant.com: your homepage \"Ask on WhatsApp\" buttons link to wa.me/00971524315575 — the \"00\" prefix breaks WhatsApp links on many mobile phones. I went ahead and built a fixed prototype for NAM Consultant with working WhatsApp links + an interactive Dubai Setup & Visa Cost Calculator (EN/AR). Would you like me to send you the 30-second preview?" },
+      { id: "favoritehome", name: "Favorite Home Contracting LLC", sector: "تجديد فلل ومقاولات", wa: "971503922777", email: "info@favoritehome.ae", deal: "$350 - $700", demo: "./demos/favorite-home-renovation-calc.html", bug: "صفحتهم الرئيسية تعرض بالخطأ 'Years of experience: 0' رغم عملهم من 2009.", pitch: "Hi Favorite Home team, quick heads up: your live homepage counter on favoritehome.ae currently displays \"Years of experience: 0\" right under your \"from 2009\" text. I put together a quick prototype for Favorite Home that fixes the trust counters and adds an Interactive Villa Renovation Cost Estimator sending scopes straight to your WhatsApp. Want me to send it over?" },
+      { id: "vipluxurycar", name: "VIP Luxury Car Rental Dubai", sector: "تأجير سيارات فاخرة", wa: "971501564849", email: "booking@vipluxurycarrental.com", deal: "$200 - $450", demo: "", bug: "شريط الإحصائيات بالأعلى يظهر أصفاراً: 0★ Google Rating و 0+ Premium Cars.", pitch: "Hi VIP Luxury Car Rental team, quick heads up: on vipluxurycarrental.com your hero KPI bar currently shows \"0★ Google Rating\" and \"0+ Premium Cars In Fleet\". I can build a clean luxury conversion page & Multi-Day Supercar Quote Calculator sending bookings to your WhatsApp. Want to see a free demo?" },
+      { id: "usbc", name: "USBC Interiors", sector: "ديكور وتجديد فلل", wa: "971502536606", email: "enquiry@usbcinteriors.com", deal: "$350 - $650", demo: "", bug: "صفحة Villa Fitout تكرر المراحل (Phase 1-4) بترتيب خاطئ ورابط واتساب فارغ.", pitch: "Hi USBC Interiors team, while checking your Villa Fitout page I noticed Phase 1-4 sections repeat out of order with a blank WhatsApp text link. I can design a clean Villa Scope & BOQ Pre-Qualifier page for Dubai Hills/Palm leads. Want a free mockup?" },
+      { id: "laperla", name: "La Perla Dental Clinic", sector: "تجميل وزراعة أسنان", wa: "971564662598", email: "reception@laperladental.com", deal: "$200 - $400", demo: "", bug: "بلوك التواصل مكرر 3 مرات، وزر الواتساب يفتح اتصال tel: بدل واتساب.", pitch: "Hi La Perla Dental team, quick tip: on laperladental.com your contact block repeats 3 times and the Mob/Whatsapp button uses a tel: call link instead of wa.me. Want me to build a free modern JLT Smile Estimator prototype?" },
+      { id: "bayavenue", name: "Bay Avenue Dental Centre", sector: "طب وتجميل الأسنان", wa: "971551465512", email: "info@bayavenuedc.com", deal: "$200 - $400", demo: "", bug: "الصفحة الرئيسية تكرر 4 بطاقات خدمات مرتين وتفتقد حاسبة ابتسامة.", pitch: "Hi Bay Avenue Dental team, I noticed 4 service cards appear duplicated twice on bayavenuedentalcentre.com. Want me to create a free Business Bay Smile Makeover Estimator prototype for your clinic?" },
+      { id: "yachtrentaluae", name: "Yacht Rental UAE", sector: "يخوت فاخرة في دبي", wa: "971585513070", email: "info@yachtrentaluae.com", deal: "$250 - $450", demo: "", bug: "رابط الواتساب العلوي فيه + ومسافات (%20) وتغيب حاسبة الباقات.", pitch: "Hi Yacht Rental UAE team, adding an instant Guest/Hours/Catering Yacht Quote Calculator feeding directly to +971 58 551 3070 would save your sales desk hours. Want a free prototype?" },
+      { id: "sasha", name: "Sasha Aesthetic Clinic", sector: "تجميل وليزر JVC", wa: "971586907865", email: "info@sashaaestheticclinic.ae", deal: "$200 - $350", demo: "", bug: "صورة أحد الأطباء تعرض صورة فارغة Placeholder وغياب نسخة عربية.", pitch: "Hi Sasha Clinic team, quick note: Dr Majd's card on your homepage displays Placeholder_Image-1.png. Adding a bilingual EN/AR BOGO Offer Calculator could boost JVC bookings. Want to see a mockup?" },
+      { id: "bestreno", name: "Best Renovation Dubai", sector: "تجديد فلل ومطابخ", wa: "971566123317", email: "info@bestrenovation.ae", deal: "$250 - $500", demo: "", bug: "أعلى الصفحة يظهر سطر مقال ووردبريس خام ('HomePage jason 2026-07-04').", pitch: "Hi Best Renovation team, your homepage currently prints a raw WordPress author meta line ('HomePage jason 2026-07-04') at the top. Happy to send a clean Room-by-Room Villa BOQ Estimator prototype." },
+      { id: "rsyyachts", name: "RSY Yachts", sector: "يخوت وحفلات VIP", wa: "971555786772", email: "booking@rsyyachts.com", deal: "$250 - $450", demo: "", bug: "تحتاج حاسبة باقات أعياد الميلاد واليخوت + الجت سكي ترسل الطلب للواتساب.", pitch: "Hi RSY Yachts team, adding an Interactive Yacht Event & Birthday Package Quote Builder sending instant AED/USD totals straight to +971 55 578 6772 can double conversion speed. Want a free demo?" },
+      { id: "oneperfectstay", name: "One Perfect Stay", sector: "إدارة شقق العطلات Airbnb", wa: "971565663842", email: "homes@oneperfectstay.com", deal: "$300 - $600", demo: "", bug: "تحتاج حاسبة مقارنة عائد Airbnb مقابل الإيجار السنوي + صفحة عربية للملاك.", pitch: "Hi One Perfect Stay team, Dubai landlords love testing income numbers instantly before submitting forms. Want a free Short-Term vs Long-Term Dubai Yield Calculator + Arabic owner page prototype?" }
+    ];
+
+    const TRACK_KEY = 'dubai_agency_tracker_v1';
+    const CONF_KEY = 'jarvis_config_v1';
+    let tracker = JSON.parse(localStorage.getItem(TRACK_KEY) || '{}');
+    let config = JSON.parse(localStorage.getItem(CONF_KEY) || '{"provider":"offline","apiKey":"","webhook":"","voiceOut":true}');
+
+    const chatLog = document.getElementById('chatLog');
+    const chatInput = document.getElementById('chatInput');
+    const micBtn = document.getElementById('micBtn');
+    const micBtnTxt = document.getElementById('micBtnTxt');
+    const coreStatus = document.getElementById('coreStatus');
+    const brainBadge = document.getElementById('brainBadge');
+    const voiceOutToggle = document.getElementById('voiceOutToggle');
+
+    function showToast(txt) {
+      const t = document.getElementById('toast');
+      t.textContent = txt;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 2200);
+    }
+
+    function copyText(txt) {
+      const fb = (t) => {
+        const ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('تم النسخ بنجاح ✓');
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(() => showToast('تم النسخ بنجاح ✓')).catch(() => fb(txt));
+      } else { fb(txt); }
+    }
+
+    function updateStats() {
+      const vals = Object.values(tracker);
+      const active = vals.filter(v => v && v !== 'new').length;
+      document.getElementById('statPending').textContent = LEADS.length - active;
+      document.getElementById('statActive').textContent = active;
+      voiceOutToggle.textContent = config.voiceOut ? '🔊 الصوت التلقائي: مفعّل' : '🔇 الصوت التلقائي: صامت';
+      brainBadge.textContent = config.provider === 'offline' || !config.apiKey
+        ? 'الوضع المحلي الفوري (بدون مفاتيح - $0)'
+        : `متصل بـ ${config.provider.toUpperCase()} المجاني ✓`;
+    }
+
+    function speak(text) {
+      if (!config.voiceOut || !('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*_`#]/g, '').slice(0, 420);
+        const utter = new SpeechSynthesisUtterance(clean);
+        const hasArabic = /[\u0600-\u06FF]/.test(clean);
+        utter.lang = hasArabic ? 'ar-SA' : 'en-US';
+        utter.rate = 1.04;
+        utter.onstart = () => micBtn.classList.add('speaking');
+        utter.onend = () => micBtn.classList.remove('speaking');
+        window.speechSynthesis.speak(utter);
+      } catch (e) {}
+    }
+
+    function addMessage(role, text, actions = []) {
+      const box = document.createElement('div');
+      box.className = `msg ${role}`;
+      const head = document.createElement('div');
+      head.className = 'msg-head';
+      head.textContent = role === 'jarvis' ? 'J.A.R.V.I.S' : 'أنت';
+      const body = document.createElement('div');
+      body.textContent = text;
+      box.appendChild(head);
+      box.appendChild(body);
+
+      if (actions.length) {
+        const actRow = document.createElement('div');
+        actRow.className = 'msg-actions';
+        actions.forEach(a => {
+          if (a.href) {
+            const link = document.createElement('a');
+            link.className = `btn ${a.cls || ''}`;
+            link.href = a.href;
+            link.target = a.sameTab ? '_self' : '_blank';
+            link.rel = 'noopener';
+            link.textContent = a.label;
+            actRow.appendChild(link);
+          } else {
+            const b = document.createElement('button');
+            b.className = `btn ${a.cls || ''}`;
+            b.type = 'button';
+            b.textContent = a.label;
+            b.addEventListener('click', a.onClick);
+            actRow.appendChild(b);
+          }
+        });
+        box.appendChild(actRow);
+      }
+
+      chatLog.appendChild(box);
+      chatLog.scrollTop = chatLog.scrollHeight;
+      if (role === 'jarvis') speak(text);
+    }
+
+    async function fireWebhook(eventName, payload) {
+      if (!config.webhook) return;
+      try {
+        await fetch(config.webhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event: eventName, timestamp: new Date().toISOString(), ...payload })
+        });
+      } catch (e) {}
+    }
+
+    function markStatus(leadId, status) {
+      tracker[leadId] = status;
+      localStorage.setItem(TRACK_KEY, JSON.stringify(tracker));
+      updateStats();
+      showToast('تم تحديث الحالة ✓');
+      fireWebhook('lead_status_changed', { leadId, status });
+    }
+
+    function buildLeadActions(lead) {
+      const acts = [
+        { label: `💬 فتح واتساب ${lead.name}`, cls: 'btn-wa', href: `https://wa.me/${lead.wa}?text=${encodeURIComponent(lead.pitch)}` },
+        { label: '📋 نسخ الرسالة', cls: 'btn', onClick: () => copyText(lead.pitch) },
+        { label: '✅ سجل تم الإرسال', cls: 'btn-cyan', onClick: () => { markStatus(lead.id, 'sent'); addMessage('jarvis', `تم تسجيل "${lead.name}" كـ (تم الإرسال). سأذكرك بمتابعتهم بعد 48 ساعة.`); } }
+      ];
+      if (lead.demo) {
+        acts.unshift({ label: '👁️ فتح المعاينة الجاهزة', cls: 'btn-gold', href: lead.demo });
+      }
+      return acts;
+    }
+
+    function findLeadInText(q) {
+      const low = q.toLowerCase();
+      if (low.includes('nam') || low.includes('تأسيس') || low.includes('نام')) return LEADS[1];
+      if (low.includes('esthetic') || low.includes('تجميل') || low.includes('شعر') || low.includes('استيتي')) return LEADS[0];
+      if (low.includes('favorite') || low.includes('فلل') || low.includes('فيفور')) return LEADS[2];
+      if (low.includes('vip') || low.includes('سيارات')) return LEADS[3];
+      if (low.includes('usbc') || low.includes('ديكور')) return LEADS[4];
+      if (low.includes('perla') || low.includes('بيرلا')) return LEADS[5];
+      if (low.includes('bay') || low.includes('باي')) return LEADS[6];
+      if (low.includes('yachtrental') || low.includes('يخت')) return LEADS[7];
+      if (low.includes('sasha') || low.includes('ساشا')) return LEADS[8];
+      if (low.includes('best') || low.includes('بيست')) return LEADS[9];
+      if (low.includes('rsy')) return LEADS[10];
+      if (low.includes('perfect') || low.includes('airbnb') || low.includes('شقق')) return LEADS[11];
+      return null;
+    }
+
+    async function callFreeAI(userPrompt) {
+      const sys = `You are J.A.R.V.I.S, a sharp, practical Arabic & English B2B agency co-pilot helping the user close $200-$700 deals in Dubai with $0 budget. Current CRM snapshot: ${JSON.stringify(LEADS.map(l => ({ name: l.name, sector: l.sector, wa: l.wa, bug: l.bug, deal: l.deal, status: tracker[l.id] || 'new' })))}. Be concise, actionable, speak in natural Arabic unless user asks in English.`;
+
+      if (config.provider === 'gemini' && config.apiKey) {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(config.apiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: sys + '\n\nUser request: ' + userPrompt }] }] })
+        });
+        const data = await res.json();
+        const txt = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!txt) throw new Error(data?.error?.message || 'Gemini error');
+        return txt;
+      }
+
+      if (config.provider === 'groq' && config.apiKey) {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: sys },
+              { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.5
+          })
+        });
+        const data = await res.json();
+        const txt = data?.choices?.[0]?.message?.content;
+        if (!txt) throw new Error(data?.error?.message || 'Groq error');
+        return txt;
+      }
+
+      if (config.provider === 'openrouter' && config.apiKey) {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+            'HTTP-Referer': location.href,
+            'X-Title': 'JARVIS Dubai B2B Agency'
+          },
+          body: JSON.stringify({
+            model: 'openrouter/free',
+            messages: [
+              { role: 'system', content: sys },
+              { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.5
+          })
+        });
+        const data = await res.json();
+        const txt = data?.choices?.[0]?.message?.content;
+        if (!txt) throw new Error(data?.error?.message || 'OpenRouter error');
+        return txt;
+      }
+
+      return null;
+    }
+
+    async function handleCommand(raw) {
+      const q = raw.trim();
+      if (!q) return;
+      addMessage('user', q);
+
+      const low = q.toLowerCase();
+      const matchedLead = findLeadInText(q);
+
+      // 1. Specific company request
+      if (matchedLead) {
+        if (low.includes('تم الارسال') || low.includes('تم الإرسال') || low.includes('راسلت')) {
+          markStatus(matchedLead.id, 'sent');
+          addMessage('jarvis', `تم! سجلت ${matchedLead.name} كـ (تم الإرسال). ننتقل للعميل التالي متى شئت.`);
+          return;
+        }
+        if (low.includes('رد') || low.includes('مهتم')) {
+          markStatus(matchedLead.id, 'interested');
+          const closeReply = `ممتاز! هذا أفضل رد ترسله لـ ${matchedLead.name} الآن:\n\n"Great! Here is the live interactive prototype built for ${matchedLead.name}: [ضع رابط Netlify Drop هنا]. If you'd like me to customize it with your final details and deliver the complete production files ready for your website/ads, my quick-start fee is $250 (50% to begin, 50% on final delivery). Shall I finalize it for you this week?"`;
+          addMessage('jarvis', closeReply, [
+            { label: '📋 نسخ رد الإغلاق', cls: 'btn-gold', onClick: () => copyText(closeReply) },
+            { label: '💬 افتح واتسابهم', cls: 'btn-wa', href: `https://wa.me/${matchedLead.wa}` }
+          ]);
+          return;
+        }
+        addMessage(
+          'jarvis',
+          `إليك ملف ${matchedLead.name} (${matchedLead.sector}):\n• الثغرة المكتشفة: ${matchedLead.bug}\n• السعر المقترح: ${matchedLead.deal}\n• واتساب: +${matchedLead.wa}\n\nالرسالة الجاهزة:\n"${matchedLead.pitch}"`,
+          buildLeadActions(matchedLead)
+        );
+        return;
+      }
+
+      // 2. Daily plan / start
+      if (low.includes('خطة') || low.includes('صباح') || low.includes('ابدأ') || low.includes('شو نعمل')) {
+        const next3 = LEADS.filter(l => (tracker[l.id] || 'new') === 'new').slice(0, 3);
+        const listStr = next3.map((l, i) => `${i + 1}. ${l.name} (${l.sector}) — ${l.deal}`).join('\n');
+        addMessage(
+          'jarvis',
+          `أهلاً بك يا شريكي! خطتنا المجانية لليوم خلال 20 دقيقة:\n\nأول 3 شركات غير مراسلة وبها عينات مبنية جاهزة:\n${listStr || 'ما شاء الله! راسلت كل القائمة.'}\n\nاضغط زر أول شركة بالأسفل لإرسال رسالتها عبر واتساب الآن، وبمجرد ردهم أخبرني هنا لأكتب لك رد الإغلاق.`,
+          next3.length ? buildLeadActions(next3[0]) : []
+        );
+        return;
+      }
+
+      // 3. Next uncontacted lead
+      if (low.includes('التالي') || low.includes('عميل جديد') || low.includes('هات عميل')) {
+        const next = LEADS.find(l => (tracker[l.id] || 'new') === 'new') || LEADS[0];
+        addMessage(
+          'jarvis',
+          `الهدف التالي الجاهز: ${next.name} (${next.sector})\n• الثغرة: ${next.bug}\n• السعر المقترح: ${next.deal}\n\nاضغط الزر الأخضر لإرسال الرسالة على واتساب +${next.wa} مباشرة:`,
+          buildLeadActions(next)
+        );
+        return;
+      }
+
+      // 4. Objection / pricing helper
+      if (low.includes('غالي') || low.includes('السعر') || low.includes('التفاصيل') || low.includes('رد')) {
+        const reply1 = `Here is the live prototype we prepared for your business. Notice how it solves the issue directly and captures qualified WhatsApp inquiries.\n\nIf you'd like me to tailor it to your final branding/pricing and hand over the ready-to-launch files (zero monthly fees), my starter package is $250 — 50% upfront and 50% upon your final approval. Would you like me to customize it for you this week?`;
+        const reply2 = `أفهم ميزانيتك تماماً — لأنها أول تجربة بيننا، أقدر أبدأ معكم بالنسخة الأساسية السريعة بـ $150 فقط (تسليم خلال 24 ساعة)، وإذا أعجبتكم النتائج نضيف لاحقاً باقي التعديلات. يناسبكم نبدأ اليوم؟`;
+        addMessage(
+          'jarvis',
+          `إليك أقوى ردين جاهزين للعميل:\n\n1) الرد القياسي ($250 — إنجليزي):\n${reply1}\n\n2) إذا قال "السعر غالي" (عرض $150 لاقتناص أول بيعة):\n${reply2}`,
+          [
+            { label: '📋 نسخ الرد الإنجليزي', cls: 'btn-gold', onClick: () => copyText(reply1) },
+            { label: '📋 نسخ عرض $150 العربي', cls: 'btn', onClick: () => copyText(reply2) }
+          ]
+        );
+        return;
+      }
+
+      // 5. Generate heavy prompt for Arena AI Agent
+      if (low.includes('arena') || low.includes('ارينا') || low.includes('ابحث') || low.includes('مدينة') || low.includes('عينة جديدة')) {
+        const arenaPrompt = `تصرف كباحث B2B ومطور تنفيذ فوري: ابحث في الويب عن 10 شركات عالية الدخل في [اكتب المدينة والقطاع هنا، مثلاً: عيادات تجميل في الرياض أو شركات عقارات في أبوظبي]، افحص مواقعهم الفعلية واستخرج الثغرات التقنية الحقيقية وروابط الواتساب المنشورة، ثم ابنِ عينات HTML جاهزة لأقوى 3 شركات وأضفها لغرفة العمليات.`;
+        addMessage(
+          'jarvis',
+          `هذا هو الأمر الاحترافي الجاهز — انسخه والصقه لمساعدك التنفيذي في Arena لينفذ البحث والبرمجة عنك:\n\n"${arenaPrompt}"`,
+          [{ label: '📋 نسخ أمر Arena التنفيذي', cls: 'btn-cyan', onClick: () => copyText(arenaPrompt) }]
+        );
+        return;
+      }
+
+      // 6. Status report
+      if (low.includes('تقرير') || low.includes('حالة') || low.includes('كم')) {
+        const sent = LEADS.filter(l => tracker[l.id] === 'sent').length;
+        const interested = LEADS.filter(l => tracker[l.id] === 'interested').length;
+        const won = LEADS.filter(l => tracker[l.id] === 'won').length;
+        addMessage('jarvis', `تقرير الوكالة الآن:\n• إجمالي الشركات: ${LEADS.length}\n• بانتظار المراسلة: ${LEADS.length - sent - interested - won}\n• تم إرسال العينة: ${sent}\n• مهتمون وقيد النقاش: ${interested}\n• صفقات مغلقة 💰: ${won}`);
+        return;
+      }
+
+      // 7. Try Free Cloud AI if configured, else smart guidance
+      if (config.provider !== 'offline' && config.apiKey) {
+        coreStatus.textContent = 'جارفس يفكر عبر الذكاء المجاني...';
+        try {
+          const aiReply = await callFreeAI(q);
+          coreStatus.textContent = 'جارفس جاهز لأوامرك';
+          if (aiReply) {
+            addMessage('jarvis', aiReply);
+            return;
+          }
+        } catch (err) {
+          coreStatus.textContent = 'تعذر الاتصال بالمفتاح — تم الرجوع للوضع المحلي';
+          addMessage('jarvis', `ملاحظة تقنية: فشل الاتصال بمزود الذكاء (${err.message}). تأكد من صحة المفتاح في الإعدادات.`);
+          return;
+        }
+      }
+
+      addMessage(
+        'jarvis',
+        `فهمت طلبك! في الوضع المحلي الفوري ($0) أستطيع فوراً:\n1. عرض أي شركة من الـ 12 (اكتب اسمها مثلاً: NAM أو EsthetiCare أو Favorite Home)\n2. إعطاؤك "العميل التالي" أو "خطة اليوم"\n3. تجهيز ردود الإغلاق إذا رد عليك عميل\n4. تجهيز أمر عمل ثقيل لـ Arena\n\nولمحادثة ذكاء اصطناعي حرة في أي موضوع مجاناً 100%، اضغط زر "⚙️ ربط الذكاء المجاني" بالأعلى وضع مفتاح Google Gemini أو Groq المجاني!`,
+        [{ label: '⚙️ فتح إعدادات الذكاء المجاني', cls: 'btn-gold', onClick: () => document.getElementById('settingsModal').classList.add('open') }]
+      );
+    }
+
+    // Voice Recognition (Free Browser Web Speech API)
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isListening = false;
+
+    if (SpeechRecognition) {
+      recognition = new SpeechRecognition();
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        isListening = true;
+        micBtn.classList.add('listening');
+        micBtnTxt.textContent = 'أستمع الآن...';
+        coreStatus.textContent = 'تكلّم الآن بوضوح...';
+      };
+      recognition.onend = () => {
+        isListening = false;
+        micBtn.classList.remove('listening');
+        micBtnTxt.textContent = 'اضغط وتحدث';
+        coreStatus.textContent = 'جارفس جاهز لأوامرك';
+      };
+      recognition.onerror = (e) => {
+        isListening = false;
+        micBtn.classList.remove('listening');
+        micBtnTxt.textContent = 'اضغط وتحدث';
+        if (e.error === 'not-allowed' || location.protocol === 'file:') {
+          coreStatus.textContent = 'الميكروفون محجوب على file:// — ارفعه مجاناً على Netlify Drop';
+        } else {
+          coreStatus.textContent = 'حاول التحدث مجدداً أو اكتب بالأسفل';
+        }
+      };
+      recognition.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        handleCommand(transcript);
+      };
+    } else {
+      document.getElementById('micHint').textContent = 'للتحدث بالصوت افتح هذه الصفحة في Google Chrome أو Microsoft Edge.';
+    }
+
+    function toggleMic() {
+      if (!recognition) {
+        showToast('استخدم Chrome أو Edge لتفعيل الميكروفون المجاني');
+        return;
+      }
+      if (isListening) {
+        recognition.stop();
+      } else {
+        recognition.lang = document.getElementById('speechLang').value;
+        recognition.start();
+      }
+    }
+
+    micBtn.addEventListener('click', toggleMic);
+    document.getElementById('micInlineBtn').addEventListener('click', toggleMic);
+
+    document.getElementById('chatForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const val = chatInput.value;
+      chatInput.value = '';
+      handleCommand(val);
+    });
+
+    document.querySelectorAll('.q-btn').forEach(btn => {
+      btn.addEventListener('click', () => handleCommand(btn.dataset.cmd));
+    });
+
+    voiceOutToggle.addEventListener('click', () => {
+      config.voiceOut = !config.voiceOut;
+      if (!config.voiceOut && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+      localStorage.setItem(CONF_KEY, JSON.stringify(config));
+      updateStats();
+    });
+
+    document.getElementById('clearChatBtn').addEventListener('click', () => {
+      chatLog.innerHTML = '';
+      bootGreeting();
+    });
+
+    // Settings modal
+    const modal = document.getElementById('settingsModal');
+    document.getElementById('openSettingsBtn').addEventListener('click', () => {
+      document.getElementById('providerSel').value = config.provider;
+      document.getElementById('apiKeyInput').value = config.apiKey;
+      document.getElementById('webhookInput').value = config.webhook;
+      modal.classList.add('open');
+    });
+    document.getElementById('closeSettingsBtn').addEventListener('click', () => modal.classList.remove('open'));
+    document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+      config.provider = document.getElementById('providerSel').value;
+      config.apiKey = document.getElementById('apiKeyInput').value.trim();
+      config.webhook = document.getElementById('webhookInput').value.trim();
+      localStorage.setItem(CONF_KEY, JSON.stringify(config));
+      modal.classList.remove('open');
+      updateStats();
+      showToast('تم حفظ إعدادات جارفس ✓');
+    });
+
+    function bootGreeting() {
+      addMessage(
+        'jarvis',
+        'أهلاً يا شريكي — معك جارفس. أنا جاهز بالصوت والكتابة لقيادة مبيعاتنا في دبي بتكلفة $0.\n\nاضغط زر المايك (أو أحد الأوامر السريعة على اليمين) لنبدأ بأقوى عميل جاهز الآن.',
+        [{ label: '🎯 ابدأ بأول عميل الآن', cls: 'btn-cyan', onClick: () => handleCommand('هات العميل التالي') }]
+      );
+    }
+
+    if (location.protocol === 'file:') {
+      document.getElementById('micHint').textContent = 'ملاحظة: إذا منع المتصفح الميكروفون على file://، اسحب ملف jarvis.html مجاناً إلى app.netlify.com/drop ليعمل الصوت على HTTPS فوراً 100%.';
+    }
+
+    updateStats();
+    bootGreeting();
+  </script>
+</body>
+</html>

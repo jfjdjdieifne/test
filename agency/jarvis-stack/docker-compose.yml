@@ -1,0 +1,45 @@
+# تشغيل n8n المجاني (Community Edition - عدد تنفيذات غير محدود) + Caddy HTTPS
+# مناسب لسيرفر Oracle Cloud Always Free (Ubuntu ARM64: 2 OCPU / 12GB RAM) أو جهازك الشخصي
+#
+# للتشغيل:
+#   1. عدّل N8N_HOST و WEBHOOK_URL و N8N_ENCRYPTION_KEY (أو اتركه محلياً على localhost)
+#   2. docker compose up -d
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: jarvis_n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-this-to-a-long-random-secret-key}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Asia/Dubai}
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  # فعّل هذا القسم عندما تربط دوميناً مجانياً (مثل DuckDNS) على Oracle Cloud للحصول على HTTPS تلقائي
+  # caddy:
+  #   image: caddy:2-alpine
+  #   container_name: jarvis_caddy
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   command: caddy reverse-proxy --from ${N8N_HOST} --to n8n:5678
+  #   volumes:
+  #     - caddy_data:/data
+  #     - caddy_config:/config
+  #   depends_on:
+  #     - n8n
+
+volumes:
+  n8n_data:
+  # caddy_data:
+  # caddy_config:

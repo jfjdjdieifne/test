@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NAM Consultant — Dubai Company Formation &amp; Visa Cost Estimator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --navy: #0b192c;
+      --navy-soft: #132845;
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --ink: #0f172a;
+      --muted: #526074;
+      --accent: #0f62fe;
+      --gold: #d49b35;
+      --wa: #128c7e;
+      --border: #dfe5ef;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', 'Tajawal', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+    html[dir="rtl"] body { font-family: 'Tajawal', 'Plus Jakarta Sans', sans-serif; }
+
+    .audit-bar {
+      background: #081220;
+      color: #dbe6f5;
+      padding: 10px 18px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      border-bottom: 1px solid #1e3353;
+    }
+    .audit-bar strong { color: #f6c453; }
+    .pill-btn {
+      background: rgba(246, 196, 83, 0.14);
+      color: #f9d57e;
+      border: 1px solid rgba(246, 196, 83, 0.36);
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .audit-drawer {
+      display: none;
+      background: #0f2037;
+      color: #e5eefb;
+      padding: 16px 20px;
+      border-bottom: 1px solid #213c63;
+      font-size: 13.5px;
+    }
+    .audit-drawer.open { display: block; }
+    .audit-grid {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+    .audit-item {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 12px;
+      border-radius: 10px;
+    }
+    .audit-item h4 { color: #f6c453; font-size: 13px; margin-bottom: 4px; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .nav {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .logo { font-size: 20px; font-weight: 800; color: var(--navy); letter-spacing: -0.02em; }
+    .logo span { color: var(--accent); }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 11px 18px;
+      border-radius: 11px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: transform 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-wa { background: var(--wa); color: #fff; }
+    .btn-primary { background: var(--navy); color: #fff; }
+    .btn-outline { background: var(--surface); border-color: var(--border); color: var(--ink); }
+
+    .container { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+    .hero {
+      padding: 40px 0 54px;
+      display: grid;
+      grid-template-columns: 1fr 1.05fr;
+      gap: 30px;
+      align-items: start;
+    }
+    @media (max-width: 900px) { .hero { grid-template-columns: 1fr; } }
+
+    .badge {
+      display: inline-block;
+      background: #e8f0fe;
+      color: var(--accent);
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: clamp(30px, 4.2vw, 48px);
+      line-height: 1.1;
+      color: var(--navy);
+      margin-bottom: 16px;
+      letter-spacing: -0.025em;
+    }
+    .lead {
+      font-size: 16.5px;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .checklist {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .checklist li {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--navy);
+    }
+    .check-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: #dcfce7; color: #166534;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; flex-shrink: 0;
+    }
+
+    /* Calculator Widget */
+    .calc-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 20px 45px rgba(11, 25, 44, 0.08);
+    }
+    .calc-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+    .calc-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    .group { margin-bottom: 16px; }
+    .group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 7px;
+      color: var(--navy);
+    }
+    .seg {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .seg-btn {
+      padding: 10px 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      color: var(--ink);
+    }
+    .seg-btn.active {
+      background: var(--navy);
+      color: #fff;
+      border-color: var(--navy);
+    }
+    select {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .range-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13.5px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+    .toggles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .toggle-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 11px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .summary-card {
+      background: linear-gradient(135deg, #0b192c 0%, #152e52 100%);
+      color: #fff;
+      border-radius: 14px;
+      padding: 18px;
+      margin: 18px 0 14px;
+    }
+    .summary-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .aed-num { font-size: 28px; font-weight: 800; color: #f6c453; }
+    .usd-num { font-size: 13.5px; color: #c7d6ec; }
+    .summary-lines {
+      font-size: 12.5px;
+      color: #d6e2f3;
+      border-top: 1px solid rgba(255,255,255,0.14);
+      padding-top: 10px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+      padding-bottom: 56px;
+    }
+    .service-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .service-card h3 { font-size: 17px; color: var(--navy); margin-bottom: 6px; }
+    .service-card p { font-size: 13.5px; color: var(--muted); margin-bottom: 12px; }
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 26px 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="audit-bar">
+    <div>
+      <strong>Conversion Prototype &amp; Bug Fix</strong> built for <strong>NAM Consultant</strong> (<code>namconsultant.com</code>)
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="pill-btn" id="auditBtn">See Critical Bug Fixed Here ▾</button>
+      <button class="pill-btn" id="langBtn">العربية / EN</button>
+    </div>
+  </div>
+  <div class="audit-drawer" id="auditDrawer">
+    <div class="audit-grid">
+      <div class="audit-item">
+        <h4>1. Critical Bug Fixed: Broken wa.me/00971... Links</h4>
+        <p>Every WhatsApp CTA on <code>namconsultant.com</code> currently uses <code>wa.me/00971524315575</code>. The <code>00</code> prefix breaks WhatsApp deep links on mobile devices. All CTAs here use the valid <code>wa.me/971524315575</code> format.</p>
+      </div>
+      <div class="audit-item">
+        <h4>2. Interactive License &amp; Visa Cost Estimator</h4>
+        <p>High-intent founders compare Mainland vs Freezone &amp; Golden Visa fees before reaching out. This instant calculator pre-qualifies their budget and sends the exact breakdown directly to your advisor WhatsApp.</p>
+      </div>
+      <div class="audit-item">
+        <h4>3. Instant English / Arabic Mode</h4>
+        <p>Captures both international expat investors and UAE/GCC founders in Arabic without maintaining separate websites.</p>
+      </div>
+    </div>
+  </div>
+
+  <header>
+    <div class="nav">
+      <div class="logo">NAM <span>Consultant</span></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn btn-outline" href="mailto:info@namconsultant.com">✉️ info@namconsultant.com</a>
+        <a class="btn btn-wa" href="https://wa.me/971524315575?text=Hi%20NAM%20Consultant%2C%20I%20would%20like%20guidance%20on%20setting%20up%20a%20company%20in%20Dubai." target="_blank" rel="noopener" data-en="WhatsApp Advisor" data-ar="تحدث مع مستشار تأسيس">WhatsApp Advisor</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <span class="badge" data-en="Dubai Mainland · Freezone · Golden Visa · Banking" data-ar="رخص محلية · مناطق حرة · الإقامة الذهبية · حسابات بنكية">Dubai Mainland · Freezone · Golden Visa · Banking</span>
+        <h1 data-en="Calculate Your Exact Dubai Business Setup &amp; Visa Cost in 30 Seconds." data-ar="احسب تكلفة تأسيس شركتك وتأشيرات الإقامة في دبي خلال 30 ثانية.">Calculate Your Exact Dubai Business Setup &amp; Visa Cost in 30 Seconds.</h1>
+        <p class="lead" data-en="Stop guessing between Mainland DED and UAE Free Zones. Get an instant cost &amp; timeline breakdown and connect directly with a NAM Consultant advisor on WhatsApp." data-ar="توقف عن التخمين بين الرخصة المحلية والمناطق الحرة. احصل على تقدير فوري للتكلفة والمدة وتواصل مباشرة مع مستشار تأسيس الشركات عبر واتساب.">Stop guessing between Mainland DED and UAE Free Zones. Get an instant cost &amp; timeline breakdown and connect directly with a NAM Consultant advisor on WhatsApp.</p>
+
+        <ul class="checklist">
+          <li><span class="check-dot">✓</span><span data-en="100% Foreign Ownership Structuring (Mainland &amp; Freezone)" data-ar="تملك أجنبي 100% (محلي ومناطق حرة)">100% Foreign Ownership Structuring (Mainland &amp; Freezone)</span></li>
+          <li><span class="check-dot">✓</span><span data-en="Investor, Family &amp; 10-Year UAE Golden Visa Handling" data-ar="تأشيرات المستثمرين والعائلة والإقامة الذهبية 10 سنوات">Investor, Family &amp; 10-Year UAE Golden Visa Handling</span></li>
+          <li><span class="check-dot">✓</span><span data-en="Corporate Bank Account KYC &amp; Compliance Readiness" data-ar="تجهيز ملف فتح الحساب البنكي للشركات والامتثال">Corporate Bank Account KYC &amp; Compliance Readiness</span></li>
+          <li><span class="check-dot">✓</span><span data-en="Serving Business Bay, Downtown, Marina, JLT &amp; All UAE" data-ar="خدمة شاملة في الخليج التجاري، داون تاون، مارينا وكافة الإمارات">Serving Business Bay, Downtown, Marina, JLT &amp; All UAE</span></li>
+        </ul>
+      </div>
+
+      <!-- Interactive Calculator -->
+      <div class="calc-panel">
+        <div class="calc-title" data-en="Dubai Setup &amp; Visa Cost Estimator" data-ar="حاسبة تكلفة التأسيس والإقامات في دبي">Dubai Setup &amp; Visa Cost Estimator</div>
+        <div class="calc-sub" data-en="Select your structure to unlock an instant AED / USD estimate" data-ar="اختر هيكل الشركة للحصول على تقدير فوري بالدرهم والدولار">Select your structure to unlock an instant AED / USD estimate</div>
+
+        <div class="group">
+          <label data-en="1. Jurisdiction Structure" data-ar="1. نوع الرخصة / الجهة">1. Jurisdiction Structure</label>
+          <div class="seg" id="jurSeg">
+            <button type="button" class="seg-btn active" data-jur="freezone" data-en="Dubai Freezone" data-ar="منطقة حرة">Dubai Freezone</button>
+            <button type="button" class="seg-btn" data-jur="mainland" data-en="Dubai Mainland" data-ar="رخصة محلية DED">Dubai Mainland</button>
+            <button type="button" class="seg-btn" data-jur="golden" data-en="Golden Visa" data-ar="إقامة ذهبية">Golden Visa</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="activitySel" data-en="2. Business Activity" data-ar="2. النشاط التجاري">2. Business Activity</label>
+          <select id="activitySel">
+            <option value="Consultancy / Agency / IT Services">Consultancy / Agency / IT Services</option>
+            <option value="E-Commerce / Online Trading">E-Commerce / Online Trading</option>
+            <option value="General Trading / Import-Export">General Trading / Import-Export</option>
+            <option value="Real Estate / Holding / Investment">Real Estate / Holding / Investment</option>
+            <option value="Web3 / Fintech / Luxury Services">Web3 / Fintech / Luxury Services</option>
+          </select>
+        </div>
+
+        <div class="group" id="visaGroup">
+          <div class="range-row">
+            <span data-en="3. Residence Visas Needed:" data-ar="3. عدد تأشيرات الإقامة:">3. Residence Visas Needed:</span>
+            <span id="visaLabel">1 Visa</span>
+          </div>
+          <input type="range" id="visaRange" min="0" max="6" value="1" />
+        </div>
+
+        <div class="group">
+          <label data-en="4. Optional Compliance &amp; Banking Support" data-ar="4. خدمات إضافية (بنك / ضرائب / مكتب)">4. Optional Compliance &amp; Banking Support</label>
+          <div class="toggles">
+            <label class="toggle-box"><input type="checkbox" id="bankChk" checked /> <span data-en="Corporate Bank Prep" data-ar="تجهيز حساب بنكي">Corporate Bank Prep</span></label>
+            <label class="toggle-box"><input type="checkbox" id="officeChk" /> <span data-en="Ejari / Physical Desk" data-ar="إيجاري / مكتب فعلي">Ejari / Physical Desk</span></label>
+          </div>
+        </div>
+
+        <div class="summary-card">
+          <div class="summary-top">
+            <div>
+              <div style="font-size:12px; color:#b7cae4;" data-en="Estimated Total Setup Range" data-ar="التكلفة التقديرية الإجمالية">Estimated Total Setup Range</div>
+              <div class="aed-num" id="aedOut">AED 16,500 – 19,500</div>
+            </div>
+            <div class="usd-num" id="usdOut">≈ $4,490 – $5,310 USD</div>
+          </div>
+          <div class="summary-lines">
+            <div id="timelineOut">⏱ Estimated Issuance: 3–5 business days</div>
+            <div id="includesOut">✓ Includes Trade License, Establishment Card, 1 Visa &amp; Bank KYC Prep</div>
+          </div>
+        </div>
+
+        <a id="waSubmit" class="btn btn-wa" style="width:100%;" href="#" target="_blank" rel="noopener">
+          <span data-en="Send My Setup Plan to NAM Consultant on WhatsApp →" data-ar="أرسل خطتي لمستشار NAM عبر واتساب ←">Send My Setup Plan to NAM Consultant on WhatsApp →</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="grid-4">
+      <div class="service-card">
+        <h3 data-en="Business Setup" data-ar="تأسيس الشركات">Business Setup</h3>
+        <p data-en="Mainland &amp; Freezone registration, MOA drafting, Ejari &amp; trade license issuance." data-ar="تأسيس محلي ومناطق حرة، صياغة عقود التأسيس وإصدار الرخص التجارية.">Mainland &amp; Freezone registration, MOA drafting, Ejari &amp; trade license issuance.</p>
+        <a class="btn btn-outline" href="https://wa.me/971524315575?text=Hi%20NAM%20Consultant%2C%20I%20need%20a%20Dubai%20Business%20Setup%20quote." target="_blank" rel="noopener" data-en="Ask on WhatsApp →" data-ar="استفسر عبر واتساب ←">Ask on WhatsApp →</a>
+      </div>
+      <div class="service-card">
+        <h3 data-en="UAE Visas &amp; Golden Visa" data-ar="التأشيرات والإقامة الذهبية">UAE Visas &amp; Golden Visa</h3>
+        <p data-en="Investor, employee, family &amp; 10-year Golden Visa processing + Emirates ID." data-ar="إقامات المستثمرين والموظفين والعائلة والإقامة الذهبية والهوية الإماراتية.">Investor, employee, family &amp; 10-year Golden Visa processing + Emirates ID.</p>
+        <a class="btn btn-outline" href="https://wa.me/971524315575?text=Hi%20NAM%20Consultant%2C%20I%20want%20to%20check%20my%20UAE%20Golden%20Visa%20eligibility." target="_blank" rel="noopener" data-en="Check Eligibility →" data-ar="تحقق من الأهلية ←">Check Eligibility →</a>
+      </div>
+      <div class="service-card">
+        <h3 data-en="Corporate Banking" data-ar="الحسابات البنكية للشركات">Corporate Banking</h3>
+        <p data-en="UAE corporate bank account KYC preparation &amp; payment gateway support." data-ar="إعداد ملف فتح الحساب البنكي وبوابات الدفع الإلكتروني في الإمارات.">UAE corporate bank account KYC preparation &amp; payment gateway support.</p>
+        <a class="btn btn-outline" href="https://wa.me/971524315575?text=Hi%20NAM%20Consultant%2C%20I%20need%20help%20opening%20a%20UAE%20corporate%20bank%20account." target="_blank" rel="noopener" data-en="Start Banking Prep →" data-ar="ابدأ تجهيز البنك ←">Start Banking Prep →</a>
+      </div>
+      <div class="service-card">
+        <h3 data-en="Government PRO" data-ar="خدمات المعاملات الحكومية PRO">Government PRO</h3>
+        <p data-en="DED, GDRFA, ICP, MOHRE, Municipality &amp; Chamber approvals end-to-end." data-ar="تخليص معاملات اقتصادية دبي والإقامة والعمل والبلدية بالكامل.">DED, GDRFA, ICP, MOHRE, Municipality &amp; Chamber approvals end-to-end.</p>
+        <a class="btn btn-outline" href="https://wa.me/971524315575?text=Hi%20NAM%20Consultant%2C%20I%20need%20PRO%20%26%20government%20services%20in%20Dubai." target="_blank" rel="noopener" data-en="Request PRO Support →" data-ar="اطلب دعم PRO ←">Request PRO Support →</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <strong>NAM Consultant</strong> · Dubai, UAE · Fixed WhatsApp: +971 52 431 5575 · Email: info@namconsultant.com
+    </div>
+  </footer>
+
+  <script>
+    let jur = 'freezone';
+    let lang = 'en';
+    const activitySel = document.getElementById('activitySel');
+    const visaRange = document.getElementById('visaRange');
+    const visaLabel = document.getElementById('visaLabel');
+    const bankChk = document.getElementById('bankChk');
+    const officeChk = document.getElementById('officeChk');
+    const aedOut = document.getElementById('aedOut');
+    const usdOut = document.getElementById('usdOut');
+    const timelineOut = document.getElementById('timelineOut');
+    const includesOut = document.getElementById('includesOut');
+    const waSubmit = document.getElementById('waSubmit');
+
+    function calc() {
+      const visas = parseInt(visaRange.value, 10);
+      visaLabel.textContent = lang === 'ar' ? `${visas} إقامة` : `${visas} Visa${visas === 1 ? '' : 's'}`;
+      document.getElementById('visaGroup').style.display = jur === 'golden' ? 'none' : 'block';
+
+      let low = 0, high = 0, days = '3–5 business days';
+      if (jur === 'freezone') {
+        low = 12500 + visas * 3800;
+        high = 15200 + visas * 4500;
+        days = visas > 0 ? '5–7 business days' : '2–3 business days';
+      } else if (jur === 'mainland') {
+        low = 15500 + visas * 4000;
+        high = 19500 + visas * 4800;
+        days = '4–7 business days';
+      } else {
+        low = 9500;
+        high = 13500;
+        days = '7–12 business days (10-Year Golden Visa)';
+      }
+
+      if (bankChk.checked) { low += 1500; high += 2500; }
+      if (officeChk.checked && jur !== 'golden') { low += 4500; high += 8500; }
+
+      const fmt = (n) => n.toLocaleString('en-US');
+      const aedText = `AED ${fmt(low)} – ${fmt(high)}`;
+      const usdText = `≈ $${fmt(Math.round(low / 3.67))} – $${fmt(Math.round(high / 3.67))} USD`;
+
+      aedOut.textContent = aedText;
+      usdOut.textContent = usdText;
+      timelineOut.textContent = lang === 'ar'
+        ? `⏱ المدة التقديرية: ${days}`
+        : `⏱ Estimated Issuance: ${days}`;
+      includesOut.textContent = lang === 'ar'
+        ? `✓ يشمل التأسيس + ${jur === 'golden' ? 'ملف الإقامة الذهبية' : visas + ' تأشيرة'} ${bankChk.checked ? '+ تجهيز البنك' : ''}`
+        : `✓ Includes ${jur.toUpperCase()} filing${jur === 'golden' ? '' : `, ${visas} visa(s)`}${bankChk.checked ? ', Bank KYC Prep' : ''}${officeChk.checked ? ', Ejari/Desk' : ''}`;
+
+      const msg = lang === 'ar'
+        ? `مرحباً NAM Consultant، حسبت خطة التأسيس عبر الموقع: الجهة (${jur})، النشاط (${activitySel.value})، التأشيرات (${jur === 'golden' ? 'إقامة ذهبية 10 سنوات' : visas})، التقدير (${aedText}). أرجو مشاركة الخطوات الدقيقة.`
+        : `Hi NAM Consultant, I used your Dubai Setup Calculator: Structure: ${jur.toUpperCase()}, Activity: ${activitySel.value}, Visas: ${jur === 'golden' ? '10-Yr Golden Visa' : visas}, Bank Prep: ${bankChk.checked ? 'Yes' : 'No'}, Office/Ejari: ${officeChk.checked ? 'Yes' : 'No'} (Est: ${aedText}). Please advise on exact next steps.`;
+
+      waSubmit.href = `https://wa.me/971524315575?text=${encodeURIComponent(msg)}`;
+    }
+
+    document.getElementById('jurSeg').addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      document.querySelectorAll('#jurSeg .seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      jur = btn.dataset.jur;
+      calc();
+    });
+
+    [activitySel, visaRange, bankChk, officeChk].forEach(el => el.addEventListener('input', calc));
+
+    document.getElementById('auditBtn').addEventListener('click', () => {
+      document.getElementById('auditDrawer').classList.toggle('open');
+    });
+
+    document.getElementById('langBtn').addEventListener('click', () => {
+      lang = lang === 'en' ? 'ar' : 'en';
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+      document.querySelectorAll('[data-en][data-ar]').forEach(el => {
+        el.textContent = lang === 'ar' ? el.dataset.ar : el.dataset.en;
+      });
+      calc();
+    });
+
+    calc();
+  </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+name: JARVIS Autonomous Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      mission:
+        description: "Autonomous mission instructions from Telegram/Voice"
+        required: true
+        type: string
+      run_tag:
+        description: "Short mission tag"
+        required: false
+        default: "mission"
+        type: string
+      worker_origin:
+        description: "Cloudflare Worker URL for live preview links"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  execute-mission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run JARVIS Autonomous Agent
+        env:
+          MISSION_GOAL: ${{ inputs.mission }}
+          MISSION_TAG: ${{ inputs.run_tag }}
+          WORKER_ORIGIN: ${{ inputs.worker_origin }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ALLOWED_TELEGRAM_ID: ${{ secrets.ALLOWED_TELEGRAM_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          CALLMEBOT_TELEGRAM_USER: ${{ secrets.CALLMEBOT_TELEGRAM_USER }}
+        run: python3 -B agency/jarvis-stack/gh_autonomous_worker.py
+
+      - name: Commit & Push Generated Deliverables (if any)
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+          RUN_TAG: ${{ inputs.run_tag }}
+        run: |
+          if [ -n "$(git status --porcelain agency/output)" ]; then
+            git config user.name "JARVIS Bot"
+            git config user.email "jarvis-bot@users.noreply.github.com"
+            git add agency/output
+            git commit -m "JARVIS mission output ($RUN_TAG)"
+            git push origin "HEAD:${TARGET_BRANCH}"
+          else
+            echo "No new files in agency/output to commit."
+          fi
