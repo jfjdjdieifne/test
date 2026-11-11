@@ -1,0 +1,63 @@
+name: Deploy Jarvis to Cloudflare
+
+on:
+  push:
+    branches:
+      - "arena/38691ede-test"
+    paths:
+      - "agency-cloudflare/**"
+      - ".github/workflows/deploy-jarvis-cloudflare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-jarvis-cloudflare
+  cancel-in-progress: true
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agency-cloudflare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: agency-cloudflare/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test (41 checks)
+        run: npm test
+
+      - name: Deploy Worker + Browser Rendering
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set +e
+          output=$(npx wrangler deploy 2>&1)
+          code=$?
+          set -e
+          printf '%s\n' "$output"
+          {
+            echo '## نشر Jarvis إلى Cloudflare'
+            echo '```text'
+            printf '%s\n' "$output" | tail -c 12000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            one_line=$(printf '%s' "$output" | tail -c 4000 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=Cloudflare deployment failed::$one_line"
+          fi
+          exit "$code"
