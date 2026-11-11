@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0 };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0 };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0;
 }
 
 const mockKV = () => ({
@@ -46,6 +46,13 @@ global.fetch = async (input, init = {}) => {
   if (url.startsWith("https://api.callmebot.com/")) { state.callmebot++; return new Response("OK", { status: 200 }); }
   if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
   if (url.startsWith("https://script.google.com/")) { state.appsScript++; return j({ ok: true }); }
+  /* جسر LMArena الوهمي */
+  if (url.startsWith("https://arena.test/")) {
+    state.arenaCalls++;
+    if (url.endsWith("/v1/models")) return j({ object: "list", data: [{ id: "auto" }, { id: "stealth-model" }] });
+    if (url.endsWith("/health")) return j({ status: "ok", service: "jarvis-arena-bridge", has_gpt4free: true });
+    return j({ choices: [{ index: 0, message: { role: "assistant", content: "رد من Arena" }, finish_reason: "stop" }] });
+  }
   throw new Error("unmocked URL: " + url);
 };
 
@@ -323,5 +330,58 @@ await t("19) ضغط زر ❌ يلغي بدون إرسال لأي جهة", async 
   assert.equal(state.appsScript, 0);
   assert.equal(JSON.parse(state.kv.get("approvals")).length, 0);
 });
-console.log(`\n${passed}/19 اختبارات ناجحة`);
+await t("20) /arena بدون ARENA_BRIDGE_URL يعطي تعليمات وبدون أي نداء شبكة", async () => {
+  const env = makeEnv();
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("جسر LMArena مو مضبوط"), "ما وصلت رسالة التعليمات");
+  assert.ok(all.includes("ARENA_BRIDGE_URL"), "التعليمات ما فيها اسم المتغير");
+  assert.equal(state.arenaCalls, 0, "اننادى الجسر وهو مو مضبوط!");
+  assert.equal(state.fetches.filter((f) => f.url.includes("arena.test")).length, 0);
+});
+
+await t("21) /arena مع جسر مضبوط يعرض الصحة والنماذج", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_KEY: "ak" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("شغال"), "الحالة ما ظهرت");
+  assert.ok(all.includes("stealth-model"), "قائمة النماذج ما وصلت");
+  assert.ok(state.arenaCalls >= 1, "ما انادى /v1/models");
+});
+
+await t("22) /arena_ask يمرّر السؤال للجسر ويحفظ النموذج المختار", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test/" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena stealth-model"));
+  assert.ok(sentTexts().join("\n").includes("stealth-model"), "النموذج ما انحفظ");
+  assert.equal(state.kv.get("arena_model"), JSON.stringify("stealth-model"), "KV ما تخزّن النموذج");
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena_ask شو أخبار دبي؟"));
+  const reply = sentTexts().join("\n");
+  assert.ok(reply.includes("رد من Arena"), "رد الجسر ما وصل");
+  assert.ok(reply.includes("stealth-model"), "اسم النموذج ما ظهر بالرد");
+});
+
+await t("23) بدون مفاتيح مزودين — جارفس يستعمل جسر Arena تلقائياً", async () => {
+  const env = makeEnv({ GEMINI_API_KEY: "", OPENROUTER_API_KEY: "", ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("احكي لي عن دبي"));
+  assert.ok(state.arenaCalls >= 1, "الجسر ما اننادى");
+  assert.ok(sentTexts().join("\n").includes("رد من Arena"), "رد Arena ما وصل للمستخدم");
+});
+
+await t("24) /arena off يوقف الجسر بالكامل", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", GEMINI_API_KEY: "" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena off"));
+  assert.ok(sentTexts().join("\n").includes("موقوف"), "ما وصل تأكيد الإيقاف");
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena_ask سؤال"));
+  assert.equal(state.arenaCalls, 0, "الجسر اننادى وهو موقوف!");
+  assert.ok(sentTexts().join("\n").includes("ما رد"), "المستخدم ما انطاه تنبيه");
+});
+
+console.log(`\n${passed}/24 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

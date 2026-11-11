@@ -325,13 +325,115 @@ async function callPollinations(convo, system, env) {
   } catch (e) { console.log("pollinations error:", e && e.message ? e.message : e); return null; }
 }
 
+/* ------------------------- LMArena bridge (اختياري) -------------------- */
+/*
+ * الجسور الأصلية (CloudWaddie/LMArenaBridge · Blacklisted-Binary/LMArenaProxy ·
+ * lianues/lmarenabridge · xtekky/gpt4free) كلها Python + متصفح حقيقي، فما تشتغل
+ * داخل Cloudflare Worker. الحل: خدمة `arena-bridge/` بمستودعنا تكشف API متوافق
+ * مع OpenAI، وجارفس بيناديها هنا كمزود إضافي.
+ *
+ * المتغيرات:
+ *   ARENA_BRIDGE_URL    — مطلوب للتفعيل، مثال: https://arena.example.com (بدون /v1)
+ *   ARENA_BRIDGE_KEY    — اختياري (يُرسل كـ Bearer)
+ *   ARENA_BRIDGE_MODEL  — النموذج الافتراضي، افتراضياً "auto"
+ *   ARENA_BRIDGE_FIRST  — "true" يخلي Arena أول مزود قبل Gemini
+ *   ARENA_BRIDGE_TIMEOUT_MS — افتراضياً 45000 (المتصفح بطيء)
+ */
+function arenaBridgeConfig(env) {
+  const e = env || {};
+  const base = String(e.ARENA_BRIDGE_URL || "").trim().replace(/\/+$/, "");
+  const key = String(e.ARENA_BRIDGE_KEY || "").trim();
+  return { base, key, enabled: !!base, url: base ? base + "/v1/chat/completions" : "" };
+}
+
+function arenaBridgeHeaders(cfg) {
+  const headers = { "content-type": "application/json" };
+  if (cfg.key) headers.authorization = "Bearer " + cfg.key;
+  return headers;
+}
+
+async function arenaIsOn(env) {
+  const cfg = arenaBridgeConfig(env);
+  if (!cfg.enabled) return false;
+  const flag = await kvGet(env, "arena_enabled", true);
+  return flag !== false;
+}
+
+async function arenaCurrentModel(env) {
+  const runtime = await kvGet(env, "arena_model", null);
+  const m = String(runtime || (env && env.ARENA_BRIDGE_MODEL) || "auto").trim();
+  return m || "auto";
+}
+
+async function callArenaBridge(convo, system, env, modelOverride) {
+  const cfg = arenaBridgeConfig(env);
+  if (!cfg.enabled) return null;
+  try {
+    if (!(await arenaIsOn(env))) return null;
+    const model = String(modelOverride || (await arenaCurrentModel(env)) || "auto").trim() || "auto";
+    const timeout = Number(env.ARENA_BRIDGE_TIMEOUT_MS || 45000);
+    const res = await fetch(cfg.url, {
+      method: "POST",
+      headers: arenaBridgeHeaders(cfg),
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))],
+        temperature: 0.4,
+        max_tokens: 400,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(Number.isFinite(timeout) && timeout > 0 ? timeout : 45000),
+    });
+    if (!res.ok) { console.log("arena bridge HTTP", res.status); return null; }
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content?.trim();
+    return text || null;
+  } catch (e) { console.log("arena bridge error:", e && e.message ? e.message : e); return null; }
+}
+
+async function arenaBridgeHealth(env) {
+  const cfg = arenaBridgeConfig(env);
+  if (!cfg.enabled) return { ok: false, reason: "ARENA_BRIDGE_URL غير مضبوط" };
+  try {
+    const res = await fetch(cfg.base + "/health", {
+      method: "GET",
+      headers: arenaBridgeHeaders(cfg),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return { ok: false, reason: "HTTP " + res.status };
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, data };
+  } catch (e) { return { ok: false, reason: e && e.message ? e.message : String(e) }; }
+}
+
+async function arenaBridgeModels(env) {
+  const cfg = arenaBridgeConfig(env);
+  if (!cfg.enabled) return [];
+  try {
+    const res = await fetch(cfg.base + "/v1/models", {
+      method: "GET",
+      headers: arenaBridgeHeaders(cfg),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    return (Array.isArray(data?.data) ? data.data : []).map((m) => String(m && m.id ? m.id : m)).filter(Boolean);
+  } catch (e) { console.log("arena models error:", e && e.message ? e.message : e); return []; }
+}
+
 async function llmComplete(convo, system, env) {
+  const arenaFirst = /^(1|true|yes|on)$/i.test(String((env && env.ARENA_BRIDGE_FIRST) || ""));
+  if (arenaFirst) {
+    const arena = await callArenaBridge(convo, system, env);
+    if (arena) return arena;
+  }
   return (
     (await callGemini(convo, system, env)) ||
     (await callOpenAICompatible("https://api.mistral.ai/v1", env.MISTRAL_API_KEY, (env.MISTRAL_MODEL || "mistral-large-latest").trim(), convo, system)) ||
     (await callOpenAICompatible("https://api.groq.com/openai/v1", env.GROQ_API_KEY, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
     (await callOpenAICompatible("https://integrate.api.nvidia.com/v1", env.NVIDIA_API_KEY, (env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct").trim(), convo, system)) ||
     (await callOpenRouterWithFallback(convo, system, env)) ||
+    (await callArenaBridge(convo, system, env)) ||
     (await callWorkersAI(convo, system, env)) ||
     (await callPollinations(convo, system, env)) ||
     null
@@ -1047,6 +1149,8 @@ const WELCOME = [
   "/forget <الرقم أو المعرف> — امسح حقيقة",
   "/export — حمّل نسخة كاملة من ذاكرتي (JSON)",
   "/report — ملخص الحالة",
+  "/arena — جسر LMArena (حالة/تشغيل/إيقاف/نماذج) — يتطلب خدمة arena-bridge",
+  "/arena_ask <سؤال> — سؤال مباشر عبر جسر LMArena",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
   "/files — شو الملفات والصور بقدر أقراها وأعدلها",
@@ -1159,6 +1263,75 @@ async function handleCommand(text, env, chatId) {
     case "/reset":
       await kvPut(env, "history", []);
       await sendMessage(env, chatId, "تم مسح ذاكرة المحادثة."); return true;
+    case "/arena": {
+      const cfg = arenaBridgeConfig(env);
+      const on = await arenaIsOn(env);
+      const cur = await arenaCurrentModel(env);
+      const sub = arg.trim();
+      const low = sub.toLowerCase();
+      if (!cfg.enabled) {
+        await sendMessage(env, chatId, [
+          "🌉 جسر LMArena مو مضبوط بعد.",
+          "",
+          "شغّل الخدمة من مجلد arena-bridge بمستودعنا (Python + gpt4free/Arena):",
+          "  cd arena-bridge && pip install -r requirements.txt && python bridge.py",
+          "",
+          "بعدها ضيف لجارفس:",
+          "  ARENA_BRIDGE_URL=https://عنوان-الجسر (بدون /v1)",
+          "  ARENA_BRIDGE_KEY=نفس BRIDGE_API_KEY (اختياري لكن مستحسن)",
+          "  ARENA_BRIDGE_MODEL=auto",
+          "",
+          "بـ wrangler: npx wrangler secret put ARENA_BRIDGE_URL",
+          "أو للتجربة المحلية: npx wrangler dev --var ARENA_BRIDGE_URL:http://127.0.0.1:8000",
+        ].join("\n"));
+        return true;
+      }
+      if (/^(off|ايقاف|إيقاف|وقف|0)$/i.test(low)) {
+        await kvPut(env, "arena_enabled", false);
+        await sendMessage(env, chatId, "⏸️ الجسر موقوف — رح أرجع لباقي المزودين. للتفعيل: /arena on");
+        return true;
+      }
+      if (/^(on|تشغيل|1)$/i.test(low)) {
+        await kvPut(env, "arena_enabled", true);
+        const h = await arenaBridgeHealth(env);
+        await sendMessage(env, chatId, h.ok ? "▶️ جسر LMArena شغال — رح أدخلو بسلسلة الردود." : "▶️ فعّلت الجسر بس ما وصلت له: " + h.reason);
+        return true;
+      }
+      if (/^(test|فحص|ping)$/i.test(low)) {
+        const h = await arenaBridgeHealth(env);
+        await sendMessage(env, chatId, h.ok
+          ? "🟢 الجسر سليم:\n" + JSON.stringify(h.data).slice(0, 1200)
+          : "🔴 ما وصلت للجسر: " + h.reason);
+        return true;
+      }
+      if (/^(models|موديلات|نماذج)$/i.test(low) || !sub) {
+        let models = [];
+        if (on) models = await arenaBridgeModels(env);
+        const lines = [
+          "🌉 جسر LMArena (gpt4free + LMArenaBridge)",
+          "الحالة: " + (on ? "🟢 شغال" : "⏸️ موقوف") + " | النموذج: " + cur,
+          "العنوان: " + cfg.base,
+          "الأولوية: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_FIRST || "")) ? "قبل كل المزودين" : "بعد المزودين مع مفتاح"),
+        ];
+        if (models.length) lines.push("", "النماذج المتاحة (" + models.length + "):", ...models.slice(0, 25).map((m) => "• " + m));
+        else lines.push("", "ما قدرت أجيب قائمة النماذج — جرّب /arena test");
+        lines.push("", "الأوامر: /arena on · off · models · test · /arena <اسم-نموذج> · /arena_ask <سؤال>");
+        await sendMessage(env, chatId, lines.join("\n").slice(0, 3800));
+        return true;
+      }
+      await kvPut(env, "arena_model", sub);
+      await sendMessage(env, chatId, `✅ النموذج صار: ${sub}\nجرّب: /arena_ask اكتب لي قصيدة قصيرة عن دبي`);
+      return true;
+    }
+    case "/arena_ask": {
+      if (!arg) { await sendMessage(env, chatId, "اكتب سؤالك: /arena_ask <نص>"); return true; }
+      const cfg = arenaBridgeConfig(env);
+      if (!cfg.enabled) { await sendMessage(env, chatId, "الجسر مو مضبوط — شوف /arena للتعليمات."); return true; }
+      const model = await arenaCurrentModel(env);
+      const answer = await callArenaBridge([{ role: "user", content: arg }], "أنت جارفس — مساعد عربي مختصر ومفيد. جوابك بالعربي.", env, model);
+      await sendMessage(env, chatId, answer ? `🌉 (${model})\n\n${answer}` : "⚠️ الجسر ما رد — شوف /arena test وتأكد إن الخدمة شغالة.");
+      return true;
+    }
     case "/health":
       await sendMessage(env, chatId, "🟢 جارفس Cloudflare شغال تمام."); return true;
     default:

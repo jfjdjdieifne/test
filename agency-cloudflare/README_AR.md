@@ -193,12 +193,69 @@ npx wrangler secret put CALL_ON_BRIEF   # ثم اكتب: true
 
 الخلاصة: اللي كلفتها صفر ويعتمد عليك فقط — **مبني أو جاهز بالتنفيذ**. اللي يحتاج طرفاً ثالثاً (اتصالات، تحقق تجاري) — يوصل لك بوضوح بدون وعود فارغة.
 
+## 🌉 جسر LMArena — استخدم نماذج Arena (حتى المخفية/stealth) من تيليجرام
+
+الحقيقة أولاً: **جارفس على Cloudflare Workers ما بيقدر يشغّل بايثون ولا متصفح ولا يحفظ كوكيز Arena**. كل المشاريع اللي ذكرتها (الجسور وgpt4free) تحتاج **بايثون + متصفح حقيقي + جلسة تسجيل دخول**، فما ينفع تنسخ كودها داخل الـ Worker.
+
+الحل اللي بنيناه: **خدمة وسيطة صغيرة** بمجلد `arena-bridge/` بمستودعنا:
+
+```
+تيليجرام  →  جارفس (Cloudflare Worker)  →  arena-bridge (Python/FastAPI)  →  LMArena
+             ARENA_BRIDGE_URL                gpt4free/Arena  أو  LMArenaBridge محلي
+```
+
+الخدمة تكشف API متوافق مع OpenAI (`/v1/chat/completions`, `/v1/models`, `/health`) وتشتغل بمحرّكين بالترتيب:
+
+| المحرك | المصدر | الدور |
+|---|---|---|
+| 1 | **LMArenaBridge / LMArenaProxy** محلي (CloudWaddie · Blacklisted-Binary · lianues) | تمرير مباشر عبر `POST /api/v1/chat/completions` — الأقوى بتجاوز Cloudflare |
+| 2 | **gpt4free — مزود Arena** (xtekky/gpt4free) | محاكاة متصفح + رموز جلسة تلقائياً، ويقدر يتراجع لمزودين مجانيين تانيين |
+
+### التركيب (3 أوامر)
+
+```bash
+cd arena-bridge
+pip install -r requirements.txt        # أو: docker compose up -d
+cp .env.example .env                   # عدّل BRIDGE_API_KEY
+python bridge.py                       # http://0.0.0.0:8000
+```
+
+### ربطه بجارفس
+
+```bash
+cd ../agency-cloudflare
+npx wrangler secret put ARENA_BRIDGE_URL   # مثال: https://arena-bridge.example.com  (بدون /v1)
+npx wrangler secret put ARENA_BRIDGE_KEY   # نفس BRIDGE_API_KEY
+npx wrangler deploy
+```
+
+اختياري: `ARENA_BRIDGE_MODEL` (افتراضياً `auto`)، و`ARENA_BRIDGE_FIRST=true` إذا بدك Arena **قبل** Gemini بكل ردود البوت.
+
+### من تيليجرام
+
+| الأمر | الوظيفة |
+|---|---|
+| `/arena` | حالة الجسر + قائمة النماذج المتاحة |
+| `/arena on` / `/arena off` | تشغيل/إيقاف استخدام الجسر فوراً (بدون deploy) |
+| `/arena test` | فحص وصول جارفس للجسر |
+| `/arena <اسم-نموذج>` | اختيار النموذج (مثلاً `/arena stealth-model`) |
+| `/arena_ask <سؤال>` | سؤال مباشر عبر Arena بدون أي مزود آخر |
+
+بدون `ARENA_BRIDGE_URL` كل شي يضل شغال كما هو — الجسر **معطّل افتراضياً** وما يستهلك أي طلب.
+
+### تحذير صادق
+
+- LMArena يحتاج تسجيل دخول، والكوكيز (`arena-auth-prod-v1`) تنتهي — gpt4free يجدّدها أحياناً تلقائياً، وإذا فشل: حدّث جلسة المتصفح أو أعد تشغيل الخدمة.
+- استخدام آلي للمنصة قد يخالف شروط استخدامها وقد يُحظر الحساب. جرّبه على حسابك الشخصي وعلى مسؤوليتك.
+- الجسر لازم يشتغل على جهاز دائم التشغيل (VPS/راسبيري/كمبيوتر ما ينام) — Cloudflare لا يشغّل بايثون.
+- إذا كان الجسر على الإنترنت: **حط BRIDGE_API_KEY** ويفضّل HTTPS (Caddy/Nginx).
+
 ## التحديث والتدوير لاحقاً
 
 - **أي مفتاح تريد تغيّره** (مثلاً بعد تدوير مفاتيح مالتك القديمة): أعد نفس أمر `npx wrangler secret put <NAME>` بالقيمة الجديدة — يتحدّث تلقائياً بدون deploy جديد.
 - **لوجات البوت الحية:** `npx wrangler tail`
 - **قائمة كل المفاتيح المضافة:** `npx wrangler secret list`
-- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 19 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل.
+- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 24 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، وجسر LMArena.
 
 ---
 
