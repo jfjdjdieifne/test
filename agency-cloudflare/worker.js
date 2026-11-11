@@ -107,7 +107,8 @@ export default {
         const now = new Date(event?.scheduledTime || Date.now());
         if (now.getUTCHours() === 6 && now.getUTCMinutes() === 0) await morningBrief(env);
         // Keep-alive لجسر LMArena: يمنع Hosting المجاني (Render/HF) من تنويم الخدمة
-        if (arenaKeepAliveOn(env) && arenaBridgeConfig(env).enabled && now.getUTCMinutes() % 10 === 0) {
+        const kaBase = (await arenaCfg(env)).base;
+        if (arenaKeepAliveOn(env, kaBase) && kaBase && now.getUTCMinutes() % 10 === 0) {
           const alive = await arenaWake(env, 1, 0);
           if (!alive) console.log("arena keepalive: لا استجابة من الجسر");
         }
@@ -353,6 +354,19 @@ function arenaBridgeConfig(env) {
   return { base, key, enabled: !!base, url: base ? base + "/v1/chat/completions" : "" };
 }
 
+/**
+ * إعدادات الجسر الفعلية: قيم KV (من أوامر تيليجرام) تتقدّم على متغيرات البيئة.
+ * يعني تقدر تضبط كل شي من تيليجرام بدون wrangler ولا لوحة Cloudflare.
+ */
+async function arenaCfg(env) {
+  const envCfg = arenaBridgeConfig(env);
+  const kvUrl = await kvGet(env, "arena_url", null);
+  const kvKey = await kvGet(env, "arena_key", null);
+  const base = String(kvUrl || envCfg.base || "").trim().replace(/\/+$/, "");
+  const key = String(kvKey || envCfg.key || "").trim();
+  return { base, key, enabled: !!base, url: base ? base + "/v1/chat/completions" : "" };
+}
+
 function arenaBridgeHeaders(cfg) {
   // ngrok-skip-browser-warning: يمنع صفحة التحذير تبع ngrok المجاني من اعتراض الردود
   const headers = { "content-type": "application/json", "ngrok-skip-browser-warning": "1" };
@@ -361,7 +375,7 @@ function arenaBridgeHeaders(cfg) {
 }
 
 async function arenaIsOn(env) {
-  const cfg = arenaBridgeConfig(env);
+  const cfg = await arenaCfg(env);
   if (!cfg.enabled) return false;
   const flag = await kvGet(env, "arena_enabled", true);
   return flag !== false;
@@ -402,7 +416,7 @@ async function arenaBridgeAttempt(cfg, model, convo, system, env) {
  * يعني بمجرد ضبط ARENA_BRIDGE_URL، Arena يصير الأساس وباقي المزودين احتياط.
  */
 async function arenaIsPrimary(env) {
-  if (!arenaBridgeConfig(env).enabled) return false;
+  if (!(await arenaCfg(env)).enabled) return false;
   const kv = await kvGet(env, "arena_primary", null);
   if (kv === true || kv === false) return kv;
   const raw = env.ARENA_BRIDGE_FIRST;
@@ -414,10 +428,10 @@ async function arenaIsPrimary(env) {
  * Keep-alive: افتراضياً يشتغل تلقائياً إذا العنوان من منصة مجانية بتنوّم
  * (hf.space / onrender.com / fly.dev)، ويمكن فرضه أو إطفاؤه بالمتغير.
  */
-function arenaKeepAliveOn(env) {
+function arenaKeepAliveOn(env, base) {
   const raw = env.ARENA_BRIDGE_KEEPALIVE;
   if (raw != null && String(raw).trim() !== "") return arenaFlagOn(raw);
-  const url = String((env && env.ARENA_BRIDGE_URL) || "");
+  const url = String(base || (env && env.ARENA_BRIDGE_URL) || "");
   return /hf\.space|onrender\.com|fly\.dev|koyeb\.app/i.test(url);
 }
 
@@ -437,7 +451,7 @@ async function arenaMarkUp(env) {
 }
 
 async function callArenaBridge(convo, system, env, modelOverride) {
-  const cfg = arenaBridgeConfig(env);
+  const cfg = await arenaCfg(env);
   if (!cfg.enabled) return null;
   try {
     if (!(await arenaIsOn(env))) return null;
@@ -476,7 +490,7 @@ async function callArenaBridge(convo, system, env, modelOverride) {
  * يرجّع true إذا صار /health سليم.
  */
 async function arenaWake(env, attempts = 5, gapMs = 5000) {
-  const cfg = arenaBridgeConfig(env);
+  const cfg = await arenaCfg(env);
   if (!cfg.enabled) return false;
   const tries = Math.max(1, Math.min(10, Number(attempts) || 5));
   const gap = Math.max(0, Math.min(30000, Number(gapMs) || 0));
@@ -489,7 +503,7 @@ async function arenaWake(env, attempts = 5, gapMs = 5000) {
 }
 
 async function arenaBridgeHealth(env) {
-  const cfg = arenaBridgeConfig(env);
+  const cfg = await arenaCfg(env);
   if (!cfg.enabled) return { ok: false, reason: "ARENA_BRIDGE_URL غير مضبوط" };
   try {
     const res = await fetch(cfg.base + "/health", {
@@ -504,7 +518,7 @@ async function arenaBridgeHealth(env) {
 }
 
 async function arenaBridgeModels(env) {
-  const cfg = arenaBridgeConfig(env);
+  const cfg = await arenaCfg(env);
   if (!cfg.enabled) return [];
   try {
     const res = await fetch(cfg.base + "/v1/models", {
@@ -523,7 +537,7 @@ async function arenaBridgeModels(env) {
  * يرجّع null لو الجسر ما يدعم /arena/selftest (نسخة قديمة) حتى نرجع لفحص /health.
  */
 async function arenaSelftest(env, deep) {
-  const cfg = arenaBridgeConfig(env);
+  const cfg = await arenaCfg(env);
   if (!cfg.enabled) return null;
   try {
     const url = cfg.base + "/arena/selftest" + (deep ? "?deep=1" : "");
@@ -755,7 +769,7 @@ async function openUrl(url) {
 async function arenaAskDirect(prompt, model, env) {
   const p = String(prompt || "").trim();
   if (!p) return "prompt فارغ";
-  if (!arenaBridgeConfig(env).enabled) return "جسر Arena مو مضبوط (ARENA_BRIDGE_URL).";
+  if (!(await arenaCfg(env)).enabled) return "جسر Arena مو مضبوط (ARENA_BRIDGE_URL).";
   const out = await callArenaBridge(
     [{ role: "user", content: p }],
     "أنت جارفس — رد بالعربي الشامي، موجز ومفيد.",
@@ -1431,11 +1445,55 @@ async function handleCommand(text, env, chatId) {
       await kvPut(env, "history", []);
       await sendMessage(env, chatId, "تم مسح ذاكرة المحادثة."); return true;
     case "/arena": {
-      const cfg = arenaBridgeConfig(env);
+      const cfg = await arenaCfg(env);
       const on = await arenaIsOn(env);
       const cur = await arenaCurrentModel(env);
       const sub = arg.trim();
       const low = sub.toLowerCase();
+      const kvUrl = await kvGet(env, "arena_url", null);
+      const kvKey = await kvGet(env, "arena_key", null);
+
+      /* ----- الإعداد الكامل من تيليجرام (بدون wrangler ولا لوحة) ----- */
+      if (/^setup|شرح|اعداد|إعداد/.test(low)) {
+        await sendMessage(env, chatId, [
+          "🧭 خلّي Arena يشتغل بجارفس — ٣ خطوات من الآيفون:",
+          "",
+          "1️⃣ جهّز الجسر (سيرفر بايثون): أسهل طريق بلا بطاقة = Render أو Hugging Face.",
+          "   الدليل خطوة-خطوة بالعربي: arena-bridge/README_IPHONE_AR.md",
+          "   بيطلعلك رابط مثل: https://jarvis-arena.onrender.com",
+          "",
+          "2️⃣ ابعتلي هون:",
+          "   /arena url https://jarvis-arena.onrender.com",
+          "   /arena key المفتاح-اللي-اخترته",
+          "",
+          "3️⃣ افحص: /arena test — إذا أخضر، صار Arena أساس كل ردودي.",
+          "",
+          "بعدها: /arena primary يقلب الأساسي/الاحتياطي · /arena off يوقفه فوراً.",
+        ].join("\n"));
+        return true;
+      }
+      if (/^url\b/i.test(sub)) {
+        const link = sub.replace(/^url\s+/i, "").trim().replace(/\/+$/, "");
+        if (!/^https?:\/\//i.test(link)) { await sendMessage(env, chatId, "لازم رابط كامل: /arena url https://xxx.onrender.com"); return true; }
+        await kvPut(env, "arena_url", link);
+        await sendMessage(env, chatId, `✅ حفظت عنوان الجسر:\n${link}\n\nهلق ابعت المفتاح: /arena key <المفتاح> ثم /arena test`);
+        return true;
+      }
+      if (/^key\b/i.test(sub)) {
+        const k = sub.replace(/^key\s+/i, "").trim();
+        if (!k) { await sendMessage(env, chatId, "اكتب المفتاح بعد الأمر: /arena key xxxx"); return true; }
+        await kvPut(env, "arena_key", k);
+        await sendMessage(env, chatId, "🔑 حفظت المفتاح. جاهز للفحص: /arena test");
+        return true;
+      }
+      if (/^(reset|مسح|حذف)$/i.test(low)) {
+        await kvPut(env, "arena_url", null);
+        await kvPut(env, "arena_key", null);
+        await kvPut(env, "arena_skip_until", 0);
+        await sendMessage(env, chatId, "🧹 مسحت عنوان الجسر ومفتاحه من الذاكرة (المتغيرات بالـ Worker ما تأثرت).");
+        return true;
+      }
+
       if (!cfg.enabled) {
         await sendMessage(env, chatId, [
           "🌉 جسر LMArena مو مضبوط بعد.",
@@ -1448,8 +1506,10 @@ async function handleCommand(text, env, chatId) {
           "  ARENA_BRIDGE_KEY=نفس BRIDGE_API_KEY (اختياري لكن مستحسن)",
           "  ARENA_BRIDGE_MODEL=auto",
           "",
-          "بـ wrangler: npx wrangler secret put ARENA_BRIDGE_URL",
-          "أو للتجربة المحلية: npx wrangler dev --var ARENA_BRIDGE_URL:http://127.0.0.1:8000",
+          "الأسهل: ابعتلي الرابط من هون مباشرة (بدون wrangler ولا لوحة):",
+          "  /arena url https://عنوان-الجسر",
+          "  /arena key المفتاح",
+          "أو بـ wrangler: npx wrangler secret put ARENA_BRIDGE_URL",
           "",
           "استضافة مجانية ٢٤/٧ من الموبايل فقط؟ شوف arena-bridge/README_DEPLOY_FREE_AR.md",
         ].join("\n"));
@@ -1512,10 +1572,10 @@ async function handleCommand(text, env, chatId) {
         const lines = [
           "🌉 جسر LMArena (gpt4free + LMArenaBridge)",
           "الحالة: " + (on ? "🟢 شغال" : "⏸️ موقوف") + " | النموذج: " + cur,
-          "العنوان: " + cfg.base,
+          "العنوان: " + cfg.base + (kvUrl ? "  (محفوظ من تيليجرام)" : ""),
           "الأولوية: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_FIRST || "")) ? "قبل كل المزودين" : "بعد المزودين مع مفتاح"),
           "المحرك: " + (await arenaIsPrimary(env) ? "⭐ أساسي (قبل كل المزودين)" : "احتياطي بعد المزودين"),
-          "Keep-alive: " + (arenaKeepAliveOn(env) ? "مفعّل (كل 10 دقائق)" : "موقوف"),
+          "Keep-alive: " + (arenaKeepAliveOn(env, cfg.base) ? "مفعّل (كل 10 دقائق)" : "موقوف"),
           "قاطع الدائرة: " + (await arenaInCooldown(env) ? "مفتوح — الجسر فشل حديثاً، رح أنتظر شوية قبل ما أجرّبه" : "مغلق (طبيعي)"),
         ];
         if (models.length) lines.push("", "النماذج المتاحة (" + models.length + "):", ...models.slice(0, 25).map((m) => "• " + m));
@@ -1530,7 +1590,7 @@ async function handleCommand(text, env, chatId) {
     }
     case "/arena_ask": {
       if (!arg) { await sendMessage(env, chatId, "اكتب سؤالك: /arena_ask <نص>"); return true; }
-      const cfg = arenaBridgeConfig(env);
+      const cfg = await arenaCfg(env);
       if (!cfg.enabled) { await sendMessage(env, chatId, "الجسر مو مضبوط — شوف /arena للتعليمات."); return true; }
       const model = await arenaCurrentModel(env);
       const answer = await callArenaBridge([{ role: "user", content: arg }], "أنت جارفس — مساعد عربي مختصر ومفيد. جوابك بالعربي.", env, model);

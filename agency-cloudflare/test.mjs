@@ -498,5 +498,50 @@ await t("33) قاطع الدائرة: فشل متكرر يوقف محاولات 
   assert.ok(sentTexts().join("\n").includes("الجواب النهائي الافتراضي"), "ما رجع للاحتياط");
 });
 
-console.log(`\n${passed}/33 اختبارات ناجحة`);
+await t("34) إعداد الجسر بالكامل من تيليجرام (/arena url + key) بدون wrangler", async () => {
+  const env = makeEnv(); // لا ARENA_BRIDGE_URL بالبيئة
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena"));
+  assert.ok(sentTexts().join("\n").includes("مو مضبوط"), "المفروض يبدأ غير مضبوط");
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena url https://arena.test/"));
+  assert.equal(state.kv.get("arena_url"), JSON.stringify("https://arena.test"), "الرابط ما انحفظ");
+  const ctx3 = makeCtx();
+  await runWebhook(env, ctx3, tgUpdate("/arena key ak-123"));
+  assert.equal(state.kv.get("arena_key"), JSON.stringify("ak-123"), "المفتاح ما انحفظ");
+  const ctx4 = makeCtx();
+  await runWebhook(env, ctx4, tgUpdate("/arena_ask شو الأخبار؟"));
+  assert.ok(sentTexts().join("\n").includes("رد من Arena"), "الجسر ما اننادى بعد الإعداد");
+});
+
+await t("35) /arena setup يشرح الخطوات بالعربي", async () => {
+  const env = makeEnv();
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena setup"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("٣ خطوات"), "ما وصل الشرح");
+  assert.ok(all.includes("/arena url"), "الشرح ما فيه أمر الرابط");
+  assert.ok(all.includes("README_IPHONE_AR.md"), "ما دل على دليل الآيفون");
+});
+
+await t("36) /arena reset يمسح الإعداد من KV", async () => {
+  const env = makeEnv();
+  state.kv.set("arena_url", JSON.stringify("https://arena.test"));
+  state.kv.set("arena_key", JSON.stringify("ak"));
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena reset"));
+  assert.equal(JSON.parse(state.kv.get("arena_url")), null, "الرابط ما انمسح");
+  assert.ok(sentTexts().join("\n").includes("مسحت"), "ما وصل تأكيد المسح");
+});
+
+await t("37) /arena يعرض أن العنوان محفوظ من تيليجرام", async () => {
+  const env = makeEnv();
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena url https://arena.test"));
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena"));
+  assert.ok(sentTexts().join("\n").includes("محفوظ من تيليجرام"), "المصدر ما ظهر");
+});
+
+console.log(`\n${passed}/37 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

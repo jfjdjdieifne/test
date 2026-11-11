@@ -229,6 +229,8 @@ npx wrangler secret put ARENA_BRIDGE_KEY   # نفس BRIDGE_API_KEY
 npx wrangler deploy
 ```
 
+📱 **معك آيفون بس؟** دليل كامل خطوة-خطوة: [`../arena-bridge/README_IPHONE_AR.md`](../arena-bridge/README_IPHONE_AR.md)
+
 **Arena أساسي تلقائياً** بمجرد ضبط `ARENA_BRIDGE_URL`: كل رد وكل مهمة بالخلفية وكل أداة
 (بحث · فتح رابط · تدقيق موقع · إيميل · جدولة مهمة…) بتمرق بعقل Arena أولاً، وباقي المزودين
 احتياط فقط. إذا بده يرجع الترتيب القديم: `ARENA_BRIDGE_FIRST=false` أو أمر `/arena primary`.
@@ -250,6 +252,8 @@ npx wrangler deploy
 | `/arena wake` | تصحيّة الجسر النايم (مهم للاستضافات المجانية) |
 | `/arena primary` | تبديل: Arena أساسي ↔ احتياطي (محفوظ بالـ KV، فوري بلا deploy) |
 | `/arena test` | تشخيص عميق: يجرّب كل محرك بالجسر (LMArenaBridge · gpt4free · وسيط) ويقولك مين شغال |
+| `/arena url <رابط>` · `/arena key <مفتاح>` | **إعداد الجسر بالكامل من تيليجرام** — بدون wrangler ولا لوحة Cloudflare |
+| `/arena setup` | شرح الخطوات جوا تيليجرام |
 | `/arena <اسم-نموذج>` | اختيار النموذج (مثلاً `/arena stealth-model`) |
 | `/arena_ask <سؤال>` | سؤال مباشر عبر Arena بدون أي مزود آخر |
 
@@ -267,7 +271,7 @@ npx wrangler deploy
 - **أي مفتاح تريد تغيّره** (مثلاً بعد تدوير مفاتيح مالتك القديمة): أعد نفس أمر `npx wrangler secret put <NAME>` بالقيمة الجديدة — يتحدّث تلقائياً بدون deploy جديد.
 - **لوجات البوت الحية:** `npx wrangler tail`
 - **قائمة كل المفاتيح المضافة:** `npx wrangler secret list`
-- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 33 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، وجسر LMArena (بما فيها الإفاقة والـ Keep-alive).
+- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 37 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، وجسر LMArena (بما فيها الإفاقة والـ Keep-alive).
 
 ---
 

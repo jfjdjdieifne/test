@@ -19,6 +19,8 @@ LMArena — ومنها النماذج التجريبية/المخفية (stealth
 Cloudflare Workers يشغّل JavaScript فقط، بدون متصفح وبدون تخزين كوكيز دائمة —
 فالربط الصح هو **خدمة منفصلة** (هذي) وجارفس يناديها كأنها OpenAI.
 
+> 📱 **آيفون؟** دليل مبسّط خطوة بخطوة: [`README_IPHONE_AR.md`](README_IPHONE_AR.md)
+
 > 📱 **معك موبايل بس؟** شوف [`README_DEPLOY_FREE_AR.md`](README_DEPLOY_FREE_AR.md) —
 > ٤ طرق مجانية لتشغيل الجسر ٢٤/٧ (Oracle Always Free · Hugging Face Space · Termux · Render).
 
