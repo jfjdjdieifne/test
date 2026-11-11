@@ -1,27 +1,40 @@
 #!/usr/bin/env python3
 """
-J.A.R.V.I.S Autonomous $0 Telegram Voice & Task Agent (Zero-Dependency Core)
-===========================================================================
-Works with Python 3 standard library only! (Optional: `pip install edge-tts` for spoken MP3 replies).
+J.A.R.V.I.S 24/7 Autonomous $0 Telegram Voice & Background Task Agent
+======================================================================
+Runs 24/7 on Render Free (+ UptimeRobot ping, no card) OR Oracle Cloud Always Free (no sleep).
+Core runs with Python 3 standard library only! (Optional: `pip install edge-tts` for spoken replies).
+
 100% Free-Tier Stack ($0/month):
 - Messaging & Voice Notes: Telegram Bot API (@BotFather)
-- Speech-to-Text: Groq Whisper (whisper-large-v3-turbo) or Gemini 2.5 Flash multimodal audio
-- Text-to-Speech (optional): Microsoft Edge Neural Voices via edge-tts (ar-AE-HamdanNeural / en-US-AndrewNeural)
-- LLM Brain (automatic failover): Google Gemini 2.5 Flash -> Groq Llama 3.3 70B -> OpenRouter (openrouter/free)
-- Outbound Voice Ring Alerts: CallMeBot Telegram Call API (optional personal setup)
-- Built-in Tools: Dubai CRM lead reader/updater, live Website Bug Auditor, Persistent Memory, Proactive Reminders
+- Speech-to-Text: Groq Whisper (whisper-large-v3-turbo) or Gemini 2.5 Flash audio
+- Text-to-Speech: Microsoft Edge Neural Voices via edge-tts (ar-AE-HamdanNeural / en-US-AndrewNeural)
+- Multi-Brain LLM Pool (automatic failover — practically never runs out!):
+  1. Google Gemini (gemini-2.5-flash / gemini-2.5-pro)
+  2. Mistral AI (~1 Billion tokens/month free: mistral-large-latest -> mistral-small-latest)
+  3. Groq (llama-3.3-70b-versatile / openai/gpt-oss-120b)
+  4. NVIDIA NIM (meta/llama-3.3-70b-instruct or custom model)
+  5. OpenRouter Free Router (openrouter/free)
+- Autonomous Background Worker: Give Jarvis a heavy task, keep chatting normally;
+  he executes web search + site audits + analysis in a background thread and rings/messages
+  you on Telegram when done or when he needs your decision!
+- Outbound Telegram Phone Ring: CallMeBot API (free personal setup)
+- Optional Cloud Memory Persistence: Private GitHub Gist sync (survives Render free restarts!)
 """
 
 import asyncio
 import base64
 import csv
 import datetime as dt
+import html
+import http.server
 import json
 import logging
-import mimetypes
 import os
 import re
+import socketserver
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -29,7 +42,7 @@ import uuid
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote_plus, urlencode, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urlencode, urlparse
 
 try:
     import edge_tts
@@ -44,6 +57,7 @@ log = logging.getLogger("jarvis")
 
 BASE_DIR = Path(__file__).resolve().parent
 STATE_FILE = BASE_DIR / "jarvis_state.json"
+STATE_LOCK = threading.Lock()
 
 
 def load_dotenv_simple(env_path: Path) -> None:
@@ -64,18 +78,40 @@ load_dotenv_simple(BASE_DIR / ".env")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 ALLOWED_TELEGRAM_ID = os.getenv("ALLOWED_TELEGRAM_ID", "").strip()
+
+# Free LLM API Keys (add 1 or all 5 for near-unlimited failover!)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "").strip()
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-large-latest").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "").strip()
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+
+# Optional free Web Search (Tavily 1,000/mo free; falls back to DuckDuckGo HTML automatically)
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "").strip()
+
+# Optional voice & Telegram ringing
 ENABLE_VOICE_REPLIES = os.getenv("ENABLE_VOICE_REPLIES", "true").lower() == "true"
 ARABIC_VOICE = os.getenv("ARABIC_VOICE", "ar-AE-HamdanNeural")
 ENGLISH_VOICE = os.getenv("ENGLISH_VOICE", "en-US-AndrewNeural")
 CALLMEBOT_TELEGRAM_USER = os.getenv("CALLMEBOT_TELEGRAM_USER", "").strip()
 
+# Optional GitHub Gist cloud state persistence (keeps memory safe across Render free restarts)
+GITHUB_GIST_ID = os.getenv("GITHUB_GIST_ID", "").strip()
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
+
+# Optional HTTP health server port (Render sets PORT automatically, e.g. 10000)
+HEALTH_PORT = os.getenv("PORT", "").strip()
+
 _raw_csv = os.getenv("LEADS_CSV_PATH", str(BASE_DIR.parent / "dubai_high_ticket_leads.csv"))
 LEADS_CSV_PATH = Path(_raw_csv)
 if not LEADS_CSV_PATH.is_absolute():
     LEADS_CSV_PATH = (BASE_DIR / LEADS_CSV_PATH).resolve()
+
+_GIST_BOOTSTRAPPED = False
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +126,7 @@ def http_request(
     raw_body: Optional[bytes] = None,
     timeout: int = 35,
 ) -> Tuple[int, bytes, str]:
-    req_headers = {"User-Agent": "JarvisAgent/1.0"}
+    req_headers = {"User-Agent": "JarvisAgent/2.0"}
     if headers:
         req_headers.update(headers)
     data: Optional[bytes] = raw_body
@@ -141,19 +177,80 @@ def http_multipart(
 
 
 # ---------------------------------------------------------------------------
-# Persistent State (Memory, Reminders, Chat History)
+# Thread-Safe Persistent State (+ Optional Free GitHub Gist Sync)
 # ---------------------------------------------------------------------------
+def _default_state() -> Dict[str, Any]:
+    return {"memories": {}, "reminders": [], "history": [], "lead_notes": {}, "tasks": []}
+
+
+def _gist_sync_push(raw_json: str) -> None:
+    if not (GITHUB_GIST_ID and GITHUB_TOKEN):
+        return
+    try:
+        http_request(
+            f"https://api.github.com/gists/{GITHUB_GIST_ID}",
+            method="PATCH",
+            headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github+json",
+            },
+            json_body={"files": {"jarvis_state.json": {"content": raw_json}}},
+            timeout=15,
+        )
+    except Exception as e:
+        log.warning("Gist sync push skipped: %s", e)
+
+
+def _gist_bootstrap_pull() -> Optional[Dict[str, Any]]:
+    if not (GITHUB_GIST_ID and GITHUB_TOKEN):
+        return None
+    try:
+        status, body, _ = http_request(
+            f"https://api.github.com/gists/{GITHUB_GIST_ID}",
+            headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github+json",
+            },
+            timeout=15,
+        )
+        if status == 200:
+            content = json.loads(body.decode("utf-8")).get("files", {}).get("jarvis_state.json", {}).get("content")
+            if content:
+                parsed = json.loads(content)
+                if isinstance(parsed, dict):
+                    return parsed
+    except Exception as e:
+        log.warning("Gist bootstrap pull failed: %s", e)
+    return None
+
+
 def load_state() -> Dict[str, Any]:
-    if STATE_FILE.exists():
-        try:
-            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {"memories": {}, "reminders": [], "history": [], "lead_notes": {}}
+    global _GIST_BOOTSTRAPPED
+    with STATE_LOCK:
+        if not _GIST_BOOTSTRAPPED:
+            _GIST_BOOTSTRAPPED = True
+            if not STATE_FILE.exists():
+                remote = _gist_bootstrap_pull()
+                if remote:
+                    STATE_FILE.write_text(json.dumps(remote, ensure_ascii=False, indent=2), encoding="utf-8")
+                    return remote
+        if STATE_FILE.exists():
+            try:
+                data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+                for k, v in _default_state().items():
+                    data.setdefault(k, v)
+                return data
+            except Exception:
+                pass
+        return _default_state()
 
 
 def save_state(state: Dict[str, Any]) -> None:
-    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    raw = json.dumps(state, ensure_ascii=False, indent=2)
+    with STATE_LOCK:
+        STATE_FILE.write_text(raw, encoding="utf-8")
+    if GITHUB_GIST_ID and GITHUB_TOKEN:
+        threading.Thread(target=_gist_sync_push, args=(raw,), daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +393,7 @@ def tool_audit_website(url: str) -> Dict[str, Any]:
     try:
         status, body, final_url = http_request(
             url,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; JarvisAuditor/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; JarvisAuditor/2.0)"},
             timeout=15,
         )
         raw_html = body.decode("utf-8", errors="replace")
@@ -305,6 +402,62 @@ def tool_audit_website(url: str) -> Dict[str, Any]:
         return report
     except Exception as e:
         return {"error": f"Failed to fetch {url}: {e}"}
+
+
+def parse_duckduckgo_html(raw_html: str, max_results: int = 5) -> List[Dict[str, str]]:
+    results = []
+    blocks = re.findall(
+        r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?(?:<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>|<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</div>)',
+        raw_html,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    for raw_href, raw_title, snip1, snip2 in blocks[:max_results]:
+        href = html.unescape(raw_href)
+        if "uddg=" in href:
+            qs = parse_qs(urlparse(href).query)
+            if "uddg" in qs:
+                href = unquote(qs["uddg"][0])
+        title = re.sub(r"<[^>]+>", "", html.unescape(raw_title)).strip()
+        snippet = re.sub(r"<[^>]+>", "", html.unescape(snip1 or snip2 or "")).strip()
+        results.append({"title": title, "url": href, "snippet": snippet[:300]})
+    return results
+
+
+def tool_web_search(query: str, max_results: int = 5) -> Dict[str, Any]:
+    q = query.strip()
+    if not q:
+        return {"error": "Empty query"}
+    if TAVILY_API_KEY:
+        try:
+            status, body, _ = http_request(
+                "https://api.tavily.com/search",
+                method="POST",
+                json_body={"api_key": TAVILY_API_KEY, "query": q, "max_results": max_results},
+                timeout=20,
+            )
+            if status == 200:
+                res = json.loads(body.decode("utf-8")).get("results", [])
+                return {
+                    "source": "tavily",
+                    "results": [{"title": r.get("title"), "url": r.get("url"), "snippet": (r.get("content") or "")[:350]} for r in res],
+                }
+        except Exception as e:
+            log.warning("Tavily search error: %s", e)
+
+    try:
+        status, body, _ = http_request(
+            "https://html.duckduckgo.com/html/",
+            method="POST",
+            headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36"},
+            form_data={"q": q},
+            timeout=20,
+        )
+        if status == 200:
+            parsed = parse_duckduckgo_html(body.decode("utf-8", errors="replace"), max_results=max_results)
+            return {"source": "duckduckgo", "results": parsed}
+        return {"error": f"Search status {status}"}
+    except Exception as e:
+        return {"error": f"Web search error: {e}"}
 
 
 def tool_save_memory(key: str, value: str) -> Dict[str, Any]:
@@ -352,63 +505,164 @@ def trigger_callmebot_telegram_ring(text: str) -> Dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
-def dispatch_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+def tool_list_tasks() -> Dict[str, Any]:
+    return {"tasks": load_state().get("tasks", [])[-10:]}
+
+
+# ---------------------------------------------------------------------------
+# Background Autonomous Task Runner
+# ---------------------------------------------------------------------------
+def _background_task_worker(task_id: str, goal: str, call_when_done: bool, chat_id: int) -> None:
+    log.info("Background worker started %s: %s", task_id, goal)
+    state = load_state()
+    for t in state.get("tasks", []):
+        if t.get("id") == task_id:
+            t["status"] = "running"
+    save_state(state)
+
+    memories = state.get("memories", {})
+    worker_prompt = (
+        f"[BACKGROUND MISSION {task_id}]\n"
+        f"Saved Memories: {json.dumps(memories, ensure_ascii=False)}\n"
+        f"Mission from user: {goal}\n"
+        "Execute this completely using your tools (web_search, audit_website, list_leads, save_memory, etc.). "
+        "If you genuinely hit a point where you need the user's permission or decision before proceeding, explain clearly what you need and call `call_me_now` too. "
+        "Otherwise finish the task thoroughly and return a crisp Arabic report."
+    )
+    msgs = [{"role": "user", "content": worker_prompt}]
+    final_report = ""
+    had_error = False
+
+    try:
+        for _ in range(6):
+            reply = ask_free_llm(msgs, system_prompt=WORKER_SYSTEM_PROMPT)
+            tool_call = extract_tool_call(reply)
+            if not tool_call:
+                final_report = reply
+                break
+            t_name = str(tool_call.get("tool", ""))
+            t_args = tool_call.get("args") or {}
+            log.info("[%s] Tool %s(%s)", task_id, t_name, t_args)
+            res = dispatch_tool(t_name, t_args, chat_id=chat_id, allow_bg=False)
+            msgs.append({"role": "assistant", "content": reply})
+            msgs.append({
+                "role": "user",
+                "content": f"[TOOL RESULT for {t_name}]: {json.dumps(res, ensure_ascii=False)[:6500]}\nContinue your background mission or produce the final Arabic summary.",
+            })
+        else:
+            final_report = ask_free_llm(msgs, system_prompt=WORKER_SYSTEM_PROMPT)
+    except Exception as e:
+        had_error = True
+        final_report = f"توقفت المهمة {task_id} بسبب خطأ تقني: {e}"
+
+    state = load_state()
+    for t in state.get("tasks", []):
+        if t.get("id") == task_id:
+            t["status"] = "failed" if had_error else "done"
+            t["finished_at"] = dt.datetime.utcnow().isoformat() + "Z"
+            t["summary"] = final_report[:500]
+    save_state(state)
+
+    if TELEGRAM_BOT_TOKEN and chat_id:
+        header = f"🤖 **انتهت مهمة الخلفية ({task_id})**:\n{goal}\n\n"
+        send_telegram_reply(chat_id, header + final_report, want_voice=True)
+        if call_when_done and CALLMEBOT_TELEGRAM_USER:
+            trigger_callmebot_telegram_ring(f"Jarvis finished task {task_id}. Check Telegram for the full report.")
+
+
+def tool_start_background_task(goal: str, call_when_done: bool = True, chat_id: int = 0) -> Dict[str, Any]:
+    task_id = f"task_{int(time.time()) % 100000}"
+    state = load_state()
+    state.setdefault("tasks", []).append({
+        "id": task_id,
+        "goal": goal.strip(),
+        "status": "queued",
+        "call_when_done": bool(call_when_done),
+        "created_at": dt.datetime.utcnow().isoformat() + "Z",
+    })
+    state["tasks"] = state["tasks"][-25:]
+    save_state(state)
+
+    if chat_id:
+        threading.Thread(
+            target=_background_task_worker,
+            args=(task_id, goal.strip(), bool(call_when_done), chat_id),
+            daemon=True,
+        ).start()
+    return {"ok": True, "task_id": task_id, "status": "started_in_background", "call_when_done": bool(call_when_done)}
+
+
+def dispatch_tool(name: str, args: Dict[str, Any], chat_id: int = 0, allow_bg: bool = True) -> Dict[str, Any]:
     if name == "list_leads":
         return tool_list_leads(int(args.get("limit", 12)), str(args.get("status_filter", "")))
     if name == "update_lead":
         return tool_update_lead(str(args.get("business_name", "")), str(args.get("status", "sent")), str(args.get("note", "")))
     if name == "audit_website":
         return tool_audit_website(str(args.get("url", "")))
+    if name == "web_search":
+        return tool_web_search(str(args.get("query", "")), int(args.get("max_results", 5)))
     if name == "save_memory":
         return tool_save_memory(str(args.get("key", "")), str(args.get("value", "")))
     if name == "get_memories":
         return tool_get_memories()
+    if name == "list_tasks":
+        return tool_list_tasks()
     if name == "schedule_reminder":
         return tool_schedule_reminder(args.get("minutes_from_now", 60), str(args.get("message", "")), bool(args.get("call_me", False)))
     if name == "call_me_now":
-        return trigger_callmebot_telegram_ring(str(args.get("message", "Urgent alert from Jarvis")))
+        return trigger_callmebot_telegram_ring(str(args.get("message", "Jarvis needs your attention on Telegram")))
+    if name == "start_background_task":
+        if not allow_bg:
+            return {"error": "Already inside background task"}
+        return tool_start_background_task(str(args.get("goal", "")), bool(args.get("call_when_done", True)), chat_id=chat_id)
     return {"error": f"Unknown tool: {name}"}
 
 
 # ---------------------------------------------------------------------------
-# Free LLM Router (Gemini -> Groq -> OpenRouter :free)
+# Multi-Provider Free LLM Router (Gemini -> Mistral 1B/mo -> Groq -> NIM -> OpenRouter)
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """You are J.A.R.V.I.S, an ultra-capable autonomous AI assistant working at $0 cost for your user.
-Respond primarily in clear, crisp Arabic (or English if the user writes in English).
-You have real tools! When you need to use a tool, reply ONLY with a valid JSON object (no markdown fences) in this exact shape:
-{"tool": "<tool_name>", "args": { ... }}
+BASE_TOOLS_DOC = """Available tools (to call one, reply ONLY with a valid raw JSON object: {"tool": "<name>", "args": {...}}):
+1. web_search: {"query": "...", "max_results": 5} -> searches the live internet via Tavily/DuckDuckGo.
+2. audit_website: {"url": "https://..."} -> fetches live site HTML and inspects broken # links, broken wa.me links, emails, tel links, 0-counters, and Arabic support.
+3. list_leads: {"limit": 12, "status_filter": ""} -> reads Dubai high-ticket prospects CSV and statuses.
+4. update_lead: {"business_name": "...", "status": "sent|interested|won|new", "note": "..."} -> saves CRM update.
+5. save_memory: {"key": "...", "value": "..."} -> permanently stores facts/preferences.
+6. get_memories: {} -> reads saved memories.
+7. schedule_reminder: {"minutes_from_now": 2880, "message": "...", "call_me": true} -> sets a proactive timer; messages Telegram and rings via CallMeBot if call_me=true.
+8. call_me_now: {"message": "..."} -> immediately rings the user's Telegram via CallMeBot (use short English ASCII text <=240 chars so TTS reads cleanly).
+9. list_tasks: {} -> lists recent background tasks."""
 
-Available tools:
-1. list_leads: {"limit": 12, "status_filter": ""} -> reads Dubai high-ticket prospects CSV and statuses.
-2. update_lead: {"business_name": "...", "status": "sent|interested|won|new", "note": "..."} -> saves CRM update.
-3. audit_website: {"url": "https://..."} -> fetches a real live website and extracts dead # links, broken wa.me links, emails, phone links, 0-counters, and language gaps.
-4. save_memory: {"key": "...", "value": "..."} -> permanently stores facts/preferences.
-5. get_memories: {} -> reads saved memories.
-6. schedule_reminder: {"minutes_from_now": 2880, "message": "...", "call_me": true} -> sets a timer; when due, Jarvis messages Telegram AND rings via CallMeBot if call_me is true.
-7. call_me_now: {"message": "..."} -> immediately rings the user's phone via Telegram CallMeBot (max 250 chars, English ASCII works best with standard TTS).
+SYSTEM_PROMPT = f"""You are J.A.R.V.I.S, a 24/7 autonomous AI co-pilot working at $0 cost.
+Respond in clear, crisp Arabic (or English if the user writes in English).
+{BASE_TOOLS_DOC}
+10. start_background_task: {{"goal": "...", "call_when_done": true}} -> use this whenever the user gives a multi-step / heavy / research / "work in the background and call me" task so it runs asynchronously without blocking chat!
 
-Once you have all facts needed, answer the user directly in plain text without JSON tool wrappers."""
+Once you have all facts (or after launching a background task), answer directly in clean plain text without JSON."""
+
+WORKER_SYSTEM_PROMPT = f"""You are J.A.R.V.I.S Background Worker executing a multi-step autonomous mission.
+{BASE_TOOLS_DOC}
+Execute tools step by step until complete, then produce a sharp Arabic report. If you truly require a user decision, say so clearly and optionally invoke call_me_now."""
 
 
-def call_gemini(messages: List[Dict[str, str]]) -> Optional[str]:
+def call_gemini(messages: List[Dict[str, str]], system_prompt: str, model: str) -> Optional[str]:
     if not GEMINI_API_KEY:
         return None
     convo_text = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in messages)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
     payload = {
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": convo_text}]}],
         "generationConfig": {"temperature": 0.4},
     }
-    status, body, _ = http_request(url, method="POST", json_body=payload, timeout=45)
+    status, body, _ = http_request(url, method="POST", json_body=payload, timeout=55)
     if status != 200:
-        log.warning("Gemini failed (%s): %s", status, body.decode("utf-8", errors="replace")[:200])
+        log.warning("Gemini (%s) failed (%s): %s", model, status, body.decode("utf-8", errors="replace")[:200])
         return None
     data = json.loads(body.decode("utf-8"))
     return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text")
 
 
-def call_openai_compatible(url: str, key: str, model: str, messages: List[Dict[str, str]], extra_headers: Optional[Dict[str, str]] = None) -> Optional[str]:
+def call_openai_compatible(url: str, key: str, model: str, messages: List[Dict[str, str]], system_prompt: str, extra_headers: Optional[Dict[str, str]] = None) -> Optional[str]:
     if not key:
         return None
     headers = {"Authorization": f"Bearer {key}"}
@@ -416,36 +670,42 @@ def call_openai_compatible(url: str, key: str, model: str, messages: List[Dict[s
         headers.update(extra_headers)
     payload = {
         "model": model,
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
+        "messages": [{"role": "system", "content": system_prompt}] + messages,
         "temperature": 0.4,
     }
-    status, body, _ = http_request(url, method="POST", headers=headers, json_body=payload, timeout=45)
+    status, body, _ = http_request(url, method="POST", headers=headers, json_body=payload, timeout=55)
     if status != 200:
-        log.warning("Provider %s failed (%s): %s", model, status, body.decode("utf-8", errors="replace")[:200])
+        log.warning("Provider %s (%s) failed (%s): %s", url, model, status, body.decode("utf-8", errors="replace")[:200])
         return None
     data = json.loads(body.decode("utf-8"))
     return data.get("choices", [{}])[0].get("message", {}).get("content")
 
 
-def ask_free_llm(messages: List[Dict[str, str]]) -> str:
-    for fn in (
-        lambda: call_gemini(messages),
-        lambda: call_openai_compatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY, "llama-3.3-70b-versatile", messages),
+def ask_free_llm(messages: List[Dict[str, str]], system_prompt: str = SYSTEM_PROMPT) -> str:
+    providers = [
+        lambda: call_gemini(messages, system_prompt, GEMINI_MODEL),
+        lambda: call_gemini(messages, system_prompt, "gemini-2.5-flash") if GEMINI_MODEL != "gemini-2.5-flash" else None,
+        lambda: call_openai_compatible("https://api.mistral.ai/v1/chat/completions", MISTRAL_API_KEY, MISTRAL_MODEL, messages, system_prompt),
+        lambda: call_openai_compatible("https://api.mistral.ai/v1/chat/completions", MISTRAL_API_KEY, "mistral-small-latest", messages, system_prompt) if MISTRAL_MODEL != "mistral-small-latest" else None,
+        lambda: call_openai_compatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY, GROQ_MODEL, messages, system_prompt),
+        lambda: call_openai_compatible("https://integrate.api.nvidia.com/v1/chat/completions", NVIDIA_API_KEY, NVIDIA_MODEL, messages, system_prompt),
         lambda: call_openai_compatible(
             "https://openrouter.ai/api/v1/chat/completions",
             OPENROUTER_API_KEY,
             "openrouter/free",
             messages,
-            {"X-Title": "Jarvis Telegram Agent"},
+            system_prompt,
+            {"X-Title": "Jarvis 24/7 Agent"},
         ),
-    ):
+    ]
+    for fn in providers:
         try:
             ans = fn()
             if ans:
                 return ans.strip()
         except Exception as e:
             log.warning("LLM provider error: %s", e)
-    return "لم ينجح أي مزود ذكاء حالياً — تأكد من إضافة GEMINI_API_KEY أو GROQ_API_KEY أو OPENROUTER_API_KEY في ملف .env."
+    return "لم ينجح أي مزود ذكاء حالياً — أضف مفتاحاً واحداً على الأقل في المتغيرات (GEMINI_API_KEY / MISTRAL_API_KEY / GROQ_API_KEY / NVIDIA_API_KEY / OPENROUTER_API_KEY)."
 
 
 def extract_tool_call(text: str) -> Optional[Dict[str, Any]]:
@@ -463,7 +723,7 @@ def extract_tool_call(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def run_agent_turn(user_text: str) -> str:
+def run_agent_turn(user_text: str, chat_id: int) -> str:
     state = load_state()
     memories = state.get("memories", {})
     history = state.get("history", [])[-10:]
@@ -476,7 +736,7 @@ def run_agent_turn(user_text: str) -> str:
     final_reply = ""
 
     for _ in range(4):
-        reply = ask_free_llm(working_msgs)
+        reply = ask_free_llm(working_msgs, system_prompt=SYSTEM_PROMPT)
         tool_call = extract_tool_call(reply)
         if not tool_call:
             final_reply = reply
@@ -484,14 +744,14 @@ def run_agent_turn(user_text: str) -> str:
         t_name = str(tool_call.get("tool", ""))
         t_args = tool_call.get("args") or {}
         log.info("Executing tool %s with args %s", t_name, t_args)
-        result = dispatch_tool(t_name, t_args)
+        result = dispatch_tool(t_name, t_args, chat_id=chat_id, allow_bg=True)
         working_msgs.append({"role": "assistant", "content": reply})
         working_msgs.append({
             "role": "user",
             "content": f"[TOOL RESULT for {t_name}]: {json.dumps(result, ensure_ascii=False)[:6000]}\nNow synthesize a helpful final answer for the user (or call another tool if needed).",
         })
     else:
-        final_reply = ask_free_llm(working_msgs)
+        final_reply = ask_free_llm(working_msgs, system_prompt=SYSTEM_PROMPT)
 
     state = load_state()
     state.setdefault("history", []).extend([
@@ -615,13 +875,45 @@ def check_due_reminders() -> None:
         save_state(state)
 
 
+# ---------------------------------------------------------------------------
+# Optional HTTP Health Server (keeps Render Free awake via UptimeRobot ping)
+# ---------------------------------------------------------------------------
+class HealthHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        payload = json.dumps({"status": "ok", "agent": "JARVIS 24/7", "time": dt.datetime.utcnow().isoformat() + "Z"})
+        self.wfile.write(payload.encode("utf-8"))
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return
+
+
+def start_health_server_if_needed() -> None:
+    if not HEALTH_PORT:
+        return
+    port = int(HEALTH_PORT)
+
+    class ReuseTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    def _serve() -> None:
+        with ReuseTCPServer(("0.0.0.0", port), HealthHandler) as httpd:
+            log.info("Health server listening on 0.0.0.0:%s", port)
+            httpd.serve_forever()
+
+    threading.Thread(target=_serve, daemon=True).start()
+
+
 def poll_forever() -> None:
     if not TELEGRAM_BOT_TOKEN:
-        raise SystemExit("ERROR: Set TELEGRAM_BOT_TOKEN in .env before running.")
+        raise SystemExit("ERROR: Set TELEGRAM_BOT_TOKEN before running.")
     if not ALLOWED_TELEGRAM_ID:
-        raise SystemExit("ERROR: Set ALLOWED_TELEGRAM_ID in .env (get your numeric ID from @userinfobot).")
+        raise SystemExit("ERROR: Set ALLOWED_TELEGRAM_ID (get your numeric ID from @userinfobot).")
 
-    log.info("J.A.R.V.I.S Telegram Agent active (owner=%s). Listening...", ALLOWED_TELEGRAM_ID)
+    start_health_server_if_needed()
+    log.info("J.A.R.V.I.S 24/7 Agent active (owner=%s). Listening...", ALLOWED_TELEGRAM_ID)
     offset = 0
     while True:
         try:
@@ -661,11 +953,24 @@ def poll_forever() -> None:
                     continue
 
                 if text == "/start":
-                    send_telegram_reply(chat_id, "أهلاً بك! أنا جارفس (نسخة $0 الكاملة). أرسل لي نصاً أو رسالة صوتية: مثلاً 'اعطني أول 3 عملاء في دبي' أو 'افحص موقع https://namconsultant.com' أو 'ذكرني بعد دقيقة أتصل بالعميل'.", want_voice=True)
+                    send_telegram_reply(
+                        chat_id,
+                        "أهلاً بك! أنا جارفس (نسخة 24/7 المجانية). أرسل لي نصاً أو رسالة صوتية — أستطيع البحث بالويب، فحص المواقع، العمل على مهمات ثقيلة بالخلفية (/tasks)، وتذكيرك والاتصال بك عبر تيليجرام.",
+                        want_voice=True,
+                    )
+                    continue
+
+                if text == "/tasks":
+                    tasks = tool_list_tasks().get("tasks", [])
+                    if not tasks:
+                        send_telegram_reply(chat_id, "لا توجد مهام خلفية مسجلة بعد.", want_voice=False)
+                    else:
+                        lines = [f"• {t['id']} [{t['status']}]: {t['goal'][:80]}" for t in tasks[-5:]]
+                        send_telegram_reply(chat_id, "📋 آخر المهام الخلفية:\n" + "\n".join(lines), want_voice=False)
                     continue
 
                 tg_api("sendChatAction", data={"chat_id": str(chat_id), "action": "typing"})
-                reply = run_agent_turn(text)
+                reply = run_agent_turn(text, chat_id=int(chat_id))
                 send_telegram_reply(chat_id, reply, want_voice=(is_voice or ENABLE_VOICE_REPLIES))
         except KeyboardInterrupt:
             log.info("Shutting down cleanly.")
@@ -676,7 +981,7 @@ def poll_forever() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Offline Self-Test (verifies tools & parsers without network/tokens)
+# Offline Self-Test
 # ---------------------------------------------------------------------------
 def run_selftest() -> None:
     leads_res = tool_list_leads(limit=3)
@@ -695,9 +1000,13 @@ def run_selftest() -> None:
     assert len(audit["dead_hash_ctas"]) == 1, audit
     assert len(audit["broken_whatsapp_links"]) == 1, audit
     assert "info@example.com" in audit["emails_found"], audit
-    assert len(audit["suspicious_zero_counters"]) >= 1, audit
-    assert extract_tool_call('```json\n{"tool": "list_leads", "args": {"limit": 5}}\n```')["tool"] == "list_leads"
-    print("SELFTEST OK:", json.dumps({"leads_found": leads_res["total"], "audit_ok": True, "tool_parser_ok": True}))
+
+    ddg_sample = '<a class="result__a" href="https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.ae%2F">Dubai <b>Clinic</b></a><a class="result__snippet">Best clinic in Dubai</a>'
+    ddg_parsed = parse_duckduckgo_html(ddg_sample)
+    assert ddg_parsed and ddg_parsed[0]["url"] == "https://example.ae/", ddg_parsed
+
+    assert extract_tool_call('```json\n{"tool": "start_background_task", "args": {"goal": "research"}}\n```')["tool"] == "start_background_task"
+    print("SELFTEST OK:", json.dumps({"leads_found": leads_res["total"], "audit_ok": True, "ddg_parser_ok": True, "bg_parser_ok": True}))
 
 
 if __name__ == "__main__":

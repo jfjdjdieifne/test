@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: jarvis-24-7-agent
+    runtime: python
+    plan: free
+    rootDir: agency/jarvis-stack
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 jarvis_telegram_agent.py
+    healthCheckPath: /health
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ALLOWED_TELEGRAM_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: CALLMEBOT_TELEGRAM_USER
+        sync: false
+      - key: GITHUB_GIST_ID
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
