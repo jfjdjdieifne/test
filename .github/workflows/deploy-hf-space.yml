@@ -1,0 +1,61 @@
+name: Deploy Arena Bridge to Hugging Face Space
+
+# ينشئ/يحدّث Space على Hugging Face ويرفع ملفات الجسر — كله من الآيفون، بلا تيرمنال.
+#
+# المطلوب مرة واحدة (من Safari):
+#   1) huggingface.co/settings/tokens → New token (نوع Write) → انسخه
+#   2) GitHub → Settings → Secrets and variables → Actions → New repository secret:
+#        HF_TOKEN        = التوكن
+#        BRIDGE_API_KEY  = مفتاح طويل من اختيارك (نفسه بتحطه بتيليجرام)
+#   3) تبويب Actions → "Deploy Arena Bridge to Hugging Face Space" → Run workflow
+
+on:
+  push:
+    branches:
+      - "arena/5e774d94-test"
+  workflow_dispatch:
+    inputs:
+      space_name:
+        description: "اسم الـ Space (افتراضي jarvis-arena-bridge)"
+        required: false
+        default: "jarvis-arena-bridge"
+      browser:
+        description: "ضمّن chromium لرفع فرص نجاح gpt4free (true/false)"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hf-space-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install huggingface_hub
+        run: pip install --quiet "huggingface_hub>=0.23"
+
+      - name: Create/update Space + upload bridge files
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          BRIDGE_API_KEY: ${{ secrets.BRIDGE_API_KEY }}
+          SPACE_NAME: ${{ inputs.space_name || 'jarvis-arena-bridge' }}
+          WITH_BROWSER: ${{ inputs.browser || 'true' }}
+        run: python arena-bridge/deploy/hf_deploy.py
+
+      - name: ماذا بعد؟
+        if: always()
+        run: |
+          echo "افتح تبويب Summary فوق لرؤية رابط الـ Space وأوامر تيليجرام."
+          echo "أول بناء على Hugging Face ياخد ٣–٧ دقائق."
