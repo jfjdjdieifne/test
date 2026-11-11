@@ -2,6 +2,11 @@ name = "jarvis-24-7"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 workers_dev = true
+compatibility_flags = ["nodejs_compat"]
+
+# Chromium مُدار من Cloudflare — يشغّل Arena مباشرة بلا Hugging Face/Render.
+[browser]
+binding = "BROWSER"
 
 # =====================================================
 # الذاكرة (KV) تُربط من لوحة Cloudflare — لا تُكتب هنا:

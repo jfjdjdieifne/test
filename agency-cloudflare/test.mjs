@@ -578,5 +578,13 @@ await t("40) /chats و/progress يعرضان المساحات والتقدم", a
   assert.ok(out.includes("آخر سياق"));
 });
 
-console.log(`\n${passed}/40 اختبارات ناجحة`);
+await t("41) Browser Rendering يفعّل Arena بلا رابط جسر", async () => {
+  const env = { ...makeEnv(), BROWSER: { binding: "mock" } };
+  await runWebhook(env, makeCtx(), tgUpdate("/arena"));
+  const out = sentTexts().join("\n");
+  assert.ok(out.includes("Cloudflare Browser Rendering"), "ما ظهر محرك المتصفح");
+  assert.ok(out.includes("Chromium داخل Cloudflare"), "ما ظهر التشغيل بلا سيرفر");
+});
+
+console.log(`\n${passed}/41 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

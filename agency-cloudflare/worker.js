@@ -1,4 +1,5 @@
 import CALL_PAGE from "./callpage.mjs";
+import puppeteer from "@cloudflare/puppeteer";
 /**
  * J.A.R.V.I.S — Telegram Agent on Cloudflare Workers
  * ----------------------------------------------------
@@ -421,7 +422,59 @@ async function arenaCfg(env) {
   const kvKey = await kvGet(env, "arena_key", null);
   const base = String(kvUrl || envCfg.base || "").trim().replace(/\/+$/, "");
   const key = String(kvKey || envCfg.key || "").trim();
-  return { base, key, enabled: !!base, url: base ? base + "/v1/chat/completions" : "" };
+  return { base, key, browser: !!(env && env.BROWSER), enabled: !!base || !!(env && env.BROWSER), url: base ? base + "/v1/chat/completions" : "" };
+}
+
+function parseArenaDataStream(raw) {
+  const chunks = [];
+  for (const line of String(raw || "").split(/\r?\n/)) {
+    if (!line.startsWith("a0:")) continue;
+    try { const value = JSON.parse(line.slice(3)); if (typeof value === "string" && value !== "hasArenaError") chunks.push(value); } catch {}
+  }
+  return chunks.join("").trim();
+}
+
+/** Arena بلا سيرفر: Chromium مُدار من Cloudflare Browser Rendering.
+ * نستخدم واجهة Arena الحقيقية، لذلك الصفحة نفسها تنشئ reCAPTCHA والجلسة؛ ثم نحفظ
+ * cookies في KV ليستمر تسجيل الدخول بين تشغيل وآخر. */
+async function callArenaBrowser(convo, system, env) {
+  if (!env || !env.BROWSER) return null;
+  if (!(await arenaIsOn(env)) || await arenaInCooldown(env)) return null;
+  let browser;
+  try {
+    browser = await puppeteer.launch(env.BROWSER, { keep_alive: 60000 });
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    const saved = await kvGet(env, "arena_browser_cookies", []);
+    if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
+    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForSelector('textarea[name="message"]', { timeout: 20000 });
+    const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
+    const responsePromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Arena stream timeout")), 55000);
+      page.on("response", async (response) => {
+        if (!/\/nextjs-api\/stream\/(create|post)-to-evaluation/.test(response.url())) return;
+        try { const body = await response.text(); clearTimeout(timer); resolve(body); }
+        catch (e) { clearTimeout(timer); reject(e); }
+      });
+    });
+    const box = await page.$('textarea[name="message"]');
+    await box.click();
+    await box.type(prompt, { delay: 1 });
+    await page.keyboard.press("Enter");
+    const raw = await responsePromise;
+    const text = parseArenaDataStream(raw);
+    try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
+    if (!text) throw new Error("Arena browser returned an empty stream");
+    await arenaMarkUp(env);
+    await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: text.length });
+    return text;
+  } catch (e) {
+    console.log("arena browser error:", e && e.message ? e.message : e);
+    await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: String(e && e.message ? e.message : e).slice(0, 300) });
+    await arenaMarkDown(env, 60000);
+    return null;
+  } finally { if (browser) { try { await browser.close(); } catch {} } }
 }
 
 function arenaBridgeHeaders(cfg) {
@@ -510,6 +563,7 @@ async function arenaMarkUp(env) {
 async function callArenaBridge(convo, system, env, modelOverride) {
   const cfg = await arenaCfg(env);
   if (!cfg.enabled) return null;
+  if (!cfg.base && cfg.browser) return await callArenaBrowser(convo, system, env);
   try {
     if (!(await arenaIsOn(env))) return null;
     if (await arenaInCooldown(env)) return null;
@@ -561,7 +615,12 @@ async function arenaWake(env, attempts = 5, gapMs = 5000) {
 
 async function arenaBridgeHealth(env) {
   const cfg = await arenaCfg(env);
-  if (!cfg.enabled) return { ok: false, reason: "ARENA_BRIDGE_URL غير مضبوط" };
+  if (!cfg.enabled) return { ok: false, reason: "لا يوجد جسر ولا Browser Rendering" };
+  if (!cfg.base && cfg.browser) {
+    const ok = await kvGet(env, "arena_browser_last_ok", null);
+    const err = await kvGet(env, "arena_browser_last_error", null);
+    return { ok: true, data: { engine: "cloudflare-browser-rendering", ready: true, last_ok: ok, last_error: err } };
+  }
   try {
     const res = await fetch(cfg.base + "/health", {
       method: "GET",
@@ -596,6 +655,10 @@ async function arenaBridgeModels(env) {
 async function arenaSelftest(env, deep) {
   const cfg = await arenaCfg(env);
   if (!cfg.enabled) return null;
+  if (!cfg.base && cfg.browser) {
+    const answer = deep ? await callArenaBrowser([{ role: "user", content: "رد بكلمة OK فقط" }], "اختبار اتصال قصير", env) : null;
+    return { ok: deep ? !!answer : true, engines: [{ name: "cloudflare-browser-rendering", ready: true, ok: deep ? !!answer : true, ms: 0, sample: answer ? answer.slice(0, 80) : "Chromium binding ready", error: answer || !deep ? "" : "Arena لم يرجع جواباً" }] };
+  }
   try {
     const url = cfg.base + "/arena/selftest" + (deep ? "?deep=1" : "");
     const res = await fetch(url, {
@@ -1669,9 +1732,9 @@ async function handleCommand(text, env, chatId) {
         let models = [];
         if (on) models = await arenaBridgeModels(env);
         const lines = [
-          "🌉 جسر LMArena (gpt4free + LMArenaBridge)",
+          cfg.browser && !cfg.base ? "🌐 Arena عبر Cloudflare Browser Rendering" : "🌉 جسر LMArena (gpt4free + LMArenaBridge)",
           "الحالة: " + (on ? "🟢 شغال" : "⏸️ موقوف") + " | النموذج: " + cur,
-          "العنوان: " + cfg.base + (kvUrl ? "  (محفوظ من تيليجرام)" : ""),
+          cfg.browser && !cfg.base ? "التشغيل: Chromium داخل Cloudflare (بلا سيرفر خارجي)" : "العنوان: " + cfg.base + (kvUrl ? "  (محفوظ من تيليجرام)" : ""),
           "الأولوية: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_FIRST || "")) ? "قبل كل المزودين" : "بعد المزودين مع مفتاح"),
           "المحرك: " + (await arenaIsPrimary(env) ? "⭐ أساسي (قبل كل المزودين)" : "احتياطي بعد المزودين"),
           "Keep-alive: " + (arenaKeepAliveOn(env, cfg.base) ? "مفعّل (كل 10 دقائق)" : "موقوف"),

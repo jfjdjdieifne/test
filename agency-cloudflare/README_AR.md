@@ -6,6 +6,25 @@
 
 ---
 
+## ⭐ Arena مباشرة عبر Cloudflare Browser Rendering
+
+لم يعد Jarvis يحتاج Hugging Face أو Render لتشغيل Arena. الربط `BROWSER` في `wrangler.toml` يشغّل Chromium مُداراً داخل Cloudflare عند وصول السؤال فقط؛ الصفحة الحقيقية في `arena.ai/text/direct` تنشئ الجلسة وreCAPTCHA، ويحفظ Jarvis cookies في KV.
+
+بعد النشر أرسل في تيليجرام:
+
+```text
+/arena on
+/arena primary
+/arena test
+/arena_ask مرحبا، عرفني عن نفسك
+```
+
+إذا نجح الاختبار، تمر الرسائل العادية على Arena أولاً مع سياق المشروع المحفوظ. إذا انتهت حصة Browser Rendering أو رفضت Arena الطلب، ينتقل Jarvis تلقائياً إلى المزودات الاحتياطية ولا يتوقف.
+
+> Browser Rendering له حصة حسب خطة Cloudflare وليس غير محدود. يُغلق المتصفح بعد كل رد لتقليل الاستهلاك، ولا تحتاج `ARENA_BRIDGE_URL` بوجود binding باسم `BROWSER`.
+
+---
+
 ## ما تحتاجه قبل البدء (5 دقائق)
 
 | المطلوب | من أين | ملاحظة |
