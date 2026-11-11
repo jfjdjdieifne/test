@@ -10,9 +10,6 @@ name: Deploy Arena Bridge to Hugging Face Space
 #   3) تبويب Actions → "Deploy Arena Bridge to Hugging Face Space" → Run workflow
 
 on:
-  push:
-    branches:
-      - "arena/5e774d94-test"
   workflow_dispatch:
     inputs:
       space_name:
