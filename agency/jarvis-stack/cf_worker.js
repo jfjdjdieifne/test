@@ -807,7 +807,7 @@ function renderSetupHtml(env, origin) {
   <p>الخادم يعمل الآن 24/7 بدون توقف على: <code>${escapeHtml(origin)}</code></p>
   <table><thead><tr><th>المتغير</th><th>الحالة</th><th>المصدر</th></tr></thead><tbody>${rows}</tbody></table>
   <h3>خطوة الربط النهائية لتيليجرام (ضغطة واحدة):</h3>
-  <p>بعد إضافة <code>TELEGRAM_BOT_TOKEN</code> و <code>ALLOWED_TELEGRAM_ID</code> ومفتاح ذكاء واحد على الأقل من إعدادات Cloudflare (Settings → Variables and Secrets)، أدخل رقم حسابك هنا واضغط الزر:</p>
+  <p>من لوحة Cloudflare لمشروع <code>jarvis-24-7</code> افتح <b>Settings → Variables and Secrets → Add</b> وأضف <code>TELEGRAM_BOT_TOKEN</code> و <code>ALLOWED_TELEGRAM_ID</code> ومفتاح ذكاء واحد على الأقل (<code>GEMINI_API_KEY</code> أو <code>MISTRAL_API_KEY</code> أو <code>GROQ_API_KEY</code>) ثم اضغط Deploy. بعدها أدخل رقم حسابك هنا واضغط الزر:</p>
   <div class="row">
     <input id="tgId" placeholder="رقم Telegram ID (من @userinfobot)" />
     <button class="btn" onclick="bindBot()">🔗 ربط بوت تيليجرام الآن</button>
@@ -839,7 +839,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/health") {
+    if (url.pathname === "/health" || url.pathname === "/api/health") {
       return Response.json({
         ok: true,
         status: "ok",
