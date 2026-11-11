@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>📞 J.A.R.V.I.S Live Voice Call ($0)</title>
+  <style>
+    :root {
+      --bg: #050b14;
+      --card: #0c1726;
+      --border: #1d3557;
+      --cyan: #38bdf8;
+      --green: #22c55e;
+      --red: #ef4444;
+      --gold: #fbbf24;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background: radial-gradient(circle at 50% 15%, #0e2440 0%, var(--bg) 65%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 16px 24px;
+    }
+    .topbar {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .pill {
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--cyan);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .link-btn {
+      color: var(--muted);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      background: var(--card);
+    }
+    .center-stage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin: 14px 0;
+      width: 100%;
+      max-width: 560px;
+    }
+    .orb-wrap {
+      position: relative;
+      width: 170px;
+      height: 170px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .orb {
+      width: 136px;
+      height: 136px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #7dd3fc, #0284c7 55%, #07192f 100%);
+      box-shadow: 0 0 42px rgba(56, 189, 248, 0.45), inset 0 0 24px rgba(255, 255, 255, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 46px;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+      cursor: pointer;
+      border: 2px solid rgba(125, 211, 252, 0.6);
+    }
+    .orb.listening {
+      animation: pulseListen 1.5s infinite ease-in-out;
+      box-shadow: 0 0 58px rgba(34, 197, 94, 0.7), inset 0 0 28px rgba(255, 255, 255, 0.35);
+      background: radial-gradient(circle at 35% 30%, #86efac, #16a34a 55%, #052e16 100%);
+    }
+    .orb.speaking {
+      animation: pulseSpeak 0.9s infinite ease-in-out;
+      box-shadow: 0 0 64px rgba(56, 189, 248, 0.9), inset 0 0 32px rgba(255, 255, 255, 0.45);
+    }
+    @keyframes pulseListen {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.07); }
+    }
+    @keyframes pulseSpeak {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.11); }
+    }
+    h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.5px; }
+    .status { color: var(--cyan); font-size: 14px; font-weight: 600; min-height: 22px; }
+    .timer { color: var(--muted); font-family: monospace; font-size: 14px; margin-top: 4px; }
+
+    .transcript {
+      width: 100%;
+      max-width: 560px;
+      flex: 1;
+      min-height: 150px;
+      max-height: 36dvh;
+      overflow-y: auto;
+      background: rgba(12, 23, 38, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      margin: 12px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .msg {
+      padding: 9px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      max-width: 88%;
+      white-space: pre-wrap;
+    }
+    .msg.user { background: #163252; align-self: flex-start; border: 1px solid #264e7a; }
+    .msg.jarvis { background: #0f2521; align-self: flex-end; border: 1px solid #1e4d41; color: #dcfce7; }
+    .msg.sys { background: transparent; color: var(--muted); font-size: 12px; align-self: center; text-align: center; }
+
+    .controls {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      align-items: center;
+    }
+    .call-btn {
+      flex: 1;
+      max-width: 240px;
+      border: 0;
+      border-radius: 999px;
+      padding: 15px 20px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn-start { background: var(--green); color: #03220d; }
+    .btn-end { background: var(--red); color: #fff; display: none; }
+    .btn-mute { background: var(--card); color: var(--text); border: 1px solid var(--border); max-width: 140px; display: none; }
+
+    .text-bar {
+      display: flex;
+      gap: 8px;
+    }
+    .text-bar input {
+      flex: 1;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 11px 12px;
+      font-size: 14px;
+    }
+    .text-bar button {
+      background: var(--cyan);
+      color: #031525;
+      border: 0;
+      border-radius: 12px;
+      padding: 0 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .key-box {
+      width: 100%;
+      max-width: 560px;
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #fde68a;
+      display: none;
+      margin-top: 6px;
+    }
+    .key-box input {
+      width: 100%;
+      margin-top: 6px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #07111e;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <span class="pill" id="modeBadge">J.A.R.V.I.S Voice Call</span>
+    <div style="display:flex;gap:6px;">
+      <a class="link-btn" href="./jarvis.html">💬 الشات</a>
+      <a class="link-btn" href="./index.html">📊 العملاء</a>
+    </div>
+  </div>
+
+  <div class="center-stage">
+    <div class="orb-wrap">
+      <div class="orb" id="orbBtn" title="اضغط لبدء المكالمة">📞</div>
+    </div>
+    <h1>J.A.R.V.I.S — مكالمة حية</h1>
+    <div class="status" id="statusTxt">اضغط «بدء المكالمة» للتحدث مباشرة بالصوت</div>
+    <div class="timer" id="timerTxt">00:00</div>
+
+    <div class="key-box" id="manualKeyBox">
+      <div>ملاحظة: لربط المكالمة مباشرة بسحابة Cloudflare بدون إدخال مفاتيح، افتح بوتك على تيليجرام وأرسل <b>/call</b>. أو أدخل مفتاح Gemini المجاني هنا مؤقتاً على جهازك:</div>
+      <input type="password" id="localGeminiKey" placeholder="AIza... (اختياري للاستخدام المحلي فقط)" />
+    </div>
+  </div>
+
+  <div class="transcript" id="logBox">
+    <div class="msg sys">جاهز للمكالمة الصوتية الثنائية بتكلفة $0 — تقدر تقاطع جارفس في أي لحظة أثناء كلامه.</div>
+  </div>
+
+  <div class="controls">
+    <div class="btn-row">
+      <button class="call-btn btn-start" id="startBtn">📞 بدء المكالمة</button>
+      <button class="call-btn btn-mute" id="muteBtn">🎙️ كتم</button>
+      <button class="call-btn btn-end" id="endBtn">📵 إنهاء</button>
+    </div>
+    <form class="text-bar" id="sendForm">
+      <input id="textInput" placeholder="أو اكتب رسالة سريعة أثناء المكالمة..." />
+      <button type="submit">إرسال</button>
+    </form>
+  </div>
+
+  <script>
+    const hashParams = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+    const queryParams = new URLSearchParams(location.search);
+    const sessionToken = hashParams.get('st') || queryParams.get('st') || '';
+    const initialTopic = queryParams.get('topic') || hashParams.get('topic') || '';
+
+    const orbBtn = document.getElementById('orbBtn');
+    const statusTxt = document.getElementById('statusTxt');
+    const timerTxt = document.getElementById('timerTxt');
+    const modeBadge = document.getElementById('modeBadge');
+    const logBox = document.getElementById('logBox');
+    const startBtn = document.getElementById('startBtn');
+    const endBtn = document.getElementById('endBtn');
+    const muteBtn = document.getElementById('muteBtn');
+    const manualKeyBox = document.getElementById('manualKeyBox');
+    const localGeminiKeyEl = document.getElementById('localGeminiKey');
+
+    localGeminiKeyEl.value = localStorage.getItem('jarvis_live_key') || '';
+    localGeminiKeyEl.addEventListener('change', () => {
+      localStorage.setItem('jarvis_live_key', localGeminiKeyEl.value.trim());
+    });
+
+    if (!sessionToken) {
+      manualKeyBox.style.display = 'block';
+    }
+
+    let ws = null;
+    let audioCtx = null;
+    let micStream = null;
+    let processorNode = null;
+    let isMuted = false;
+    let callActive = false;
+    let callStartMs = 0;
+    let timerIv = null;
+    let nextPlayTime = 0;
+    let activeSources = [];
+    let fallbackRecog = null;
+
+    function addLog(role, text) {
+      if (!text || !text.trim()) return;
+      const div = document.createElement('div');
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      logBox.appendChild(div);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function updateTimer() {
+      const s = Math.floor((Date.now() - callStartMs) / 1000);
+      const mm = String(Math.floor(s / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      timerTxt.textContent = `${mm}:${ss}`;
+    }
+
+    function stopAllPlayback() {
+      for (const src of activeSources) {
+        try { src.stop(); } catch {}
+      }
+      activeSources = [];
+      if (audioCtx) nextPlayTime = audioCtx.currentTime;
+    }
+
+    function playPcm24kBase64(b64) {
+      if (!audioCtx) return;
+      const bin = atob(b64);
+      const len = bin.length / 2;
+      const buf = audioCtx.createBuffer(1, len, 24000);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        const lo = bin.charCodeAt(i * 2);
+        const hi = bin.charCodeAt(i * 2 + 1);
+        let val = (hi << 8) | lo;
+        if (val >= 0x8000) val -= 0x10000;
+        ch[i] = val / 32768;
+      }
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+      const now = audioCtx.currentTime;
+      if (nextPlayTime < now) nextPlayTime = now + 0.02;
+      src.start(nextPlayTime);
+      nextPlayTime += buf.duration;
+      activeSources.push(src);
+      orbBtn.classList.add('speaking');
+      src.onended = () => {
+        activeSources = activeSources.filter((s) => s !== src);
+        if (!activeSources.length && callActive) {
+          orbBtn.classList.remove('speaking');
+          orbBtn.classList.add('listening');
+        }
+      };
+    }
+
+    function floatTo16kPcmBase64(float32, inputRate) {
+      const targetRate = 16000;
+      let samples = float32;
+      if (inputRate !== targetRate) {
+        const ratio = inputRate / targetRate;
+        const newLen = Math.floor(float32.length / ratio);
+        const out = new Float32Array(newLen);
+        for (let i = 0; i < newLen; i++) {
+          out[i] = float32[Math.floor(i * ratio)] || 0;
+        }
+        samples = out;
+      }
+      const bytes = new Uint8Array(samples.length * 2);
+      for (let i = 0; i < samples.length; i++) {
+        const clamped = Math.max(-1, Math.min(1, samples[i]));
+        const int16 = clamped < 0 ? clamped * 0x8000 : clamped * 0x7FFF;
+        bytes[i * 2] = int16 & 0xFF;
+        bytes[i * 2 + 1] = (int16 >> 8) & 0xFF;
+      }
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 4096) {
+        bin += String.fromCharCode(...bytes.subarray(i, i + 4096));
+      }
+      return btoa(bin);
+    }
+
+    async function executeCallTool(name, args) {
+      if (!sessionToken) {
+        return { error: 'Tool execution requires opening via Telegram /call link.' };
+      }
+      const r = await fetch('/api/call-tool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_token: sessionToken, tool: name, args }),
+      });
+      return await r.json();
+    }
+
+    async function startGeminiLive(wsUrl, modelName) {
+      modeBadge.textContent = `Live: ${modelName}`;
+      statusTxt.textContent = 'جاري الاتصال بصوت جارفس المباشر...';
+
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        statusTxt.textContent = 'متصل! تكلّم الآن مباشرة (تقدر تقاطعه بأي وقت)';
+        orbBtn.classList.add('listening');
+        const toolDecls = sessionToken ? [
+          {
+            name: 'web_search',
+            description: 'Search the live internet for fresh info, companies, or prices.',
+            parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }
+          },
+          {
+            name: 'audit_website',
+            description: 'Fetch and audit a website URL for dead # links, broken WhatsApp links, and missing Arabic.',
+            parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] }
+          },
+          {
+            name: 'list_leads',
+            description: 'Read Dubai high-ticket B2B agency leads CSV.',
+            parameters: { type: 'object', properties: { limit: { type: 'number' } }, required: [] }
+          },
+          {
+            name: 'dispatch_heavy_mission',
+            description: 'Launch an autonomous Linux GitHub Actions worker to build files/websites or deep research and notify Telegram.',
+            parameters: { type: 'object', properties: { mission: { type: 'string' } }, required: ['mission'] }
+          }
+        ] : [];
+
+        const setup = {
+          setup: {
+            model: `models/${modelName}`,
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } }
+            },
+            systemInstruction: {
+              parts: [{ text: 'You are J.A.R.V.I.S, a sharp, warm, proactive Arabic & English voice assistant. Keep spoken answers concise and natural like a real phone call. Use Arabic primarily unless spoken to in English.' + (initialTopic ? ` Current urgent topic to brief the user on: ${initialTopic}` : '') }]
+            },
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
+            ...(toolDecls.length ? { tools: [{ functionDeclarations: toolDecls }] } : {})
+          }
+        };
+        ws.send(JSON.stringify(setup));
+      };
+
+      ws.onmessage = async (ev) => {
+        let raw = ev.data;
+        if (raw instanceof Blob) raw = await raw.text();
+        let data;
+        try { data = JSON.parse(raw); } catch { return; }
+
+        if (data.setupComplete && initialTopic) {
+          ws.send(JSON.stringify({
+            clientContent: {
+              turns: [{ role: 'user', parts: [{ text: `ابدأ المكالمة الآن واختصر لي هذا الموضوع: ${initialTopic}` }] }],
+              turnComplete: true
+            }
+          }));
+        }
+
+        if (data.toolCall?.functionCalls) {
+          const responses = [];
+          for (const fc of data.toolCall.functionCalls) {
+            addLog('sys', `⚙️ ينفذ جارفس: ${fc.name}...`);
+            const res = await executeCallTool(fc.name, fc.args || {});
+            responses.push({ id: fc.id, name: fc.name, response: { output: res } });
+          }
+          ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+          return;
+        }
+
+        const sc = data.serverContent;
+        if (!sc) return;
+        if (sc.interrupted) {
+          stopAllPlayback();
+          orbBtn.classList.remove('speaking');
+          orbBtn.classList.add('listening');
+        }
+        if (sc.inputTranscription?.text) {
+          addLog('user', sc.inputTranscription.text);
+        }
+        if (sc.outputTranscription?.text) {
+          addLog('jarvis', sc.outputTranscription.text);
+        }
+        const parts = sc.modelTurn?.parts || [];
+        for (const p of parts) {
+          if (p.inlineData?.data) {
+            playPcm24kBase64(p.inlineData.data);
+          }
+        }
+      };
+
+      ws.onclose = (ev) => {
+        if (callActive) {
+          addLog('sys', `انقطع اتصال Gemini Live (${ev.code}) — جاري التحويل التلقائي لوضع الرد السريع...`);
+          ws = null;
+          startFallbackVoiceLoop();
+        }
+      };
+
+      // Mic stream -> 16kHz PCM
+      const source = audioCtx.createMediaStreamSource(micStream);
+      processorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorNode.onaudioprocess = (e) => {
+        if (!callActive || isMuted || !ws || ws.readyState !== WebSocket.OPEN) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const b64 = floatTo16kPcmBase64(input, audioCtx.sampleRate);
+        ws.send(JSON.stringify({ realtimeInput: { audio: { mimeType: 'audio/pcm;rate=16000', data: b64 } } }));
+      };
+      source.connect(processorNode);
+      processorNode.connect(audioCtx.destination);
+    }
+
+    function speakTextFallback(text) {
+      if (!('speechSynthesis' in window)) return;
+      try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, '').slice(0, 380));
+        u.lang = /[\u0600-\u06FF]/.test(text) ? 'ar-SA' : 'en-US';
+        u.onstart = () => orbBtn.classList.add('speaking');
+        u.onend = () => {
+          orbBtn.classList.remove('speaking');
+          if (callActive && fallbackRecog) { try { fallbackRecog.start(); } catch {} }
+        };
+        window.speechSynthesis.speak(u);
+      } catch {}
+    }
+
+    async function sendVoiceTurnText(text) {
+      addLog('user', text);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } }));
+        return;
+      }
+      if (!sessionToken) {
+        addLog('sys', 'أرسل /call لبوتك في تيليجرام لتفعيل وضع السحابة الاحتياطي.');
+        return;
+      }
+      statusTxt.textContent = 'جارفس يفكر...';
+      const r = await fetch('/api/voice-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_token: sessionToken, text }),
+      });
+      const d = await r.json();
+      statusTxt.textContent = 'متصل (الوضع الاحتياطي) — تكلّم';
+      if (d.reply) {
+        addLog('jarvis', d.reply);
+        speakTextFallback(d.reply);
+      }
+    }
+
+    function startFallbackVoiceLoop() {
+      modeBadge.textContent = 'وضع المكالمة الاحتياطي ($0)';
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        statusTxt.textContent = 'متصل بالكتابة والصوت (استخدم مربع الإرسال بالأسفل على هذا المتصفح)';
+        return;
+      }
+      fallbackRecog = new SR();
+      fallbackRecog.lang = 'ar-SA';
+      fallbackRecog.interimResults = false;
+      fallbackRecog.onstart = () => { orbBtn.classList.add('listening'); statusTxt.textContent = 'أستمع لك الآن...'; };
+      fallbackRecog.onresult = (e) => sendVoiceTurnText(e.results[0][0].transcript);
+      fallbackRecog.onerror = () => {};
+      fallbackRecog.onend = () => {
+        if (callActive && !window.speechSynthesis?.speaking && !isMuted) {
+          setTimeout(() => { try { fallbackRecog.start(); } catch {} }, 400);
+        }
+      };
+      try { fallbackRecog.start(); } catch {}
+    }
+
+    async function startCall() {
+      if (callActive) return;
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        await audioCtx.resume();
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      } catch (e) {
+        statusTxt.textContent = 'يرجى السماح بصلاحية الميكروفون ثم المحاولة مجدداً.';
+        return;
+      }
+
+      callActive = true;
+      callStartMs = Date.now();
+      timerIv = setInterval(updateTimer, 1000);
+      startBtn.style.display = 'none';
+      endBtn.style.display = 'flex';
+      muteBtn.style.display = 'flex';
+
+      const localKey = localGeminiKeyEl.value.trim();
+      if (sessionToken) {
+        statusTxt.textContent = 'جاري تجهيز قناة اتصال آمنة...';
+        try {
+          const r = await fetch('/api/live-session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_token: sessionToken }),
+          });
+          const cfg = await r.json();
+          if (cfg.ok && cfg.ephemeral_token) {
+            const wsUrl = cfg.ws_url || `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(cfg.ephemeral_token)}`;
+            await startGeminiLive(wsUrl, cfg.model || 'gemini-3.8-live');
+            return;
+          }
+          addLog('sys', cfg.note || 'تحول إلى وضع المكالمة الاحتياطي (Groq/Mistral).');
+          startFallbackVoiceLoop();
+          return;
+        } catch (err) {
+          addLog('sys', 'تعذر الاتصال المباشر — تحول للوضع الاحتياطي.');
+          startFallbackVoiceLoop();
+          return;
+        }
+      } else if (localKey) {
+        const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(localKey)}`;
+        await startGeminiLive(wsUrl, 'gemini-3.8-live');
+      } else {
+        addLog('sys', 'أرسل /call لبوتك في تيليجرام لفتح المكالمة مربوطة بجميع مفاتيحك مجاناً.');
+        endCall();
+      }
+    }
+
+    function endCall() {
+      callActive = false;
+      clearInterval(timerIv);
+      stopAllPlayback();
+      if (ws) { try { ws.close(); } catch {} ws = null; }
+      if (processorNode) { try { processorNode.disconnect(); } catch {} processorNode = null; }
+      if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+      if (fallbackRecog) { try { fallbackRecog.stop(); } catch {} fallbackRecog = null; }
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      orbBtn.classList.remove('listening', 'speaking');
+      startBtn.style.display = 'flex';
+      endBtn.style.display = 'none';
+      muteBtn.style.display = 'none';
+      statusTxt.textContent = 'انتهت المكالمة.';
+    }
+
+    startBtn.addEventListener('click', startCall);
+    orbBtn.addEventListener('click', () => { if (!callActive) startCall(); });
+    endBtn.addEventListener('click', endCall);
+    muteBtn.addEventListener('click', () => {
+      isMuted = !isMuted;
+      muteBtn.textContent = isMuted ? '🔇 مكتوم' : '🎙️ كتم';
+    });
+    document.getElementById('sendForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('textInput');
+      const v = inp.value.trim();
+      if (!v) return;
+      inp.value = '';
+      sendVoiceTurnText(v);
+    });
+  </script>
+</body>
+</html>

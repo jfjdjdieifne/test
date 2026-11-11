@@ -21,12 +21,13 @@ const BASE_TOOLS_DOC = `Available tools (to call one, reply ONLY with raw valid 
 6. get_memories: {} -> reads stored memories.
 7. schedule_reminder: {"minutes_from_now":60,"message":"...","call_me":true} -> schedules reminder & optional Telegram CallMeBot ring.
 8. call_me_now: {"message":"..."} -> immediately rings user on Telegram via CallMeBot (short English ASCII <=240 chars).
-9. list_tasks: {} -> lists recent background tasks.`;
+9. list_tasks: {} -> lists recent background tasks.
+10. dispatch_heavy_mission: {"mission":"...","run_tag":"mission"} -> launches an autonomous multi-step AI agent on a free Ubuntu Linux GitHub Actions server (can run Python, research, build HTML/CSV/apps under agency/output/, auto-commit & deploy live, and report back on Telegram). Use this whenever the user asks to build something complex, run code, scrape/research deeply, or execute heavy tasks like Arena.ai.`;
 
 const SYSTEM_PROMPT = `You are J.A.R.V.I.S, a 24/7 autonomous AI assistant working at $0 cost.
 Reply primarily in clear, crisp Arabic (or English if the user writes in English).
 ${BASE_TOOLS_DOC}
-10. start_background_task: {"goal":"...","call_when_done":true} -> queues a multi-step background mission processed by the 1-minute scheduler and rings user when finished (requires Gist; if unavailable, run tools directly right now).
+11. start_background_task: {"goal":"...","call_when_done":true} -> queues a lightweight background mission for the 1-minute Cron scheduler (requires Gist).
 
 Once you have the facts needed, answer directly in clean plain text without JSON.`;
 
@@ -45,6 +46,41 @@ async function deriveWebhookSecret(env) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(seed));
   const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
   return `jv_${hex.slice(0, 40)}`;
+}
+
+async function createCallToken(env, ttlSeconds = 3600) {
+  const secret = await deriveWebhookSecret(env);
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const payload = String(exp);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const hex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  return `${payload}.${hex}`;
+}
+
+async function verifyCallToken(env, token) {
+  const parts = String(token || "").trim().split(".");
+  if (parts.length !== 2) return false;
+  const [payload, gotHex] = parts;
+  const exp = Number(payload);
+  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false;
+  const secret = await deriveWebhookSecret(env);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const expHex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  return constantTimeEqual(gotHex, expHex);
 }
 
 function constantTimeEqual(a, b) {
@@ -357,7 +393,7 @@ async function toolWebSearch(env, query, maxResults = 5) {
 
 async function triggerCallMeBot(env, text) {
   const user = (env.CALLMEBOT_TELEGRAM_USER || "").trim();
-  if (!user) return { ok: false, error: "CALLMEBOT_TELEGRAM_USER is not set in Cloudflare Secrets." };
+  if (!user) return { ok: false, error: "CALLMEBOT_TELEGRAM_USER not set" };
   const clean = String(text || "Jarvis needs your attention on Telegram").replace(/\s+/g, " ").trim().slice(0, 240);
   const url = `https://api.callmebot.com/start.php?user=${encodeURIComponent(user)}&text=${encodeURIComponent(clean)}&lang=en-US-Standard-B&rpt=2&cc=yes`;
   try {
@@ -368,14 +404,97 @@ async function triggerCallMeBot(env, text) {
   }
 }
 
+async function sendLiveCallInvite(env, chatId, origin, topic = "") {
+  if (!origin || !env.TELEGRAM_BOT_TOKEN || !env.ALLOWED_TELEGRAM_ID) return { ok: false, error: "Origin or bot config missing" };
+  const st = await createCallToken(env, 3600);
+  const cleanTopic = String(topic || "").trim().slice(0, 140);
+  const callUrl = `${origin}/call.html#st=${encodeURIComponent(st)}${cleanTopic ? `&topic=${encodeURIComponent(cleanTopic)}` : ""}`;
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: cleanTopic
+        ? `📞 مكالمة صوتية مباشرة من جارفس بخصوص:\n${cleanTopic}\n\nاضغط الزر بالأسفل لفتح المكالمة الصوتية الثنائية فوراً:`
+        : "📞 مكالمتك الصوتية المباشرة مع جارفس جاهزة ($0):\nاضغط الزر بالأسفل للتحدث بالصوت ذهاباً وإياباً:",
+      reply_markup: {
+        inline_keyboard: [[{ text: "📞 افتح المكالمة الصوتية الحية", url: callUrl }]],
+      },
+    }),
+  });
+  return { ok: res.ok, call_url_ready: true };
+}
+
+async function toolDispatchHeavyMission(env, mission, runTag = "mission", workerOrigin = "") {
+  const token = (env.GITHUB_TOKEN || "").trim();
+  const repo = (env.GITHUB_REPO || "jfjdjdieifne/test").trim();
+  const branch = (env.GITHUB_BRANCH || "main").trim();
+  if (!token) {
+    return {
+      ok: false,
+      error: "أضف GITHUB_TOKEN (صلاحية Actions: Read & write + Contents) في Cloudflare Secrets لتشغيل المهام الثقيلة على خادم GitHub Linux المجاني.",
+    };
+  }
+  const cleanTag = String(runTag || "mission").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 20) || "mission";
+  const url = `https://api.github.com/repos/${repo}/actions/workflows/jarvis_worker.yml/dispatches`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+        "User-Agent": "Jarvis-CF-Worker/1.0",
+      },
+      body: JSON.stringify({
+        ref: branch,
+        inputs: {
+          mission: String(mission || "").slice(0, 4000),
+          run_tag: cleanTag,
+          worker_origin: workerOrigin || "",
+        },
+      }),
+    });
+    if (res.status === 204 || res.ok) {
+      return {
+        ok: true,
+        dispatched: true,
+        repo,
+        branch,
+        actions_url: `https://github.com/${repo}/actions`,
+        note: "تم تشغيل خادم Linux مجاني على GitHub Actions لتنفيذ المهمة بالكامل — سيصلك التقرير والروابط على تيليجرام فور الانتهاء.",
+      };
+    }
+    const errText = await res.text();
+    if (res.status === 404 || res.status === 422) {
+      return {
+        ok: false,
+        status: res.status,
+        error: `تعذر تشغيل GitHub Actions على الفرع ${branch} (${res.status}): تأكد من دمج ملف .github/workflows/jarvis_worker.yml في الفرع الرئيسي main على GitHub ومن صلاحية GITHUB_TOKEN (Actions + Workflows).`,
+        details: errText.slice(0, 250),
+      };
+    }
+    return { ok: false, status: res.status, error: errText.slice(0, 250) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 async function dispatchTool(name, args, ctxObj) {
-  const { env, stateObj, allowBg } = ctxObj;
+  const { env, stateObj, allowBg, origin } = ctxObj;
   const st = stateObj.state;
 
   if (name === "list_leads") return toolListLeads(env, st, Number(args.limit || 12), String(args.status_filter || ""));
   if (name === "audit_website") return toolAuditWebsite(args.url);
   if (name === "web_search") return toolWebSearch(env, args.query, Number(args.max_results || 5));
-  if (name === "call_me_now") return triggerCallMeBot(env, args.message);
+  if (name === "dispatch_heavy_mission") {
+    return toolDispatchHeavyMission(env, args.mission, args.run_tag || "mission", origin || st.worker_origin || "");
+  }
+  if (name === "call_me_now") {
+    const cmb = await triggerCallMeBot(env, args.message);
+    const live = await sendLiveCallInvite(env, env.ALLOWED_TELEGRAM_ID?.trim(), origin || st.worker_origin || "", args.message);
+    return { ok: cmb.ok || live.ok, callmebot: cmb, live_call_invite: live };
+  }
 
   if (name === "update_lead") {
     st.lead_notes[String(args.business_name || "")] = {
@@ -613,9 +732,12 @@ async function tgSend(env, chatId, text, wantVoice = false) {
 // ---------------------------------------------------------------------------
 // Agent Turn & Cron Background Runner
 // ---------------------------------------------------------------------------
-async function runAgentTurn(env, chatId, userText, isVoice) {
+async function runAgentTurnText(env, userText, origin = "") {
   const stateObj = await loadState(env);
   const st = stateObj.state;
+  if (origin && st.worker_origin !== origin) {
+    st.worker_origin = origin;
+  }
   const memPrefix = Object.keys(st.memories || {}).length
     ? `[Saved Memories: ${JSON.stringify(st.memories)}]\n`
     : "";
@@ -629,7 +751,7 @@ async function runAgentTurn(env, chatId, userText, isVoice) {
       finalReply = reply;
       break;
     }
-    const res = await dispatchTool(toolCall.tool, toolCall.args || {}, { env, stateObj, allowBg: true });
+    const res = await dispatchTool(toolCall.tool, toolCall.args || {}, { env, stateObj, allowBg: true, origin });
     msgs.push({ role: "assistant", content: reply });
     msgs.push({
       role: "user",
@@ -640,10 +762,15 @@ async function runAgentTurn(env, chatId, userText, isVoice) {
 
   st.history = [...(st.history || []), { role: "user", content: userText }, { role: "assistant", content: finalReply }].slice(-16);
   await saveState(env, st);
+  return finalReply;
+}
+
+async function runAgentTurn(env, chatId, userText, isVoice, origin = "") {
+  const finalReply = await runAgentTurnText(env, userText, origin);
   await tgSend(env, chatId, finalReply, isVoice);
 }
 
-async function handleTelegramUpdate(update, env) {
+async function handleTelegramUpdate(update, env, origin = "") {
   const msg = update?.message;
   if (!msg || !env.TELEGRAM_BOT_TOKEN || !env.ALLOWED_TELEGRAM_ID) return;
   const chatId = msg.chat?.id;
@@ -668,11 +795,42 @@ async function handleTelegramUpdate(update, env) {
   if (!text) return;
 
   if (text === "/start") {
+    const callToken = await createCallToken(env, 3600);
+    const callUrl = origin ? `${origin}/call.html#st=${encodeURIComponent(callToken)}` : "";
+    const payload = {
+      chat_id: chatId,
+      text: "أهلاً بك! أنا جارفس 24/7 ($0).\n\n• أرسل نصاً أو رسالة صوتية للدردشة الفورية.\n• أرسل /call لبدء مكالمة صوتية حية (بدون مشاكل CallMeBot).\n• أرسل /mission + المهمة لتشغيل عامل Linux مستقل على GitHub Actions.\n• أرسل /tasks لعرض المهام.",
+    };
+    if (callUrl) {
+      payload.reply_markup = { inline_keyboard: [[{ text: "📞 ابدأ مكالمة صوتية حية", url: callUrl }]] };
+    }
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return;
+  }
+
+  if (text === "/call" || text.startsWith("/call ")) {
+    const topic = text.slice(5).trim();
+    await sendLiveCallInvite(env, chatId, origin, topic);
+    return;
+  }
+
+  if (text.startsWith("/mission ")) {
+    const missionText = text.slice(9).trim();
+    if (!missionText) {
+      await tgSend(env, chatId, "اكتب وصف المهمة بعد الأمر، مثال:\n/mission افحص أهم 5 شركات عقارات في دبي وأنشئ صفحة عرض HTML لهم");
+      return;
+    }
+    const res = await toolDispatchHeavyMission(env, missionText, "tg", origin);
     await tgSend(
       env,
       chatId,
-      "أهلاً بك! أنا جارفس (نسخة Cloudflare 24/7 المجانية). أرسل لي نصاً أو رسالة صوتية: أستطيع البحث بالويب، فحص المواقع، قراءة عملاء دبي، العمل بالخلفية (/tasks)، والاتصال بك عبر تيليجرام.",
-      false
+      res.ok
+        ? `🚀 تم تشغيل المهمة المستقلة على خادم Linux في GitHub Actions!\nالفرع: ${res.branch}\nالمتابعة: ${res.actions_url}\n\nسأراسلك فور الانتهاء بالنتيجة والملفات.`
+        : `⚠️ تعذر تشغيل GitHub Actions:\n${res.error}`
     );
     return;
   }
@@ -693,7 +851,7 @@ async function handleTelegramUpdate(update, env) {
     body: JSON.stringify({ chat_id: chatId, action: "typing" }),
   });
 
-  await runAgentTurn(env, chatId, text, isVoice);
+  await runAgentTurn(env, chatId, text, isVoice, origin);
 }
 
 async function runScheduledTick(env) {
@@ -711,7 +869,10 @@ async function runScheduledTick(env) {
       rem.done = true;
       dirty = true;
       await tgSend(env, chatId, `⏰ تذكير من جارفس:\n${rem.message}`, true);
-      if (rem.call_me) await triggerCallMeBot(env, `Jarvis reminder: ${rem.message}`);
+      if (rem.call_me) {
+        await triggerCallMeBot(env, `Jarvis reminder: ${rem.message}`);
+        if (st.worker_origin) await sendLiveCallInvite(env, chatId, st.worker_origin, rem.message);
+      }
     }
   }
 
@@ -734,7 +895,7 @@ async function runScheduledTick(env) {
         finished = true;
         break;
       }
-      const res = await dispatchTool(tc.tool, tc.args || {}, { env, stateObj, allowBg: false });
+      const res = await dispatchTool(tc.tool, tc.args || {}, { env, stateObj, allowBg: false, origin: st.worker_origin || "" });
       msgs.push({ role: "assistant", content: reply });
       msgs.push({ role: "user", content: `[TOOL RESULT for ${tc.tool}]: ${JSON.stringify(res).slice(0, 5500)}` });
     }
@@ -752,7 +913,10 @@ async function runScheduledTick(env) {
       task.finished_at = new Date().toISOString();
       delete task.messages;
       await tgSend(env, chatId, `🤖 انتهت مهمة الخلفية (${task.id}):\n${task.goal}\n\n${report}`, true);
-      if (task.call_when_done) await triggerCallMeBot(env, `Jarvis finished task ${task.id}. Open Telegram for report.`);
+      if (task.call_when_done) {
+        await triggerCallMeBot(env, `Jarvis finished task ${task.id}. Open Telegram for report.`);
+        if (st.worker_origin) await sendLiveCallInvite(env, chatId, st.worker_origin, task.goal);
+      }
     }
   }
 
@@ -766,13 +930,14 @@ function renderSetupHtml(env, origin) {
   const checks = [
     ["TELEGRAM_BOT_TOKEN", Boolean(env.TELEGRAM_BOT_TOKEN), "مطلوب — توكن البوت من @BotFather"],
     ["ALLOWED_TELEGRAM_ID", Boolean(env.ALLOWED_TELEGRAM_ID), "مطلوب — رقم حسابك من @userinfobot للحماية"],
-    ["GEMINI_API_KEY", Boolean(env.GEMINI_API_KEY), "مجاني بدون بطاقة (aistudio.google.com)"],
+    ["GEMINI_API_KEY", Boolean(env.GEMINI_API_KEY), "مجاني بدون بطاقة + يشغّل المكالمة الحية Gemini Live"],
     ["MISTRAL_API_KEY", Boolean(env.MISTRAL_API_KEY), "مجاني ~1 مليار توكن/شهر (console.mistral.ai)"],
     ["GROQ_API_KEY", Boolean(env.GROQ_API_KEY), "مجاني بدون بطاقة + تفريغ الصوت Whisper"],
     ["NVIDIA_API_KEY", Boolean(env.NVIDIA_API_KEY), "اختياري مجاني (build.nvidia.com)"],
     ["OPENROUTER_API_KEY", Boolean(env.OPENROUTER_API_KEY), "اختياري مجاني (openrouter.ai)"],
-    ["CALLMEBOT_TELEGRAM_USER", Boolean(env.CALLMEBOT_TELEGRAM_USER), "اختياري — @اسمك ليتصل عليك تيليجرام"],
-    ["GITHUB_GIST_ID + GITHUB_TOKEN", Boolean(env.GITHUB_GIST_ID && env.GITHUB_TOKEN), "اختياري — لحفظ الذاكرة والمهام المجدولة"],
+    ["GITHUB_TOKEN", Boolean(env.GITHUB_TOKEN), "لتشغيل المهام الثقيلة على GitHub Actions مجاناً + حفظ الذاكرة"],
+    ["GITHUB_GIST_ID", Boolean(env.GITHUB_GIST_ID), "اختياري — لحفظ الذاكرة والمهام المجدولة"],
+    ["CALLMEBOT_TELEGRAM_USER", Boolean(env.CALLMEBOT_TELEGRAM_USER), "اختياري — البديل الجديد للمكالمات هو /call في تيليجرام!"],
   ];
   const rows = checks
     .map(
@@ -815,6 +980,7 @@ function renderSetupHtml(env, origin) {
   <pre id="out">بانتظار الضغط...</pre>
   <div class="nav">
     <a class="link" href="/">📊 فتح غرفة عمليات دبي</a>
+    <a class="link" href="/call.html">📞 المكالمة الصوتية الحية</a>
     <a class="link" href="/jarvis.html">🎙️ فتح جارفس الصوتي بالمتصفح</a>
   </div>
 </div>
@@ -846,6 +1012,8 @@ export default {
         mode: "cloudflare-worker",
         has_bot_token: Boolean(env.TELEGRAM_BOT_TOKEN),
         has_owner_id: Boolean(env.ALLOWED_TELEGRAM_ID),
+        has_gemini_live: Boolean(env.GEMINI_API_KEY),
+        has_github_actions: Boolean(env.GITHUB_TOKEN),
         has_gist_memory: Boolean(env.GITHUB_GIST_ID && env.GITHUB_TOKEN),
         time: new Date().toISOString(),
       });
@@ -879,6 +1047,77 @@ export default {
       return Response.json({ ok: Boolean(tgJson.ok), webhook_url: webhookUrl, telegram_response: tgJson }, { status: tgJson.ok ? 200 : 502 });
     }
 
+    if (url.pathname === "/api/live-session" && request.method === "POST") {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      if (!(await verifyCallToken(env, body.session_token))) {
+        return Response.json({ ok: false, error: "Unauthorized or expired call session. Run /call in Telegram." }, { status: 401 });
+      }
+      if (!env.GEMINI_API_KEY) {
+        return Response.json({ ok: false, mode: "voice_turn", note: "GEMINI_API_KEY غير مضاف — يعمل بوضع المكالمة الاحتياطي." });
+      }
+      try {
+        const now = Date.now();
+        let lastErrStatus = 0;
+        for (const apiVer of ["v1beta", "v1alpha"]) {
+          const res = await fetch(`https://generativelanguage.googleapis.com/${apiVer}/auth_tokens`, {
+            method: "POST",
+            headers: {
+              "x-goog-api-key": env.GEMINI_API_KEY.trim(),
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              uses: 1,
+              expireTime: new Date(now + 30 * 60000).toISOString(),
+              newSessionExpireTime: new Date(now + 2 * 60000).toISOString(),
+            }),
+          });
+          lastErrStatus = res.status;
+          const data = await res.json();
+          if (res.ok && data?.name) {
+            return Response.json({
+              ok: true,
+              mode: "gemini_live",
+              ephemeral_token: data.name,
+              ws_url: `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${apiVer}.GenerativeService.BidiGenerateContentConstrained?access_token=${encodeURIComponent(data.name)}`,
+              model: (env.GEMINI_LIVE_MODEL || "gemini-3.8-live").trim(),
+            });
+          }
+        }
+        return Response.json({ ok: false, mode: "voice_turn", note: `Gemini ephemeral token error (${lastErrStatus}) — التبديل للوضع الاحتياطي.` });
+      } catch (e) {
+        return Response.json({ ok: false, mode: "voice_turn", note: e.message });
+      }
+    }
+
+    if (url.pathname === "/api/call-tool" && request.method === "POST") {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      if (!(await verifyCallToken(env, body.session_token))) {
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
+      }
+      const allowed = new Set(["web_search", "audit_website", "list_leads", "dispatch_heavy_mission", "get_memories", "save_memory"]);
+      const tName = String(body.tool || "");
+      if (!allowed.has(tName)) {
+        return Response.json({ error: `Tool not permitted over call endpoint: ${tName}` }, { status: 403 });
+      }
+      const stateObj = await loadState(env);
+      const res = await dispatchTool(tName, body.args || {}, { env, stateObj, allowBg: true, origin: url.origin });
+      return Response.json(res);
+    }
+
+    if (url.pathname === "/api/voice-turn" && request.method === "POST") {
+      let body = {};
+      try { body = await request.json(); } catch {}
+      if (!(await verifyCallToken(env, body.session_token))) {
+        return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      }
+      const txt = String(body.text || "").trim();
+      if (!txt) return Response.json({ ok: false, error: "Empty input" }, { status: 400 });
+      const reply = await runAgentTurnText(env, txt, url.origin);
+      return Response.json({ ok: true, reply });
+    }
+
     if (url.pathname === "/telegram-webhook" && request.method === "POST") {
       if (!env.TELEGRAM_BOT_TOKEN || !env.ALLOWED_TELEGRAM_ID) {
         return new Response("Bot not configured", { status: 503 });
@@ -894,7 +1133,7 @@ export default {
       } catch {
         return new Response("Bad JSON", { status: 400 });
       }
-      ctx.waitUntil(handleTelegramUpdate(update, env));
+      ctx.waitUntil(handleTelegramUpdate(update, env, url.origin));
       return new Response("OK", { status: 200 });
     }
 
