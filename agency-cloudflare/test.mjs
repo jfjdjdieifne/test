@@ -180,16 +180,24 @@ await t("8) audit_website يفحص الموقع ويرجع للنموذج", asyn
   assert.ok(sentTexts().join("\n").includes("مشكلتين"));
 });
 
-await t("9) مهمة خلفية تعمل وتُرسل التقرير ورنّة CallMeBot", async () => {
+await t("9) مهمة خلفية: بطاقة موافقة ← تبدأ بعد ✅ ويوصل التقرير والرنّة", async () => {
   const env = makeEnv(); const ctx = makeCtx();
   state.geminiQueue.push(
     { text: 'TOOL_CALL: {"tool":"start_background_task","args":{"goal":"جهز عرض لـ NAM Consultant"}}' },
-    { text: "بدأت المهمة بالخلفية" },
+    { text: "طلبت موافقتك بتيليجرام قبل ما أبدأ أي مهمة" },
     { text: "تقرير التنفيذ: تم تجهيز العرض" }
   );
   await runWebhook(env, ctx, tgUpdate("جهز عرض للشركة 2 واطرشلي"));
-  const all = sentTexts().join("\n");
-  assert.ok(all.includes("بدأت المهمة"), "الرد الفوري ما وصل");
+  await ctx.drain();
+  let all = sentTexts().join("\n");
+  assert.ok(all.includes("موافق") || all.includes("يبدأ"), "بطاقة الموافقة ما وصلت");
+  assert.equal((JSON.parse(state.kv.get("tasks") || "[]")).length, 0, "المهمة بلشت بدون موافقة!");
+  const approvals = JSON.parse(state.kv.get("approvals"));
+  assert.equal(approvals.length, 1);
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, { callback_query: { id: "cbqtask", data: "approve:" + approvals[0].id, from: { id: 42 }, message: { chat: { id: 1000 }, message_id: 777 } } });
+  await ctx2.drain();
+  all = sentTexts().join("\n");
   assert.ok(all.includes("تقرير التنفيذ"), "تقرير الخلفية ما وصل");
   assert.equal(state.callmebot, 1, "رنّة CallMeBot ما انطلقت");
   const tasks = JSON.parse(state.kv.get("tasks"));

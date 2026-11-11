@@ -35,7 +35,7 @@ const TOOL_DOC = `الأدوات المتاحة:
 - list_leads(status?): قائمة الـ 12 عميل (فلتر اختياري: جديد/راسلته/مهتم/عرض/مقفل)
 - get_lead(index): تفاصيل عميل 1-12
 - update_lead(index, status, note): تحديث حالة عميل (تُحفظ دائماً)
-- start_background_task(goal): إدراج مهمة بحث/تجهيز في الطابور — تنفذ تلقائياً على مراحل كل دقيقة حتى لو استمرت ساعات، وتطرش تقريراً وتتصل بالمالك عند الانتهاء
+- start_background_task(goal): اطلب إذن المالك لفتح مهمة بالخلفية (توصله بطاقة ✅/❌ بتيليجرام — ما تنص المهمة أبداً بدون ضغطته). لو وافق، تنفذ على مراحل كل دقيقة وتوصل تقريراً ورنّة عند الانتهاء
 - remember(fact, tags?): حفظ حقيقة دائمة عن المالك/عمله في الذاكرة طويلة المدى (حرفياً بلا تلخيص — صفر توكنات)
 - recall_memory(query): استرجاع الحقائق المحفوظة المطابقة
 - forget_memory(query): حذف حقيقة مطابقة
@@ -481,15 +481,31 @@ async function getOwnerChatId(env) {
   return env.OWNER_CHAT_ID ? Number(env.OWNER_CHAT_ID) : null;
 }
 
+async function queueApprovedTask(env, goal, ctx) {
+  const g = String(goal || "").trim().slice(0, 500);
+  const tasks = await kvGet(env, "tasks", []);
+  const id = "task_" + Date.now();
+  tasks.unshift({ id, goal: g, status: "queued", trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0, consecutiveFailures: 0 });
+  await kvPut(env, "tasks", tasks.slice(0, 30));
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(processTaskQueue(env, STEPS_PER_TICK));
+  return id;
+}
+
 async function startBackgroundTask(goal, env, ctx) {
   const g = String(goal || "").trim().slice(0, 500);
   if (!g) return "هدف المهمة فارغ";
-  const tasks = await kvGet(env, "tasks", []);
-  const id = "task_" + Date.now();
-  tasks.unshift({ id, goal: g, status: "queued", trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0 });
-  await kvPut(env, "tasks", tasks.slice(0, 30));
-  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(processTaskQueue(env, STEPS_PER_TICK));
-  return `أُدرجت المهمة ${id} في الطابور: «${g}»\nتنفذ تلقائياً حتى لو استمرت ساعات — أطرشلك التقرير هنا${env.CALLMEBOT_TELEGRAM_USER ? " وأوصلك رنّة" : ""} عند الانتهاء. تابع بـ /tasks`;
+  const owner = await getOwnerChatId(env);
+  if (!owner) return "ما أعرف محادثتك — أرسل /start أولاً.";
+  const id = "ap_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const approvals = await kvGet(env, "approvals", []);
+  approvals.unshift({ id, type: "task", payload: { goal: g }, created: Date.now() });
+  await kvPut(env, "approvals", approvals.slice(0, 30));
+  const kb = { inline_keyboard: [[
+    { text: "✅ ابدأ المهمة", callback_data: "approve:" + id },
+    { text: "❌ لا تبدأ", callback_data: "cancel:" + id },
+  ]] };
+  await tgApi(env, "sendMessage", { chat_id: owner, text: `🧠 جارفس يبغي يبدأ مهمة بالخلفية:\n\n«${g}»\n\nموافق تبدأ؟`, reply_markup: kb });
+  return "بانتظار موافقة المالك على بدء المهمة — ما رح تبدأ بدون ضغطته ✅ على البطاقة.";
 }
 
 function buildTaskPrompt(task) {
@@ -535,7 +551,17 @@ async function processTaskQueue(env, maxSteps) {
     const convo = [{ role: "user", content: buildTaskPrompt(task) }];
     const out = await llmComplete(convo, WORKER_PROMPT, env);
     task.stepCount = (task.stepCount || 0) + 1;
-    if (!out) { await finishTask(task, tasks, env, "failed", "الذكاء ما رجع رد — تأكد من GEMINI/OPENROUTER."); return; }
+    if (!out) {
+      task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
+      const idxF = tasks.findIndex((t) => t.id === task.id);
+      if (idxF !== -1) tasks[idxF] = { ...task };
+      await kvPut(env, "tasks", tasks);
+      if (task.consecutiveFailures >= 3) {
+        await finishTask(task, tasks, env, "failed", "الذكاء رجع فارغ ٣ مرات متتالية — أوقفت المهمة عشان ما تحرق الحصة ببلا لزوم. شيك على المفاتيح ثم اطلبها من جديد.");
+      }
+      return;
+    }
+    task.consecutiveFailures = 0;
     const call = parseToolCall(out);
     if (!call) { await finishTask(task, tasks, env, "done", out); return; }
     const result = await runTool(call, env, null);
@@ -766,6 +792,17 @@ async function handleCommand(text, env, chatId) {
       await sendMessage(env, chatId, turnOn ? "🔊 صوتي شغال — رح أطلع لك ريكوردات مع النص." : "🔇 من الآن نصوص فقط، بدون ريكوردات.");
       return true;
     }
+    case "/tasks": {
+      const tasks = (await kvGet(env, "tasks", [])) || [];
+      if (!tasks.length) { await sendMessage(env, chatId, "📦 الطابور فاضي — ولا مهمة عندي هلق."); return true; }
+      const lines = tasks.slice(0, 12).map((t, i) => `${i + 1}. [${t.status || "?"}] «${String(t.goal).slice(0, 80)}» — خطوة ${t.stepCount || 0} (${t.id.slice(-4)})`);
+      await sendMessage(env, chatId, `📦 مهامي (${tasks.length}):\n${lines.join("\n")}\n\nلإلغائها كلها: /clear_tasks`); return true;
+    }
+    case "/clear_tasks": {
+      const before = ((await kvGet(env, "tasks", [])) || []).length;
+      await kvPut(env, "tasks", []);
+      await sendMessage(env, chatId, `🧹 مسحنا ${before} مهمة من الطابور — الطابور فاضي. (الذاكرة والإيميل ما تأثروا)`); return true;
+    }
     case "/export": {
       const all = await getMemories(env);
       const json = JSON.stringify(all, null, 2);
@@ -786,7 +823,7 @@ async function handleCommand(text, env, chatId) {
 
 async function handleUpdate(update, env, ctx) {
   const cq = update.callback_query;
-  if (cq) { await handleCallbackQuery(cq, env); return; }
+  if (cq) { await handleCallbackQuery(cq, env, ctx); return; }
   const msg = update.message || update.edited_message;
   if (!msg || !msg.chat || !msg.from) return;
   const chatId = msg.chat.id;
@@ -929,7 +966,7 @@ async function sendEmailCard(env, to, subject, body) {
   return "الإيميل جاهز — بطاقة ✅/❌ وصلتك فوق. بانتظر ضغطتك قبل الإرسال.";
 }
 
-async function handleCallbackQuery(cq, env) {
+async function handleCallbackQuery(cq, env, ctx) {
   const cqId = cq.id;
   const data = String(cq.data || "");
   const fromId = String(cq?.from?.id || "");
@@ -946,6 +983,20 @@ async function handleCallbackQuery(cq, env) {
   const ap = approvals.find((x) => x.id === id);
   if (!ap) { await tgApi(env, "answerCallbackQuery", { callback_query_id: cqId, text: "هذي البطاقة انتهت صلاحيتها أو نُفذت" }); return; }
   const rest = approvals.filter((x) => x.id !== id);
+
+  if (ap.type === "task") {
+    if (action === "approve") {
+      await kvPut(env, "approvals", rest);
+      const newId = await queueApprovedTask(env, ap.payload.goal, ctx || null);
+      await tgApi(env, "answerCallbackQuery", { callback_query_id: cqId, text: "انبدأت ✅" });
+      if (chatId) await tgApi(env, "editMessageText", { chat_id: chatId, message_id: msgId, text: `✅ انبدأت المهمة «${String(ap.payload.goal).slice(0, 200)}»\n\nراح أطرشلك التقرير هون لما تخلص (رقمها ${newId.slice(-4)}).` });
+      return;
+    }
+    await kvPut(env, "approvals", rest);
+    await tgApi(env, "answerCallbackQuery", { callback_query_id: cqId, text: "تم الإلغاء" });
+    if (chatId) await tgApi(env, "editMessageText", { chat_id: chatId, message_id: msgId, text: "❌ ما بلشت المهمة — ولا شي رح يصير بالخلفية." });
+    return;
+  }
 
   if (action === "cancel") {
     await kvPut(env, "approvals", rest);
