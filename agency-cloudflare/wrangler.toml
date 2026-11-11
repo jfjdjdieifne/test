@@ -2,6 +2,11 @@ name = "jarvis-24-7"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 workers_dev = true
+compatibility_flags = ["nodejs_compat"]
+
+# Chromium مُدار من Cloudflare — يشغّل Arena مباشرة بلا Hugging Face/Render.
+[browser]
+binding = "BROWSER"
 
 # =====================================================
 # الذاكرة (KV) تُربط من لوحة Cloudflare — لا تُكتب هنا:
@@ -30,6 +35,20 @@ CALLMEBOT_TELEGRAM_USER = "actian_data"
 WEBHOOK_SECRET = "44133695050a33b0212a835da97f2fe4a1dab45d"
 CALL_SECRET = "14f0995842721410722d3ebcb1702b187e59309d80c05fa2"
 CALL_ON_BRIEF = "true"
+
+# ===== جسر LMArena (اختياري) =====
+# شغّل الخدمة من مجلد arena-bridge/ (Python + gpt4free/Arena + LMArenaBridge المحلي)
+# ثم اضبط القيم هنا أو (الأفضل للأمان) عبر:
+#   npx wrangler secret put ARENA_BRIDGE_URL
+#   npx wrangler secret put ARENA_BRIDGE_KEY
+# ملاحظة: الرابط بدون /v1 في النهاية — جارفس يضيف /v1/chat/completions بنفسه.
+# ARENA_BRIDGE_URL = "https://arena-bridge.example.com"
+# ARENA_BRIDGE_KEY = ""            # نفس BRIDGE_API_KEY بملف arena-bridge/.env
+# ARENA_BRIDGE_MODEL = "auto"
+# Arena أساسي تلقائياً بمجرد ضبط ARENA_BRIDGE_URL (وباقي المزودين احتياط).
+# ARENA_BRIDGE_FIRST = "false"     # بدك ترجّع Gemini أول؟ حط false
+# ARENA_BRIDGE_COOLDOWN_MS = "300000"  # مدة تجاهل الجسر بعد فشل متكرر
+# ARENA_BRIDGE_TIMEOUT_MS = "45000"
 
 [[kv_namespaces]]
 binding = "JARVIS_KV"
