@@ -229,7 +229,12 @@ npx wrangler secret put ARENA_BRIDGE_KEY   # نفس BRIDGE_API_KEY
 npx wrangler deploy
 ```
 
-اختياري: `ARENA_BRIDGE_MODEL` (افتراضياً `auto`)، و`ARENA_BRIDGE_FIRST=true` إذا بدك Arena **قبل** Gemini بكل ردود البوت.
+**Arena أساسي تلقائياً** بمجرد ضبط `ARENA_BRIDGE_URL`: كل رد وكل مهمة بالخلفية وكل أداة
+(بحث · فتح رابط · تدقيق موقع · إيميل · جدولة مهمة…) بتمرق بعقل Arena أولاً، وباقي المزودين
+احتياط فقط. إذا بده يرجع الترتيب القديم: `ARENA_BRIDGE_FIRST=false` أو أمر `/arena primary`.
+
+**قاطع الدائرة:** إذا الجسر فشل، جارفس يتجاهله مدة قصيرة (`ARENA_BRIDGE_COOLDOWN_MS`، افتراضي 5 دقائق)
+بدل ما يتأخر كل رد — وبيرجع يجرّبه تلقائياً بعدها.
 
 **الاستضافة المجانية ٢٤/٧ من الموبايل:** شوف [`../arena-bridge/README_DEPLOY_FREE_AR.md`](../arena-bridge/README_DEPLOY_FREE_AR.md) — أربع طرق مجانية (Oracle Always Free · Hugging Face Space · Termux · Render).
 - إذا الاستضافة **بتنام** (Render/HF): `npx wrangler secret put ARENA_BRIDGE_KEEPALIVE` → `true`، وجارفس بيضرب `/health` كل ١٠ دقائق عبر الـ cron الموجود.
@@ -239,10 +244,12 @@ npx wrangler deploy
 
 | الأمر | الوظيفة |
 |---|---|
-| `/arena` | حالة الجسر + قائمة النماذج المتاحة |
+| `/arena` | حالة الجسر + النماذج + هل Arena أساسي + حالة القاطع |
 | `/arena on` / `/arena off` | تشغيل/إيقاف استخدام الجسر فوراً (بدون deploy) |
 | `/arena test` | فحص وصول جارفس للجسر |
 | `/arena wake` | تصحيّة الجسر النايم (مهم للاستضافات المجانية) |
+| `/arena primary` | تبديل: Arena أساسي ↔ احتياطي (محفوظ بالـ KV، فوري بلا deploy) |
+| `/arena test` | تشخيص عميق: يجرّب كل محرك بالجسر (LMArenaBridge · gpt4free · وسيط) ويقولك مين شغال |
 | `/arena <اسم-نموذج>` | اختيار النموذج (مثلاً `/arena stealth-model`) |
 | `/arena_ask <سؤال>` | سؤال مباشر عبر Arena بدون أي مزود آخر |
 
@@ -260,7 +267,7 @@ npx wrangler deploy
 - **أي مفتاح تريد تغيّره** (مثلاً بعد تدوير مفاتيح مالتك القديمة): أعد نفس أمر `npx wrangler secret put <NAME>` بالقيمة الجديدة — يتحدّث تلقائياً بدون deploy جديد.
 - **لوجات البوت الحية:** `npx wrangler tail`
 - **قائمة كل المفاتيح المضافة:** `npx wrangler secret list`
-- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 28 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، وجسر LMArena (بما فيها الإفاقة والـ Keep-alive).
+- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 33 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، وجسر LMArena (بما فيها الإفاقة والـ Keep-alive).
 
 ---
 

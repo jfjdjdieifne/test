@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0 };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0;
 }
 
 const mockKV = () => ({
@@ -29,6 +29,7 @@ global.fetch = async (input, init = {}) => {
     return j({ ok: true, result: {} });
   }
   if (url.startsWith("https://generativelanguage.googleapis.com/")) {
+    state.geminiCalls++;
     const next = state.geminiQueue.shift() || { text: "الجواب النهائي الافتراضي" };
     return j({ candidates: [{ content: { parts: [{ text: next.text }] } }] });
   }
@@ -50,6 +51,11 @@ global.fetch = async (input, init = {}) => {
   if (url.startsWith("https://arena.test/")) {
     state.arenaCalls++;
     if (url.endsWith("/v1/models")) return j({ object: "list", data: [{ id: "auto" }, { id: "stealth-model" }] });
+    if (url.includes("/arena/selftest")) return j({ service: "jarvis-arena-bridge", checked: "deep", engines: [
+      { name: "LMArenaBridge", ready: true, ok: false, error: "غير مهيّأ" },
+      { name: "gpt4free:Arena", ready: true, ok: true, ms: 1200, sample: "تم" },
+      { name: "OpenAI-compatible", ready: false, ok: false, error: "غير مهيّأ" },
+    ] });
     if (url.endsWith("/health")) {
       if (state.arenaHealthFails > 0) { state.arenaHealthFails--; return j({ error: "starting" }, 503); }
       return j({ status: "ok", service: "jarvis-arena-bridge", has_gpt4free: true });
@@ -446,5 +452,51 @@ await t("28) Keep-alive معطّل افتراضياً (بدون المتغير)"
   assert.equal(state.arenaCalls, 0, "Keep-alive شغال بدون ما نطلبه");
 });
 
-console.log(`\n${passed}/28 اختبارات ناجحة`);
+await t("29) /arena test يعرض نتيجة تشخيص المحركات", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena test"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("gpt4free:Arena"), "أسماء المحركات ما ظهرت");
+  assert.ok(all.includes("1200ms"), "زمن الاستجابة ما ظهر");
+  assert.ok(all.includes("في محرك شغال"), "ملخص الحالة ما ظهر");
+});
+
+await t("30) Arena أساسي افتراضياً: Gemini ما ينادى إطلاقاً", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", GEMINI_API_KEY: "gem" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("شو أخبار دبي اليوم؟"));
+  assert.ok(sentTexts().join("\n").includes("رد من Arena"), "رد Arena ما وصل");
+  assert.equal(state.geminiCalls, 0, "Gemini اننادى رغم أن Arena أساسي");
+});
+
+await t("31) ARENA_BRIDGE_FIRST=false يرجّع Gemini للأول", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_FIRST: "false" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("شو أخبار دبي اليوم؟"));
+  assert.equal(state.geminiCalls, 1, "Gemini ما اننادى رغم إطفاء أولوية Arena");
+});
+
+await t("32) /arena primary يقلب الأولوية ويحفظها بالـ KV", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena primary"));
+  assert.equal(state.kv.get("arena_primary"), JSON.stringify(false), "القيمة ما انحفظت");
+  assert.ok(sentTexts().join("\n").includes("الترتيب العادي"), "ما وصل تأكيد التبديل");
+});
+
+await t("33) قاطع الدائرة: فشل متكرر يوقف محاولات Arena مؤقتاً", async () => {
+  const env = makeEnv({ GEMINI_API_KEY: "gem", ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_WAKE: "false" });
+  state.arenaDown = true;
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("سؤال أول"));
+  assert.ok(Number(state.kv.get("arena_skip_until")) > Date.now(), "القاطع ما انفتح");
+  const before = state.arenaCalls;
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("سؤال تاني"));
+  assert.equal(state.arenaCalls, before, "جرّب Arena رغم أن القاطع مفتوح");
+  assert.ok(sentTexts().join("\n").includes("الجواب النهائي الافتراضي"), "ما رجع للاحتياط");
+});
+
+console.log(`\n${passed}/33 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

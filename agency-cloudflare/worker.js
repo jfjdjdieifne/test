@@ -31,6 +31,8 @@ const LEADS = [
 
 const TOOL_DOC = `الأدوات المتاحة:
 - search_web(query): بحث ويب حي
+- open_url(url): افتح أي رابط واقرأ نص الصفحة (مناسب للتحقق من صفحة، سعر، خبر، شروط…)
+- arena_chat(prompt, model?): اسأل نماذج LMArena مباشرة (رأي تاني أو نموذج محدد)
 - audit_website(url): فحص سريع لموقع (أزرار # الميتة، واتساب خاطئ، لغة/عنوان/نماذج)
 - list_leads(status?): قائمة الـ 12 عميل (فلتر اختياري: جديد/راسلته/مهتم/عرض/مقفل)
 - get_lead(index): تفاصيل عميل 1-12
@@ -105,7 +107,7 @@ export default {
         const now = new Date(event?.scheduledTime || Date.now());
         if (now.getUTCHours() === 6 && now.getUTCMinutes() === 0) await morningBrief(env);
         // Keep-alive لجسر LMArena: يمنع Hosting المجاني (Render/HF) من تنويم الخدمة
-        if (arenaFlagOn(env.ARENA_BRIDGE_KEEPALIVE) && arenaBridgeConfig(env).enabled && now.getUTCMinutes() % 10 === 0) {
+        if (arenaKeepAliveOn(env) && arenaBridgeConfig(env).enabled && now.getUTCMinutes() % 10 === 0) {
           const alive = await arenaWake(env, 1, 0);
           if (!alive) console.log("arena keepalive: لا استجابة من الجسر");
         }
@@ -394,21 +396,76 @@ async function arenaBridgeAttempt(cfg, model, convo, system, env) {
   return text;
 }
 
+/**
+ * هل Arena هو المحرك الأساسي لجارفس؟
+ * الترتيب: KV (من أمر /arena primary) ← ثم ARENA_BRIDGE_FIRST ← ثم الافتراضي: نعم.
+ * يعني بمجرد ضبط ARENA_BRIDGE_URL، Arena يصير الأساس وباقي المزودين احتياط.
+ */
+async function arenaIsPrimary(env) {
+  if (!arenaBridgeConfig(env).enabled) return false;
+  const kv = await kvGet(env, "arena_primary", null);
+  if (kv === true || kv === false) return kv;
+  const raw = env.ARENA_BRIDGE_FIRST;
+  if (raw == null || String(raw).trim() === "") return true;
+  return !/^(0|false|no|off)$/i.test(String(raw).trim());
+}
+
+/**
+ * Keep-alive: افتراضياً يشتغل تلقائياً إذا العنوان من منصة مجانية بتنوّم
+ * (hf.space / onrender.com / fly.dev)، ويمكن فرضه أو إطفاؤه بالمتغير.
+ */
+function arenaKeepAliveOn(env) {
+  const raw = env.ARENA_BRIDGE_KEEPALIVE;
+  if (raw != null && String(raw).trim() !== "") return arenaFlagOn(raw);
+  const url = String((env && env.ARENA_BRIDGE_URL) || "");
+  return /hf\.space|onrender\.com|fly\.dev|koyeb\.app/i.test(url);
+}
+
+/** قاطع الدائرة: بعد فشل متكرر نتجاهل الجسر مدة قصيرة حتى لا يتأخر كل رد. */
+async function arenaInCooldown(env) {
+  const until = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
+  return until > Date.now();
+}
+
+async function arenaMarkDown(env, msOverride) {
+  const ms = Math.max(15000, Number(msOverride || env.ARENA_BRIDGE_COOLDOWN_MS || 300000));
+  await kvPut(env, "arena_skip_until", Date.now() + ms);
+}
+
+async function arenaMarkUp(env) {
+  await kvPut(env, "arena_skip_until", 0);
+}
+
 async function callArenaBridge(convo, system, env, modelOverride) {
   const cfg = arenaBridgeConfig(env);
   if (!cfg.enabled) return null;
   try {
     if (!(await arenaIsOn(env))) return null;
+    if (await arenaInCooldown(env)) return null;
     const model = String(modelOverride || (await arenaCurrentModel(env)) || "auto").trim() || "auto";
     try {
-      return await arenaBridgeAttempt(cfg, model, convo, system, env);
+      const text = await arenaBridgeAttempt(cfg, model, convo, system, env);
+      await arenaMarkUp(env);
+      return text;
     } catch (e) {
       console.log("arena bridge attempt failed:", e && e.message ? e.message : e);
-      // الاستضافات المجانية (Render/HF/…) بتنام بعد فترة خمول — نصحّيها ونعيد مرة وحدة
+      // الاستضافات المجانية (Render/HF/…) بتنوّم عند الخمول — نصحّيها ونعيد مرة وحدة
       if (arenaFlagOn(env.ARENA_BRIDGE_WAKE == null ? "true" : env.ARENA_BRIDGE_WAKE)) {
         const woke = await arenaWake(env, 3, Number(env.ARENA_BRIDGE_WAKE_GAP_MS || 5000));
-        if (woke) return await arenaBridgeAttempt(cfg, model, convo, system, env);
+        if (woke) {
+          try {
+            const text = await arenaBridgeAttempt(cfg, model, convo, system, env);
+            await arenaMarkUp(env);
+            return text;
+          } catch (e2) {
+            console.log("arena bridge retry failed:", e2 && e2.message ? e2.message : e2);
+          }
+        }
       }
+      // فشل نهائي — افتح القاطع مؤقتاً وكمّل على الاحتياط.
+      // الخدمة ميتة؟ كولداون كامل. الخدمة حية بس الرد فشل (كوكيز/حصة)؟ كولداون قصير.
+      const h = await arenaBridgeHealth(env);
+      await arenaMarkDown(env, h.ok ? 60000 : undefined);
       return null;
     }
   } catch (e) { console.log("arena bridge error:", e && e.message ? e.message : e); return null; }
@@ -461,9 +518,31 @@ async function arenaBridgeModels(env) {
   } catch (e) { console.log("arena models error:", e && e.message ? e.message : e); return []; }
 }
 
+/**
+ * تشخيص عميق: يسأل الجسر عن حالة محركاته (LMArenaBridge / gpt4free / compat).
+ * يرجّع null لو الجسر ما يدعم /arena/selftest (نسخة قديمة) حتى نرجع لفحص /health.
+ */
+async function arenaSelftest(env, deep) {
+  const cfg = arenaBridgeConfig(env);
+  if (!cfg.enabled) return null;
+  try {
+    const url = cfg.base + "/arena/selftest" + (deep ? "?deep=1" : "");
+    const res = await fetch(url, {
+      method: "GET",
+      headers: arenaBridgeHeaders(cfg),
+      signal: AbortSignal.timeout(deep ? 150000 : 20000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!data || !Array.isArray(data.engines)) return null;
+    return data;
+  } catch (e) { console.log("arena selftest error:", e && e.message ? e.message : e); return null; }
+}
+
 async function llmComplete(convo, system, env) {
-  const arenaFirst = /^(1|true|yes|on)$/i.test(String((env && env.ARENA_BRIDGE_FIRST) || ""));
-  if (arenaFirst) {
+  // Arena هو الأساس افتراضياً (بمجرد ضبط ARENA_BRIDGE_URL). باقي المزودين احتياط،
+  // فإذا الجسر نايم/فشل، رد جارفس ما يتوقف — بس ما بيوصل من Arena.
+  if (await arenaIsPrimary(env)) {
     const arena = await callArenaBridge(convo, system, env);
     if (arena) return arena;
   }
@@ -642,11 +721,57 @@ function parseToolCall(out) {
   return null;
 }
 
+/** يفتح أي رابط ويستخرج نصاً مقروءاً — يخدم "أي مهمة تحتاج إنترنت". */
+async function openUrl(url) {
+  const raw = String(url || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return "لازم رابط كامل يبدأ بـ http:// أو https://";
+  try {
+    const res = await fetch(raw, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; JarvisBot/1.0)", accept: "text/html,text/plain,*/*" },
+      signal: AbortSignal.timeout(20000),
+      redirect: "follow",
+    });
+    if (!res.ok) return `تعذر فتح الرابط (HTTP ${res.status})`;
+    const ct = String(res.headers.get("content-type") || "");
+    const body = await res.text();
+    if (!/html/i.test(ct)) return body.slice(0, 3500) || "الصفحة فاضية";
+    const text = body
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/\s+/g, " ")
+      .trim();
+    const title = (body.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1];
+    const head = title ? `العنوان: ${title.replace(/<[^>]+>/g, "").trim()}\n\n` : "";
+    return (head + text).slice(0, 3500) || "ما لقيت نص بالصفحة (غالباً JS أو محتوى محمي)";
+  } catch (e) {
+    return "خطأ بفتح الرابط: " + (e && e.message ? e.message : e);
+  }
+}
+
+/** سؤال مباشر لنماذج Arena — يتجاوز سلسلة الـ failover. */
+async function arenaAskDirect(prompt, model, env) {
+  const p = String(prompt || "").trim();
+  if (!p) return "prompt فارغ";
+  if (!arenaBridgeConfig(env).enabled) return "جسر Arena مو مضبوط (ARENA_BRIDGE_URL).";
+  const out = await callArenaBridge(
+    [{ role: "user", content: p }],
+    "أنت جارفس — رد بالعربي الشامي، موجز ومفيد.",
+    env,
+    model || undefined
+  );
+  return out || "جسر Arena ما رد — جرّب /arena test";
+}
+
 async function runTool(call, env, ctx) {
   try {
     const a = call.args || {};
     switch (call.tool) {
       case "search_web": return await searchWeb(a.query, env);
+      case "open_url": return await openUrl(a.url);
+      case "arena_chat": return await arenaAskDirect(a.prompt, a.model, env);
       case "audit_website": return await auditWebsite(a.url);
       case "list_leads": return await listLeads(env, a.status);
       case "get_lead": { const m = await mergedLeads(env); return getLeadText(m, a.index); }
@@ -1189,8 +1314,10 @@ const WELCOME = [
   "/forget <الرقم أو المعرف> — امسح حقيقة",
   "/export — حمّل نسخة كاملة من ذاكرتي (JSON)",
   "/report — ملخص الحالة",
-  "/arena — جسر LMArena (حالة/تشغيل/إيقاف/نماذج) — يتطلب خدمة arena-bridge",
-  "/arena_ask <سؤال> — سؤال مباشر عبر جسر LMArena",
+  "/arena — جسر LMArena: حالة/تشغيل/إيقاف/نماذج/تشخيص",
+  "/arena primary — Arena أساس كل الردود ↔ رجوع للترتيب العادي",
+  "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
+  "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
   "/files — شو الملفات والصور بقدر أقراها وأعدلها",
@@ -1339,6 +1466,14 @@ async function handleCommand(text, env, chatId) {
         await sendMessage(env, chatId, h.ok ? "▶️ جسر LMArena شغال — رح أدخلو بسلسلة الردود." : "▶️ فعّلت الجسر بس ما وصلت له: " + h.reason);
         return true;
       }
+      if (/^(primary|أساسي|اساسي|اساس)$/i.test(low)) {
+        const curPrimary = await arenaIsPrimary(env);
+        await kvPut(env, "arena_primary", !curPrimary);
+        await sendMessage(env, chatId, !curPrimary
+          ? "⭐ صار Arena هو المحرك الأساسي — كل رد ومهمة بتمرق عليه أولاً، وباقي المزودين احتياط."
+          : "↩️ رجّعت الترتيب العادي — Gemini أولاً وArena احتياط. (نفس الشي بـ /arena primary مرة تانية)");
+        return true;
+      }
       if (/^(wake|ايقاظ|إيقاظ|صحّي|صحى)$/i.test(low)) {
         const gap = Number(env.ARENA_BRIDGE_WAKE_GAP_MS || 5000);
         const ok = await arenaWake(env, 6, gap);
@@ -1348,6 +1483,23 @@ async function handleCommand(text, env, chatId) {
         return true;
       }
       if (/^(test|فحص|ping)$/i.test(low)) {
+        await sendMessage(env, chatId, "🔎 عمّال أفحص المحركات فعلياً (ياخد وقت — المتصفح بطيء)…");
+        const deepRes = await arenaSelftest(env, true);
+        if (deepRes) {
+          const icon = (e) => e.ok ? "🟢" : e.ready ? "🔴" : "⚪️";
+          const lines = deepRes.engines.map((e) => {
+            const extra = e.ok ? `${e.ms || 0}ms` : (e.error || "غير مهيّأ");
+            return `${icon(e)} ${e.name}: ${extra}${e.ok && e.sample ? `\n   «${String(e.sample).slice(0, 60)}»` : ""}`;
+          });
+          const anyOk = deepRes.engines.some((e) => e.ok);
+          await sendMessage(env, chatId, [
+            anyOk ? "✅ في محرك شغال — Arena جاهز" : "⚠️ ولا محرك رد الآن",
+            "", ...lines,
+            "",
+            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : "إذا كلهن أحمر: تأكد من الكوكيز/الجلسة أو شغّل LMArenaBridge وحدد LMArenaBridge_URL",
+          ].join("\n"));
+          return true;
+        }
         const h = await arenaBridgeHealth(env);
         await sendMessage(env, chatId, h.ok
           ? "🟢 الجسر سليم:\n" + JSON.stringify(h.data).slice(0, 1200)
@@ -1362,11 +1514,13 @@ async function handleCommand(text, env, chatId) {
           "الحالة: " + (on ? "🟢 شغال" : "⏸️ موقوف") + " | النموذج: " + cur,
           "العنوان: " + cfg.base,
           "الأولوية: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_FIRST || "")) ? "قبل كل المزودين" : "بعد المزودين مع مفتاح"),
-          "Keep-alive: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_KEEPALIVE || "")) ? "مفعّل (كل 10 دقائق)" : "موقوف (شغّله لو الاستضافة بتنام)"),
+          "المحرك: " + (await arenaIsPrimary(env) ? "⭐ أساسي (قبل كل المزودين)" : "احتياطي بعد المزودين"),
+          "Keep-alive: " + (arenaKeepAliveOn(env) ? "مفعّل (كل 10 دقائق)" : "موقوف"),
+          "قاطع الدائرة: " + (await arenaInCooldown(env) ? "مفتوح — الجسر فشل حديثاً، رح أنتظر شوية قبل ما أجرّبه" : "مغلق (طبيعي)"),
         ];
         if (models.length) lines.push("", "النماذج المتاحة (" + models.length + "):", ...models.slice(0, 25).map((m) => "• " + m));
         else lines.push("", "ما قدرت أجيب قائمة النماذج — جرّب /arena test");
-        lines.push("", "الأوامر: /arena on · off · wake · models · test · /arena <اسم-نموذج> · /arena_ask <سؤال>");
+        lines.push("", "الأوامر: /arena on · off · primary · wake · models · test · /arena <اسم-نموذج> · /arena_ask <سؤال>");
         await sendMessage(env, chatId, lines.join("\n").slice(0, 3800));
         return true;
       }

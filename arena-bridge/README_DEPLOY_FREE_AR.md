@@ -23,6 +23,53 @@
 
 ---
 
+## ⭐ خلّي Arena أساس جارفس (مو مجرد إضافة)
+
+بمجرد ما تحط `ARENA_BRIDGE_URL`، جارفس بيعتبر **Arena عقله الأساسي**: كل رد، كل مهمة
+بالخلفية، وكل أداة (بحث ويب · فتح رابط · تدقيق موقع · إيميل · جدولة مهمة · تذكير) بتمرق
+على Arena أولاً — وباقي المزودين (Gemini/Mistral/Groq/OpenRouter) صاروا احتياط فقط.
+
+**ليش هيك صح؟** الأدوات والبحث ما بتصير داخل Arena — بتصير **بجارفس**: Arena بيقرر
+"شو الخطوة" (يكتب `TOOL_CALL`)، وجارفس بينفذها فعلياً (بيفتح الرابط، بيبحث، بيبعت…) ويرجّع
+النتيجة لـ Arena لي كمّل. يعني Arena = العقل، جارفس = اليدين. وهاد أحسن من أي "وكيل"
+بموقع Arena لأنه بيمر على مفاتيحك وأدواتك وذاكرتك.
+
+### تفعيله (دقيقتين)
+```bash
+cd agency-cloudflare
+npx wrangler secret put ARENA_BRIDGE_URL   # https://<space>.hf.space أو http://<ip>:8000
+npx wrangler secret put ARENA_BRIDGE_KEY   # BRIDGE_API_KEY
+npx wrangler deploy
+```
+بعدها من تيليجرام:
+- `/arena test` → يقولك أي محرك شغال فعلياً داخل الجسر (مش بس الصفحة شغالة).
+- `/arena primary` → يقلب (أساسي ↔ احتياطي) بأي وقت بدون deploy.
+
+### شو بصير لو Arena وقع؟
+1. جارفس يصحّي الخدمة (`/health`) ويعيد المحاولة مرة.
+2. إذا فشلت، يفتح **قاطع دائرة** ويتجاهل Arena 5 دقائق حتى ما يتأخر كل رد.
+3. يكمّل على Gemini/Mistral/Groq/OpenRouter — البوت ما بيوقف ولا ثانية.
+
+### أضمن طريق "أساسي ٢٤/٧" ببلاش
+1. **HF Space** (بلا بطاقة): ارفع الجسر بأمر واحد من Termux:
+```bash
+pkg install -y python && pip install huggingface_hub
+export HF_TOKEN=hf_xxxxxxxx        # من huggingface.co/settings/tokens (write)
+python arena-bridge/deploy/hf_push.py --repo <حسابك>/jarvis-arena-bridge --browser
+```
+   `--browser` يحمّل chromium داخل الـ Space (يرفع فرص نجاح gpt4free/Arena كثيراً).
+   الـ Keep-alive يشتغل تلقائياً لأن العنوان `hf.space`.
+2. **قبل النوم**: `/arena test` مرة — إذا كل المحركات حمراء، معناها الكوكيز/الجلسة بدها تجديد.
+3. **احتياط ذكي**: خلي مفاتيح Gemini/OpenRouter موجودة. إذا Arena تعطّل، البوت يضل شغال ٢٤/٧.
+
+### الحقيقة الصادقة عن "Arena أساسي ٢٤/٧ ببلاش"
+- LMArena موقع مجاني بجلسة متصفح، مو API رسمي — ممكن يطلب تسجيل دخول أو يحظر الاستخدام الآلي.
+- أحياناً كل المحركات بترجع حمراء (كوكيز منتهية/حماية Cloudflare). الحل: أعد بناء الجلسة أو
+  شغّل LMArenaBridge محلياً على الموبايل (Termux) وحدد `LMArenaBridge_URL`.
+- عشان هيك صمّمنا الاحتياط التلقائي: **Arena أساس، بس مو نقطة فشل واحدة**.
+
+---
+
 ## 🥇 الخيار A — Oracle Cloud Always Free (موصى به)
 
 Oracle تعطي **سيرفر حقيقي ٢٤/٧ مجاناً للأبد** (Always Free): 4 vCPU ARM + 24GB RAM.

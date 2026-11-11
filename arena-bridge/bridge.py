@@ -63,6 +63,10 @@ DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "auto").strip() or "auto"
 # upstream اختياري: LMArenaBridge محلي (CloudWaddie / Blacklisted-Binary / lianues)
 LMArenaBridge_URL = os.environ.get("LMArenaBridge_URL", "").strip().rstrip("/")
 LMArenaBridge_KEY = os.environ.get("LMArenaBridge_KEY", "").strip()
+# بديل ثالث: أي خدمة متوافقة مع OpenAI تعرف أنها تصل Arena (جسر مستضاف، وسيط…)
+OPENAI_COMPAT_URL = os.environ.get("OPENAI_COMPAT_URL", "").strip().rstrip("/")
+OPENAI_COMPAT_KEY = os.environ.get("OPENAI_COMPAT_KEY", "").strip()
+OPENAI_COMPAT_MODEL = os.environ.get("OPENAI_COMPAT_MODEL", "auto").strip() or "auto"
 # هل نسمح لـ gpt4free بالتراجع لمزودين مجانيين آخرين إذا فشل Arena؟
 G4F_FALLBACK = os.environ.get("G4F_FALLBACK", "true").strip().lower() in ("1", "true", "yes", "on")
 # كوكيز Arena (اختياري — gpt4free قد يفتح متصفحاً بنفسه عند الحاجة)
@@ -284,6 +288,53 @@ async def _LMArenaBridge_stream(model: str, messages: list[dict[str, Any]]) -> A
 
 
 # ---------------------------------------------------------------------------
+# المحرك 3: أي خدمة متوافقة مع OpenAI (وسيط جاهز تثق فيه)
+# ---------------------------------------------------------------------------
+
+async def _compat_text(model: str, messages: list[dict[str, Any]]) -> str:
+    if not OPENAI_COMPAT_URL:
+        raise RuntimeError("OPENAI_COMPAT_URL غير مضبوط")
+    if httpx is None:
+        raise RuntimeError("httpx غير مثبّت")
+    headers = {"content-type": "application/json"}
+    if OPENAI_COMPAT_KEY:
+        headers["authorization"] = f"Bearer {OPENAI_COMPAT_KEY}"
+    async with httpx.AsyncClient(timeout=120) as client:
+        res = await client.post(
+            OPENAI_COMPAT_URL + "/chat/completions",
+            headers=headers,
+            json={"model": model if model and model != "auto" else OPENAI_COMPAT_MODEL, "messages": messages},
+        )
+        res.raise_for_status()
+        data = res.json()
+    return (data.get("choices", [{}])[0].get("message", {}).get("content", "") or "").strip()
+
+
+def _engines() -> list[dict[str, Any]]:
+    """وصف المحركات المتاحة — يستخدمه /health و/arena/selftest."""
+    return [
+        {
+            "name": "LMArenaBridge",
+            "kind": "upstream",
+            "ready": bool(LMArenaBridge_URL),
+            "detail": LMArenaBridge_URL or "غير مضبوط (شغّل LMArenaBridge محلياً وحط عنوانه)",
+        },
+        {
+            "name": "gpt4free:Arena",
+            "kind": "lib",
+            "ready": HAS_G4F,
+            "detail": "مثبّت" if HAS_G4F else "غير مثبّت (pip install gpt4free)",
+        },
+        {
+            "name": "OpenAI-compatible",
+            "kind": "upstream",
+            "ready": bool(OPENAI_COMPAT_URL),
+            "detail": OPENAI_COMPAT_URL or "غير مضبوط (أي وسيط متوافق مع OpenAI)",
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -312,9 +363,46 @@ async def health():
         "service": "jarvis-arena-bridge",
         "has_gpt4free": HAS_G4F,
         "has_LMArenaBridge_upstream": bool(LMArenaBridge_URL),
+        "has_openai_compat": bool(OPENAI_COMPAT_URL),
         "default_model": DEFAULT_MODEL,
+        "engines": _engines(),
         "ts": _now(),
     }
+
+
+@app.get("/arena/selftest")
+async def arena_selftest(deep: int = 0, authorization: Optional[str] = Header(None), x_api_key: Optional[str] = Header(None)):
+    """
+    تشخيص المحركات. deep=1 يجرّب سؤالاً حقيقياً على كل محرك (يأخذ وقتاً).
+    يستخدمه أمر /arena test في جارفس.
+    """
+    _check_auth(authorization, x_api_key)
+    results = _engines()
+    if not deep:
+        return {"service": "jarvis-arena-bridge", "checked": "readiness", "engines": results}
+
+    probe = [{"role": "user", "content": "اكتب كلمة: تم"}]
+    for item in results:
+        if not item["ready"]:
+            item["ok"] = False
+            item["error"] = "غير مهيّأ"
+            continue
+        started = time.time()
+        try:
+            if item["name"] == "LMArenaBridge":
+                text = await asyncio.wait_for(_LMArenaBridge_text(DEFAULT_MODEL, probe), timeout=60)
+            elif item["name"] == "gpt4free:Arena":
+                text = await asyncio.wait_for(asyncio.to_thread(_g4f_text, DEFAULT_MODEL, probe), timeout=90)
+            else:
+                text = await asyncio.wait_for(_compat_text(DEFAULT_MODEL, probe), timeout=60)
+            item["ok"] = bool(text)
+            item["ms"] = int((time.time() - started) * 1000)
+            item["sample"] = (text or "")[:120]
+        except Exception as e:
+            item["ok"] = False
+            item["ms"] = int((time.time() - started) * 1000)
+            item["error"] = str(e)[:300]
+    return {"service": "jarvis-arena-bridge", "checked": "deep", "engines": results}
 
 
 @app.get("/v1/models")
@@ -365,6 +453,17 @@ async def chat_completions(
                 return
             except Exception as e:
                 errors.append(f"gpt4free: {e}")
+            if OPENAI_COMPAT_URL:
+                try:
+                    text = await _compat_text(model, messages)
+                    if text:
+                        yield _sse_chunk(model, text)
+                        yield _sse_chunk(model, "", finish="stop")
+                        yield "data: [DONE]\n\n"
+                        return
+                    errors.append("compat: رد فارغ")
+                except Exception as e:
+                    errors.append(f"compat: {e}")
             yield _sse_chunk(model, "تعذر الوصول لكل محركات Arena: " + " | ".join(errors), finish="stop")
             yield "data: [DONE]\n\n"
 
@@ -388,6 +487,16 @@ async def chat_completions(
         errors.append("gpt4free: رد فارغ")
     except Exception as e:
         errors.append(f"gpt4free: {e}")
+
+    # ثم أي وسيط متوافق مع OpenAI (إن ضُبط)
+    if OPENAI_COMPAT_URL:
+        try:
+            text = await _compat_text(model, messages)
+            if text:
+                return JSONResponse(_completion_payload(model, text))
+            errors.append("compat: رد فارغ")
+        except Exception as e:
+            errors.append(f"compat: {e}")
 
     raise HTTPException(status_code=502, detail="فشل كل محركات Arena: " + " | ".join(errors))
 

@@ -69,7 +69,18 @@ curl -H "Authorization: Bearer <BRIDGE_API_KEY>" -H "content-type: application/j
    `g4f.Provider.needs_auth.Arena`، ويتعامل مع محاكاة المتصفح ورموز الجلسة وتجاوز
    Cloudflare. إذا فشل وبـ `G4F_FALLBACK=true` يتراجع لمزودين مجانيين آخرين من g4f.
 
-الترتيب: LMArenaBridge أولاً (إن وُجد) ثم gpt4free. أي فشل ينتقل للثاني.
+3. **أي وسيط متوافق مع OpenAI** — لو عندك/لقيت خدمة تصل Arena:
+   ```
+   OPENAI_COMPAT_URL=https://.../v1
+   OPENAI_COMPAT_KEY=...
+   ```
+
+الترتيب: LMArenaBridge أولاً (إن وُجد) ← ثم gpt4free/Arena ← ثم الوسيط المتوافق.
+أي فشل ينتقل للثاني، والرد النهائي يذكر سبب فشل كل محرك.
+
+### فحص المحركات
+`GET /arena/selftest` يعرض المحركات الثلاثة وجاهزيتها، و`/arena/selftest?deep=1`
+يجرّب سؤالاً حقيقياً على كل محرك (يستخدمه `/arena test` من تيليجرام).
 
 ## متغيرات البيئة
 
@@ -82,6 +93,8 @@ curl -H "Authorization: Bearer <BRIDGE_API_KEY>" -H "content-type: application/j
 | `LMArenaBridge_KEY` | فاضي | مفتاح الجسر المحلي إن وُجد |
 | `G4F_FALLBACK` | `true` | هل يتراجع gpt4free لمزودين آخرين عند فشل Arena |
 | `ARENA_COOKIES` / `ARENA_COOKIES_FILE` | فاضي | كوكيز Arena جاهزة (اختياري — لا ترفعها على Git) |
+| `OPENAI_COMPAT_URL` | فاضي | أي خدمة متوافقة مع OpenAI تصل Arena (بدون `/chat/completions`) |
+| `OPENAI_COMPAT_KEY` / `OPENAI_COMPAT_MODEL` | فاضي / `auto` | مفتاحها ونموذجها |
 
 ## النشر المجاني ٢٤/٧
 | المنصة | متطلبات | نوم؟ |

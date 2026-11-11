@@ -83,6 +83,18 @@ def t_validation():
     assert r.status_code == 400
 
 
+def t_selftest_readiness():
+    r = client.get("/arena/selftest")
+    assert r.status_code == 200, r.status_code
+    body = r.json()
+    names = [e["name"] for e in body["engines"]]
+    assert names == ["LMArenaBridge", "gpt4free:Arena", "OpenAI-compatible"], names
+    assert all("ready" in e for e in body["engines"])
+    # /health كمان لازم يعرض المحركات
+    h = client.get("/health").json()
+    assert isinstance(h["engines"], list) and len(h["engines"]) == 3
+
+
 def t_env_loading():
     # لا .env حقيقي بالاختبار — نتأكد أن الدالة لا تنفجر بغياب الملف
     bridge._load_dotenv("/tmp/definitely-missing-jarvis.env")
@@ -96,8 +108,9 @@ for name, fn in [
     ("رد غير بث بصيغة OpenAI", t_completion_payload),
     ("مقاطع البث SSE صحيحة", t_sse_format),
     ("رفض messages الفارغة وJSON الخربان", t_validation),
+    ("/arena/selftest يعرض المحركات الثلاثة", t_selftest_readiness),
     ("تحميل .env الغائب آمن", t_env_loading),
 ]:
     check(name, fn)
 
-print(f"\n{passed}/8 فحوصات ناجحة")
+print(f"\n{passed}/9 فحوصات ناجحة")
