@@ -78,6 +78,11 @@ export default {
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
     }
+    if (url.pathname === "/tts") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+      if (request.method !== "GET" && request.method !== "POST") return jsonResponse({ error: "GET/POST only" }, 405, CORS_HEADERS);
+      return handleTts(request, env);
+    }
     if (url.pathname === "/call") {
       return new Response(CALL_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
@@ -456,14 +461,28 @@ async function updateLead(env, index, status, note) {
 
 async function callMeNow(env, message) {
   const user = (env.CALLMEBOT_TELEGRAM_USER || "").trim();
-  if (!user) return "CallMeBot غير مفعّل — أضف CALLMEBOT_TELEGRAM_USER من @CallMeBot_txtbot";
+  if (!user) return "CallMeBot غير مفعّل — أضف CALLMEBOT_TELEGRAM_USER (اسم مستخدمك بالتيليجرام بدون @ أو رقمك بالصيغة الدولية).";
+  const url = `https://api.callmebot.com/start.php?user=${encodeURIComponent(user)}&text=${encodeURIComponent(String(message || "جارفس يحتاج قرارك").slice(0, 250))}`;
+  let res, body = "";
   try {
-    const url = `https://api.callmebot.com/start.php?user=${encodeURIComponent(user)}&text=${encodeURIComponent(String(message || "جارفس يحتاج قرارك").slice(0, 250))}`;
-    await fetch(url, { signal: AbortSignal.timeout(15000) });
-    return "تم إرسال رنّة تيليجرام لك عبر CallMeBot.";
+    res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    body = (await res.text().catch(() => "")).trim().slice(0, 300);
   } catch (e) {
-    return "تعذرت الرنّة: " + (e && e.message ? e.message : e);
+    return "تعذر الوصول إلى CallMeBot: " + (e && e.message ? e.message : e) + "\nجرّب مرة ثانية بعد دقيقة.";
   }
+  console.log("callmebot HTTP", res.status, body);
+  const looksFailed = !res.ok || /error|invalid|not\s*authorized|unauthorized|start|denied|fail/i.test(body);
+  if (looksFailed) {
+    return [
+      `❌ CallMeBot ما طلع لك رنّة (HTTP ${res.status}${body ? " — " + body.slice(0, 140) : ""}).`,
+      "",
+      "السبب المعتاد: ما ضغطت Start عند @CallMeBot_txtbot أو المعرف غلط:",
+      "1) افتح تيليجرام ← @CallMeBot_txtbot ← اضغط Start (رسالة واحدة)",
+      "2) تأكد أن CALLMEBOT_TELEGRAM_USER = اسم مستخدمك بالضبط (بدون @) أو رقمك بمفتاح الدولة مثل +9639…",
+      "3) جرّب: /call اختبار",
+    ].join("\n");
+  }
+  return "📞 رنّة طلعت لك عبر CallMeBot — افتح تيليجرام.\n(ملاحظة: CallMeBot خدمة خارجية غير مضمونة؛ إذا ما وصلت، الضغط على Start عند @CallMeBot_txtbot هو الحل 90% من المرات.)";
 }
 
 function parseToolCall(out) {
@@ -654,18 +673,104 @@ function splitForTts(text, max) {
   if (cur.trim()) chunks.push(cur.trim());
   return chunks;
 }
-async function ttsArabicMp3(chunk) {
-  const q = encodeURIComponent(chunk);
-  const url = "https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-in-chrome&tl=ar&q=" + q;
-  const res = await fetch(url, {
-    headers: {
-      "user-agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-      "referer": "https://translate.google.com/",
-    },
-    signal: AbortSignal.timeout(20000),
+const EDGE_TTS_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4";
+const EDGE_TTS_GEC_VERSION = "1-143.0.3650.75";
+const EDGE_TTS_DEFAULT_VOICE = "ar-SY-LaithNeural"; // شامي — صوت رجل (جارفس). بديل: ar-SY-AmanyNeural (أنثى)
+
+async function edgeSecMsGec() {
+  const filetime = Math.floor((Date.now() / 1000 + 11644473600) * 1e7);
+  const rounded = filetime - (filetime % 3000000000);
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(rounded) + EDGE_TTS_TOKEN));
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+function edgeEscapeXml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+function uuidNoDashes() { return crypto.randomUUID().replace(/-/g, ""); }
+
+/* نطق شامي طبيعي عبر Edge TTS — مجاني بالكامل، بلا مفتاح وبلا بطاقة (نفس صوت "Read Aloud") */
+async function edgeTtsMp3(text, voice, msTimeout) {
+  const voiceName = voice || EDGE_TTS_DEFAULT_VOICE;
+  const clean = String(text || "").trim().slice(0, 450);
+  if (!clean) return null;
+  let sec;
+  try { sec = await edgeSecMsGec(); } catch (e) { console.log("edge tts gec error:", e && e.message ? e.message : e); return null; }
+  const url = "wss://speech.platform.bing.com/edge/v1?TrustedClientToken=" + EDGE_TTS_TOKEN + "&Sec-MS-GEC=" + sec + "&Sec-MS-GEC-Version=" + EDGE_TTS_GEC_VERSION;
+  return new Promise((resolve) => {
+    let done = false;
+    const chunks = [];
+    let total = 0;
+    let ws = null;
+    const timer = setTimeout(() => finish(null), msTimeout || 25000);
+    const finish = (out) => {
+      if (done) return; done = true; clearTimeout(timer);
+      try { if (ws) ws.close(); } catch {}
+      resolve(out);
+    };
+    try { ws = new WebSocket(url); } catch (e) { console.log("edge tts ws ctor error:", e && e.message ? e.message : e); return finish(null); }
+    try { ws.binaryType = "arraybuffer"; } catch {}
+    ws.addEventListener("open", () => {
+      try {
+        const cfg = { context: { synthesis: { audio: { metadataoptions: { sentenceBoundaryEnabled: "false", wordBoundaryEnabled: "false" }, outputFormat: "audio-24khz-48kbitrate-mono-mp3" } } } };
+        ws.send("X-Timestamp:" + new Date().toISOString() + "\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" + JSON.stringify(cfg));
+        const ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='ar-SY'><voice name='" + voiceName + "'><prosody rate='+0%'>" + edgeEscapeXml(clean) + "</prosody></voice></speak>";
+        ws.send("X-RequestId:" + uuidNoDashes() + "\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:" + new Date().toISOString() + "\r\nPath:ssml\r\n\r\n" + ssml);
+      } catch (e) { console.log("edge tts send error:", e && e.message ? e.message : e); finish(null); }
+    });
+    ws.addEventListener("message", (event) => {
+      try {
+        const data = event.data;
+        if (typeof data === "string") {
+          if (data.includes("Path:turn.end")) {
+            if (!total) return finish(null);
+            const all = new Uint8Array(total); let off = 0;
+            for (const c of chunks) { all.set(c, off); off += c.length; }
+            return finish(all);
+          }
+          return;
+        }
+        const buf = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(awaitableBuffer(data));
+        if (buf.length < 2) return;
+        const headerLen = (buf[0] << 8) | buf[1];
+        if (buf.length < 2 + headerLen) return;
+        const header = new TextDecoder().decode(buf.subarray(2, 2 + headerLen));
+        if (header.includes("Path:audio")) {
+          const audio = buf.subarray(2 + headerLen);
+          chunks.push(audio); total += audio.length;
+        }
+      } catch (e) { console.log("edge tts frame error:", e && e.message ? e.message : e); }
+    });
+    ws.addEventListener("error", (e) => { console.log("edge tts ws error:", (e && (e.message || e.type)) || "unknown"); finish(null); });
+    ws.addEventListener("close", () => {
+      if (done) return;
+      if (total > 2000) { const all = new Uint8Array(total); let off = 0; for (const c of chunks) { all.set(c, off); off += c.length; } return finish(all); }
+      finish(null);
+    });
   });
-  if (!res.ok) return null;
-  try { return new Uint8Array(await res.arrayBuffer()); } catch { return null; }
+}
+function awaitableBuffer(data) { return data && data.buffer ? data.buffer : new ArrayBuffer(0); }
+
+async function googleTtsMp3(chunk) {
+  try {
+    const q = encodeURIComponent(chunk);
+    const url = "https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-in-chrome&tl=ar&q=" + q;
+    const res = await fetch(url, {
+      headers: {
+        "user-agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "referer": "https://translate.google.com/",
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch (e) { console.log("google tts error:", e && e.message ? e.message : e); return null; }
+}
+async function ttsArabicMp3(chunk, env) {
+  const voice = env && env.EDGE_TTS_VOICE ? String(env.EDGE_TTS_VOICE) : EDGE_TTS_DEFAULT_VOICE;
+  const edge = await edgeTtsMp3(chunk, voice, 25000);
+  if (edge && edge.length > 500) return edge;
+  console.log("edge tts: فشل أو رد ناقص — رجوع إلى Google TTS");
+  return googleTtsMp3(chunk);
 }
 async function tgSendVoice(env, chatId, mp3Bytes, name) {
   try {
@@ -674,7 +779,14 @@ async function tgSendVoice(env, chatId, mp3Bytes, name) {
     form.append("voice", new Blob([mp3Bytes], { type: "audio/mpeg" }), name || "jarvis.mp3");
     const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendVoice`, { method: "POST", body: form });
     const d = await res.json().catch(() => ({}));
-    return res.ok && d && d.ok !== false;
+    if (res.ok && d && d.ok !== false) return true;
+    console.log("sendVoice رفض — أجرب sendAudio:", res.status, JSON.stringify(d).slice(0, 200));
+    const form2 = new FormData();
+    form2.append("chat_id", String(chatId));
+    form2.append("audio", new Blob([mp3Bytes], { type: "audio/mpeg" }), name || "jarvis.mp3");
+    const res2 = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendAudio`, { method: "POST", body: form2 });
+    const d2 = await res2.json().catch(() => ({}));
+    return res2.ok && d2 && d2.ok !== false;
   } catch (e) { console.log("sendVoice error:", e && e.message ? e.message : e); return false; }
 }
 async function sendVoiceReply(env, chatId, text) {
@@ -682,10 +794,35 @@ async function sendVoiceReply(env, chatId, text) {
     const clean = String(text || "").replace(/[*_`~]/g, "").replace(/https?:\/\/\S+/g, "الرابط").trim();
     const chunks = splitForTts(clean, 170).slice(0, 3);
     for (let i = 0; i < chunks.length; i++) {
-      const mp3 = await ttsArabicMp3(chunks[i]);
+      const mp3 = await ttsArabicMp3(chunks[i], env);
       if (mp3) await tgSendVoice(env, chatId, mp3, "jarvis_" + i + ".mp3");
     }
   } catch (e) { console.log("voice reply error:", e && e.message ? e.message : e); }
+}
+
+async function transcribeGroqAudio(env, buf) {
+  if (!env.GROQ_API_KEY) return null;
+  try {
+    const fd = new FormData();
+    fd.append("model", "whisper-large-v3-turbo");
+    fd.append("file", new Blob([buf], { type: "audio/ogg" }), "voice.ogg");
+    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${env.GROQ_API_KEY}` }, body: fd, signal: AbortSignal.timeout(45000) });
+    if (res.ok) { const d = await res.json(); if (d.text) return String(d.text).trim() || null; }
+    else { console.log("groq whisper HTTP", res.status, (await res.text().catch(() => "")).slice(0, 300)); }
+  } catch (e) { console.log("groq whisper error:", e && e.message ? e.message : e); }
+  return null;
+}
+
+async function transcribeWorkersAIAudio(env, buf) {
+  if (!env.AI) return null;
+  try {
+    const bytes = Array.from(new Uint8Array(buf));
+    const out = await env.AI.run("@cf/openai/whisper-large-v3-turbo", { audio: bytes });
+    const t = out && (out.text || (out.result && out.result.text) || (typeof out === "string" ? out : ""));
+    if (t && String(t).trim()) return String(t).trim();
+    console.log("workers ai whisper: رد بدون نص");
+  } catch (e) { console.log("workers ai whisper error:", e && e.message ? e.message : e); }
+  return null;
 }
 
 async function transcribeGeminiAudio(env, mimeType, buf) {
@@ -703,6 +840,15 @@ async function transcribeGeminiAudio(env, mimeType, buf) {
   return null;
 }
 
+/* السلسلة كاملة: Groq (كوتا سخية) ← Workers AI (حصة يومية تتجدد كل يوم) ← Gemini (كوتا محدودة) */
+async function transcribeAudioBuffer(env, mimeType, buf) {
+  return (
+    (await transcribeGroqAudio(env, buf)) ||
+    (await transcribeWorkersAIAudio(env, buf)) ||
+    (await transcribeGeminiAudio(env, mimeType || "audio/ogg", buf))
+  );
+}
+
 async function transcribeVoice(env, fileId) {
   const f = await tgApi(env, "getFile", { file_id: fileId });
   const filePath = f?.data?.result?.file_path;
@@ -712,16 +858,168 @@ async function transcribeVoice(env, fileId) {
     const res = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`, { signal: AbortSignal.timeout(30000) });
     bin = await res.arrayBuffer();
   } catch { return null; }
-  if (env.GROQ_API_KEY) {
-    try {
-      const fd = new FormData();
-      fd.append("model", "whisper-large-v3-turbo");
-      fd.append("file", new Blob([bin], { type: "audio/ogg" }), "voice.ogg");
-      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${env.GROQ_API_KEY}` }, body: fd, signal: AbortSignal.timeout(45000) });
-      if (res.ok) { const d = await res.json(); if (d.text) return String(d.text).trim() || null; }
-    } catch (e) { console.log("groq whisper error:", e && e.message ? e.message : e); }
+  return await transcribeAudioBuffer(env, "audio/ogg", bin);
+}
+
+/* ===== قراءة الملفات والصور (مجاني بالكامل) ===== */
+const TEXT_DOC_EXT = new Set(["txt","md","markdown","csv","tsv","json","xml","html","htm","log","yaml","yml","ini","conf","env","sql","py","js","ts","css","sh"]);
+
+function xmlDecode(s) {
+  return String(s || "")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n) || 0))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16) || 0))
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+async function inflateRawBytes(bytes) {
+  const ds = new DecompressionStream("deflate-raw");
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  const buf = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+/* قارئ ZIP مصغّر للملفات Office (xlsx/docx) — بدون أي مكتبات */
+async function readZipMap(buf) {
+  const bytes = new Uint8Array(buf);
+  let eocd = -1;
+  const scanFrom = Math.max(0, bytes.length - 70000);
+  for (let i = bytes.length - 22; i >= scanFrom; i--) {
+    if (bytes[i] === 0x50 && bytes[i + 1] === 0x4b && bytes[i + 2] === 0x05 && bytes[i + 3] === 0x06) { eocd = i; break; }
   }
-  return await transcribeGeminiAudio(env, "audio/ogg", bin);
+  if (eocd < 0) return null;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const dec = new TextDecoder();
+  const map = new Map();
+  for (let i = 0; i < count && p + 46 <= bytes.length; i++) {
+    if (!(bytes[p] === 0x50 && bytes[p + 1] === 0x4b && bytes[p + 2] === 0x01 && bytes[p + 3] === 0x02)) break;
+    const method = dv.getUint16(p + 10, true);
+    const compSize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true);
+    const extraLen = dv.getUint16(p + 30, true);
+    const commentLen = dv.getUint16(p + 32, true);
+    const localOffset = dv.getUint32(p + 42, true);
+    const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    if (compSize <= 5 * 1024 * 1024 && localOffset + 30 <= bytes.length && bytes[localOffset] === 0x50 && bytes[localOffset + 1] === 0x4b) {
+      const lNameLen = dv.getUint16(localOffset + 26, true);
+      const lExtraLen = dv.getUint16(localOffset + 28, true);
+      const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+      const comp = bytes.slice(dataStart, dataStart + compSize);
+      let content = null;
+      if (method === 0) content = comp;
+      else if (method === 8) { try { content = await inflateRawBytes(comp); } catch { content = null; } }
+      if (content) map.set(name, content);
+    }
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return map;
+}
+
+async function extractXlsxText(buf) {
+  const entries = await readZipMap(buf); if (!entries) return null;
+  const dec = new TextDecoder();
+  const sharedXml = entries.get("xl/sharedStrings.xml");
+  const shared = sharedXml ? [...dec.decode(sharedXml).matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => xmlDecode(m[1])) : [];
+  const sheetNames = {};
+  const wb = entries.get("xl/workbook.xml");
+  if (wb) { for (const m of dec.decode(wb).matchAll(/<sheet[^>]*name="([^"]*)"[^>]*sheetId="(\d+)"/g)) sheetNames[Number(m[2])] = xmlDecode(m[1]); }
+  const sheetFiles = [...entries.keys()].filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0])).slice(0, 4);
+  const out = [];
+  for (const sf of sheetFiles) {
+    const idx = Number((sf.match(/(\d+)\.xml$/) || [])[1] || "1");
+    out.push("=== ورقة: " + (sheetNames[idx] || ("sheet" + idx)) + " ===");
+    const xml = dec.decode(entries.get(sf));
+    let rows = 0;
+    for (const rm of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+      if (++rows > 150) { out.push("… (اقتطع عند 150 صفاً)"); break; }
+      const cells = [];
+      for (const cm of rm[1].matchAll(/<c([^>]*)>([\s\S]*?)<\/c>|<c([^>]*)\/>/g)) {
+        const attrs = cm[1] || cm[3] || "";
+        const inner = cm[2] || "";
+        const t = (attrs.match(/t="([^"]+)"/) || [])[1];
+        const vm = inner.match(/<v>([\s\S]*?)<\/v>/);
+        const isM = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/);
+        let v = "";
+        if (t === "s" && vm) v = shared[Number(vm[1])] || "";
+        else if (isM) v = xmlDecode(isM[1]);
+        else if (vm) v = xmlDecode(vm[1]);
+        const ref = (attrs.match(/r="([A-Z]+)\d+"/) || [])[1] || "";
+        cells.push((ref ? ref + ":" : "") + String(v).trim().slice(0, 60));
+      }
+      if (cells.length) out.push(cells.join(" | ").slice(0, 500));
+    }
+  }
+  const text = out.join("\n").trim();
+  return text ? text.slice(0, 12000) : null;
+}
+
+async function extractDocxText(buf) {
+  const entries = await readZipMap(buf); if (!entries) return null;
+  const doc = entries.get("word/document.xml"); if (!doc) return null;
+  let xml = new TextDecoder().decode(doc);
+  xml = xml.replace(/<\/w:p>/g, "\n");
+  const text = xmlDecode(xml.replace(/<[^>]+>/g, "")).replace(/\n{3,}/g, "\n\n").trim();
+  return text ? text.slice(0, 12000) : null;
+}
+
+async function downloadTelegramFile(env, fileId, timeoutMs) {
+  const f = await tgApi(env, "getFile", { file_id: fileId });
+  const filePath = f?.data?.result?.file_path;
+  if (!filePath) return null;
+  const res = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`, { signal: AbortSignal.timeout(timeoutMs || 45000) });
+  if (!res.ok) return null;
+  return await res.arrayBuffer();
+}
+
+/* يرجّع { text, kind } أو { error } أو null (نوع غير مدعوم) */
+async function extractDocumentText(env, fileId, filename, mime) {
+  const buf = await downloadTelegramFile(env, fileId, 60000);
+  if (!buf) return { error: "ما قدرت أحمّل الملف من تيليجرام (أكبر من 20MB أو مشكلة اتصال)." };
+  if (buf.byteLength > 10 * 1024 * 1024) return { error: "الملف أكبر من 10 ميغابايت — قسّمه أو ابعته أصغر." };
+  const ext = (String(filename || "").split(".").pop() || "").toLowerCase();
+  const mimeL = String(mime || "").toLowerCase();
+  if (TEXT_DOC_EXT.has(ext) || mimeL.startsWith("text/") || mimeL.includes("json") || mimeL.includes("csv") || mimeL.includes("xml")) {
+    return { text: new TextDecoder().decode(buf).slice(0, 12000), kind: "text" };
+  }
+  if (ext === "xlsx" || ext === "xlsm" || mimeL.includes("spreadsheetml")) {
+    const t = await extractXlsxText(buf);
+    return t ? { text: t, kind: "xlsx" } : { error: "ما قدرت أقرأ ملف Excel (فاضي أو محمي بكلمة سر؟)." };
+  }
+  if (ext === "docx" || mimeL.includes("wordprocessingml")) {
+    const t = await extractDocxText(buf);
+    return t ? { text: t, kind: "docx" } : { error: "ما قدرت أقرأ ملف Word (فاضي أو محمي بكلمة سر؟)." };
+  }
+  if (ext === "pdf") return { error: "PDF لسا ما مدعوم — ابعته كصور (سكيرينشوت لكل صفحة) أو حوّله Word/نص وأنا بقراه فوراً." };
+  return null;
+}
+
+/* رؤية مجانية: Workers AI (حصة يومية تتجدد) ثم Gemini كاحتياط */
+async function visionDescribe(env, fileId, question, mimeType) {
+  const buf = await downloadTelegramFile(env, fileId, 45000);
+  if (!buf) return null;
+  const prompt = question || "صف هذه الصورة باختصار مفيد باللهجة الشامية: شو فيها بالضبط، واقرأ أي نص مكتوب فيها حرفياً (OCR).";
+  if (env.AI) {
+    try {
+      const out = await env.AI.run("@cf/meta/llama-3.2-11b-vision-instruct", { image: Array.from(new Uint8Array(buf)), prompt, max_tokens: 800 });
+      const t = out && (out.response || out.description || out.text || (typeof out === "string" ? out : ""));
+      if (t && String(t).trim()) return String(t).trim();
+      console.log("workers ai vision: رد بدون وصف");
+    } catch (e) { console.log("workers ai vision error:", e && e.message ? e.message : e); }
+  }
+  if (env.GEMINI_API_KEY) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType || "image/jpeg", data: arrayBufferToBase64(buf) } }] }] }),
+        signal: AbortSignal.timeout(45000),
+      });
+      if (res.ok) { const d = await res.json(); const t = d?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim(); if (t) return t; }
+      else { console.log("gemini vision HTTP", res.status, (await res.text().catch(() => "")).slice(0, 200)); }
+    } catch (e) { console.log("gemini vision error:", e && e.message ? e.message : e); }
+  }
+  return null;
 }
 
 /* --------------------------- Command handling --------------------------- */
@@ -735,6 +1033,7 @@ const WELCOME = [
   "• إدارة عملاؤك الـ12 بدبي: /leads ثم /lead 2 أو قل لي «حدّث الشركة 2 راسلته»",
   "• تشغيل مهام بالخلفية تطرشلك تقرير + رنّة: «دور على 5 شركات ديكور بالرياض وفحص مواقعهم واطرشلي»",
   "• محادثات عربية صوتية/نصية (الرسائل الصوتية أسمعها وأفهمها)",
+  "• بقرا الصور (وصف + OCR) وملفاتك: txt/csv/xlsx/docx — وبعدّل جداولك وارجعيلك CSV",
   "",
   "الأوامر:",
   "/start — هذه القائمة",
@@ -749,6 +1048,8 @@ const WELCOME = [
   "/export — حمّل نسخة كاملة من ذاكرتي (JSON)",
   "/report — ملخص الحالة",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
+  "/health — فحص أني شغال",
+  "/files — شو الملفات والصور بقدر أقراها وأعدلها",
   "/reset — مسح ذاكرة المحادثة",
 ].join("\n");
 
@@ -842,6 +1143,19 @@ async function handleCommand(text, env, chatId) {
       else await sendMessage(env, chatId, json.length > 3500 ? json.slice(0, 3500) + "\n…(طويلة — انقطعت)" : json);
       return true;
     }
+    case "/files":
+      await sendMessage(env, chatId, [
+        "📂 شو بقدر أقرا وأفهم:",
+        "🖼 صور (photo أو image/ملف): وصف + قراءة أي نص مكتوب — اكتب سؤالك كـ caption",
+        "📄 نصوص: txt · md · csv · tsv · json · xml · html · لوجات · كود",
+        "📊 Excel: xlsx · xlsm (لحد 4 ورقات، 150 صف لكل ورقة — اسألني أي شي عنها)",
+        "📝 Word: docx",
+        "🚫 PDF لسا لا — ابعته كصور (سكرينشوت لكل صفحة) أو Word وأنا بقراه",
+        "",
+        "✏️ تعديل وارجاع ملف: اكتب مع الملف «ترجملي هالجدول» أو «نظف الفاضي واحذف التكرار وارجعلي ملف» → بترجعلك CSV معدّل يفتح بأي برنامج.",
+        "",
+        "⚠️ ما فيني أوصل ملفات على تلفونك مباشرة — بس كل ملف تطرشيلي بقراه وبتعامل معه وبرجعيلك الناتج.",
+      ].join("\n")); return true;
     case "/reset":
       await kvPut(env, "history", []);
       await sendMessage(env, chatId, "تم مسح ذاكرة المحادثة."); return true;
@@ -868,9 +1182,52 @@ async function handleUpdate(update, env, ctx) {
   let text = String(msg.text || msg.caption || "").trim();
   if (!text && msg.voice) {
     text = await transcribeVoice(env, msg.voice.file_id);
-    if (!text) { await sendMessage(env, chatId, "ما قدرت أفهم الرسالة الصوتية (Gemini/Groq غير متاحين حالياً) — أرسل نصاً."); return; }
+    if (!text) { await sendMessage(env, chatId, "ما قدرت أفرّغ الريكورد — جرّبت Groq ثم Workers AI ثم Gemini وكلهم مشغولين/خلصوا. اكتب لي مؤقتاً وأنا برجع اسمع بأول تجديد للكوتا."); return; }
   }
-  if (!text) { await sendMessage(env, chatId, "أرسل نصاً أو رسالة صوتية."); return; }
+  /* صور (فوتو أو صورة كملف) — رؤية مجانية */
+  const photoSizes = Array.isArray(msg.photo) ? msg.photo : [];
+  const docIsImage = msg.document && /^image\//.test(String(msg.document.mime_type || ""));
+  if (photoSizes.length || docIsImage) {
+    const caption = String(msg.caption || "").trim();
+    const fileId = photoSizes.length ? photoSizes[photoSizes.length - 1].file_id : msg.document.file_id;
+    const mime = photoSizes.length ? "image/jpeg" : String(msg.document.mime_type || "image/jpeg");
+    const desc = await visionDescribe(env, fileId, caption || null, mime);
+    if (!desc) { await sendMessage(env, chatId, "ما قدرت أقرأ الصورة هالمرة — Workers AI و Gemini مشغولين. جرّب مرة ثانية بعد دقيقة."); return; }
+    const userText = `[المستخدم بعت صورة — تفريغها الآلي:\n${desc.slice(0, 2500)}]\n\n${caption ? "سؤال المستخدم عنها: " + caption : "علّق على الصورة باختصار وبأسلوبك، واقرأ أي نص فيها حرفياً."}`;
+    const answer = await agentLoop(userText, env, chatId, { ctx });
+    await sendMessage(env, chatId, answer);
+    return;
+  }
+  /* مستندات: txt/csv/json/md + xlsx/docx — قراءة واستخراج */
+  if (msg.document) {
+    const d = msg.document;
+    const name = String(d.file_name || "file").slice(0, 120);
+    const caption = String(msg.caption || "").trim();
+    const got = await extractDocumentText(env, d.file_id, name, d.mime_type);
+    if (!got) { await sendMessage(env, chatId, `📄 وصلني «${name}» بس ما بعرف أقرأ هالنوع. المدعوم: txt/md/csv/json/xml · xlsx · docx · صور (للـ PDF: ابعته صور أو Word).`); return; }
+    if (got.error) { await sendMessage(env, chatId, got.error); return; }
+    /* طلب تعديل/إرجاع ملف ← نرجّع CSV معدّل */
+    const wantFile = /ارجع(لي)?\s*ملف|صدّر?(لي)?|احفظ(لي)?|عدّل|عدل|ترجم|نظّف|نظف|وحّد|وحد|احذف|أضف\s*عمود|حول.*(csv|excel)/i.test(caption);
+    if (wantFile && (got.kind === "xlsx" || got.kind === "text")) {
+      const edited = await llmComplete(
+        [{ role: "user", content: `الجدول/الملف الأصلي:\n${got.text.slice(0, 6000)}\n\nطلب المستخدم: ${caption}\n\nأرجع المحتوى المعدّل كاملاً بصيغة CSV فقط، بدون أي شرح أو مقدمة أو علامات كود.` }],
+        "أنت محرك جداول دقيق. الناتج CSV فقط. حافظ على الأعمدة والبيانات ما لم يطلب المستخدم غير ذلك.",
+        env
+      );
+      if (edited && edited.trim()) {
+        const clean = edited.trim().replace(/^```[a-z]*\n?/i, "").replace(/```$/, "").trim();
+        const outName = name.replace(/\.(xlsx|xls|xlsm|csv|tsv|txt|md)$/i, "") + "-jarvis.csv";
+        const ok = await tgSendDocument(env, chatId, outName, clean, "text/csv");
+        await sendMessage(env, chatId, ok ? "📄 هون الملف المعدّل (CSV — يفتح بأي برنامج Excel/Sheets)." : "ما قدرت ابعث الملف — بس هون النص:\n\n" + clean.slice(0, 3000));
+        return;
+      }
+    }
+    const userText = `[المستخدم بعت ملف «${name}».\nمحتواه (مستخرج آلياً):\n${got.text.slice(0, 9000)}]\n\n${caption ? "طلب المستخدم: " + caption : "لخّص الملف باختصار شديد وركز على: أهم الأرقام، أهم البنود، وأي شي بدّي أتحرك فيه. جدول صغير إذا فيه بيانات."}`;
+    const answer = await agentLoop(userText, env, chatId, { ctx });
+    await sendMessage(env, chatId, answer);
+    return;
+  }
+  if (!text) { await sendMessage(env, chatId, "أرسل نصاً، صوتاً، صورة أو ملف (txt/csv/xlsx/docx)."); return; }
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
   const answer = await agentLoop(text, env, chatId, { ctx });
   await sendMessage(env, chatId, answer);
@@ -878,6 +1235,22 @@ async function handleUpdate(update, env, ctx) {
     const voiceOn = await kvGet(env, "voice_replies", false);
     if (voiceOn === true) ctx.waitUntil(sendVoiceReply(env, chatId, answer));
   }
+}
+
+/* --------------------- /tts — نطق شامي للـ call page --------------------- */
+
+async function handleTts(request, env) {
+  const url = new URL(request.url);
+  const key = request.headers.get("x-jarvis-key") || url.searchParams.get("key") || "";
+  if (!env.CALL_SECRET) return jsonResponse({ error: "CALL_SECRET غير مفعّل" }, 501, CORS_HEADERS);
+  if (!key || key !== env.CALL_SECRET) return jsonResponse({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401, CORS_HEADERS);
+  const text = String(url.searchParams.get("text") || "").trim().slice(0, 700);
+  if (!text) return jsonResponse({ error: "text مطلوب" }, 400, CORS_HEADERS);
+  const want = String(url.searchParams.get("voice") || env.EDGE_TTS_VOICE || EDGE_TTS_DEFAULT_VOICE);
+  const safeVoice = /^ar-[A-Z]{2}-[A-Za-z]+Neural$/.test(want) ? want : EDGE_TTS_DEFAULT_VOICE;
+  const audio = (await edgeTtsMp3(text, safeVoice, 25000)) || (await googleTtsMp3(text.slice(0, 180)));
+  if (!audio) return jsonResponse({ error: "تعذر توليد الصوت — جرّب كمان شوي" }, 502, CORS_HEADERS);
+  return new Response(audio, { status: 200, headers: { ...CORS_HEADERS, "content-type": "audio/mpeg", "cache-control": "no-store" } });
 }
 
 /* --------------------- /ask — جسر صفحة المكالمة --------------------- */
@@ -914,8 +1287,8 @@ async function handleVoiceAsk(request, env, ctx) {
   if (!audio?.data) return send({ error: "audio.data مطلوب (base64)" }, 400);
   const buf = b64ToArrayBuffer(audio.data);
   const mime = String(audio.mimeType || "audio/webm").slice(0, 100);
-  const text = await transcribeGeminiAudio(env, mime, buf);
-  if (!text) return send({ error: "ما قدرت أفرّغ الصوت — حاول مرة ثانية أو اكتب" }, 422);
+  const text = await transcribeAudioBuffer(env, mime, buf);
+  if (!text) return send({ error: "ما قدرت أفرّغ الصوت — Groq وWorkers AI وGemini كلهم مشغولين هلق. حاول مرة ثانية أو اكتب." }, 422);
   const reply = await agentLoop(text, env, null, { ctx });
   return send({ reply, transcript: text });
 }
