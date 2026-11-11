@@ -104,6 +104,11 @@ export default {
       try {
         const now = new Date(event?.scheduledTime || Date.now());
         if (now.getUTCHours() === 6 && now.getUTCMinutes() === 0) await morningBrief(env);
+        // Keep-alive لجسر LMArena: يمنع Hosting المجاني (Render/HF) من تنويم الخدمة
+        if (arenaFlagOn(env.ARENA_BRIDGE_KEEPALIVE) && arenaBridgeConfig(env).enabled && now.getUTCMinutes() % 10 === 0) {
+          const alive = await arenaWake(env, 1, 0);
+          if (!alive) console.log("arena keepalive: لا استجابة من الجسر");
+        }
       } catch (e) { console.log("brief error:", e && e.message ? e.message : e); }
       try { await processTaskQueue(env, STEPS_PER_TICK); } catch (e) { console.log("queue error:", e && e.message ? e.message : e); }
     })());
@@ -347,7 +352,8 @@ function arenaBridgeConfig(env) {
 }
 
 function arenaBridgeHeaders(cfg) {
-  const headers = { "content-type": "application/json" };
+  // ngrok-skip-browser-warning: يمنع صفحة التحذير تبع ngrok المجاني من اعتراض الردود
+  const headers = { "content-type": "application/json", "ngrok-skip-browser-warning": "1" };
   if (cfg.key) headers.authorization = "Bearer " + cfg.key;
   return headers;
 }
@@ -365,30 +371,64 @@ async function arenaCurrentModel(env) {
   return m || "auto";
 }
 
+const arenaFlagOn = (v) => /^(1|true|yes|on)$/i.test(String(v || ""));
+
+async function arenaBridgeAttempt(cfg, model, convo, system, env) {
+  const timeout = Number(env.ARENA_BRIDGE_TIMEOUT_MS || 45000);
+  const res = await fetch(cfg.url, {
+    method: "POST",
+    headers: arenaBridgeHeaders(cfg),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))],
+      temperature: 0.4,
+      max_tokens: 400,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(Number.isFinite(timeout) && timeout > 0 ? timeout : 45000),
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error("رد فارغ");
+  return text;
+}
+
 async function callArenaBridge(convo, system, env, modelOverride) {
   const cfg = arenaBridgeConfig(env);
   if (!cfg.enabled) return null;
   try {
     if (!(await arenaIsOn(env))) return null;
     const model = String(modelOverride || (await arenaCurrentModel(env)) || "auto").trim() || "auto";
-    const timeout = Number(env.ARENA_BRIDGE_TIMEOUT_MS || 45000);
-    const res = await fetch(cfg.url, {
-      method: "POST",
-      headers: arenaBridgeHeaders(cfg),
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))],
-        temperature: 0.4,
-        max_tokens: 400,
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(Number.isFinite(timeout) && timeout > 0 ? timeout : 45000),
-    });
-    if (!res.ok) { console.log("arena bridge HTTP", res.status); return null; }
-    const data = await res.json();
-    const text = data?.choices?.[0]?.message?.content?.trim();
-    return text || null;
+    try {
+      return await arenaBridgeAttempt(cfg, model, convo, system, env);
+    } catch (e) {
+      console.log("arena bridge attempt failed:", e && e.message ? e.message : e);
+      // الاستضافات المجانية (Render/HF/…) بتنام بعد فترة خمول — نصحّيها ونعيد مرة وحدة
+      if (arenaFlagOn(env.ARENA_BRIDGE_WAKE == null ? "true" : env.ARENA_BRIDGE_WAKE)) {
+        const woke = await arenaWake(env, 3, Number(env.ARENA_BRIDGE_WAKE_GAP_MS || 5000));
+        if (woke) return await arenaBridgeAttempt(cfg, model, convo, system, env);
+      }
+      return null;
+    }
   } catch (e) { console.log("arena bridge error:", e && e.message ? e.message : e); return null; }
+}
+
+/**
+ * يصحّي خدمة الجسر (تنفع للاستضافات المجانية اللي بتنام عند الخمول).
+ * يرجّع true إذا صار /health سليم.
+ */
+async function arenaWake(env, attempts = 5, gapMs = 5000) {
+  const cfg = arenaBridgeConfig(env);
+  if (!cfg.enabled) return false;
+  const tries = Math.max(1, Math.min(10, Number(attempts) || 5));
+  const gap = Math.max(0, Math.min(30000, Number(gapMs) || 0));
+  for (let i = 0; i < tries; i++) {
+    const h = await arenaBridgeHealth(env);
+    if (h.ok) return true;
+    if (i < tries - 1 && gap > 0) await new Promise((r) => setTimeout(r, gap));
+  }
+  return false;
 }
 
 async function arenaBridgeHealth(env) {
@@ -1283,6 +1323,8 @@ async function handleCommand(text, env, chatId) {
           "",
           "بـ wrangler: npx wrangler secret put ARENA_BRIDGE_URL",
           "أو للتجربة المحلية: npx wrangler dev --var ARENA_BRIDGE_URL:http://127.0.0.1:8000",
+          "",
+          "استضافة مجانية ٢٤/٧ من الموبايل فقط؟ شوف arena-bridge/README_DEPLOY_FREE_AR.md",
         ].join("\n"));
         return true;
       }
@@ -1295,6 +1337,14 @@ async function handleCommand(text, env, chatId) {
         await kvPut(env, "arena_enabled", true);
         const h = await arenaBridgeHealth(env);
         await sendMessage(env, chatId, h.ok ? "▶️ جسر LMArena شغال — رح أدخلو بسلسلة الردود." : "▶️ فعّلت الجسر بس ما وصلت له: " + h.reason);
+        return true;
+      }
+      if (/^(wake|ايقاظ|إيقاظ|صحّي|صحى)$/i.test(low)) {
+        const gap = Number(env.ARENA_BRIDGE_WAKE_GAP_MS || 5000);
+        const ok = await arenaWake(env, 6, gap);
+        await sendMessage(env, chatId, ok
+          ? "🟢 الجسر صحّي وشغال — جاهز يستقبل الأسئلة."
+          : "🔴 ما وصلت للجسر بعد 6 محاولات — تأكد إن الخدمة مشغّلة على المنصة، أو جرّب /arena test.");
         return true;
       }
       if (/^(test|فحص|ping)$/i.test(low)) {
@@ -1312,10 +1362,11 @@ async function handleCommand(text, env, chatId) {
           "الحالة: " + (on ? "🟢 شغال" : "⏸️ موقوف") + " | النموذج: " + cur,
           "العنوان: " + cfg.base,
           "الأولوية: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_FIRST || "")) ? "قبل كل المزودين" : "بعد المزودين مع مفتاح"),
+          "Keep-alive: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_KEEPALIVE || "")) ? "مفعّل (كل 10 دقائق)" : "موقوف (شغّله لو الاستضافة بتنام)"),
         ];
         if (models.length) lines.push("", "النماذج المتاحة (" + models.length + "):", ...models.slice(0, 25).map((m) => "• " + m));
         else lines.push("", "ما قدرت أجيب قائمة النماذج — جرّب /arena test");
-        lines.push("", "الأوامر: /arena on · off · models · test · /arena <اسم-نموذج> · /arena_ask <سؤال>");
+        lines.push("", "الأوامر: /arena on · off · wake · models · test · /arena <اسم-نموذج> · /arena_ask <سؤال>");
         await sendMessage(env, chatId, lines.join("\n").slice(0, 3800));
         return true;
       }

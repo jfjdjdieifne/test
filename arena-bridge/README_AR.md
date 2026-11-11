@@ -19,6 +19,9 @@ LMArena — ومنها النماذج التجريبية/المخفية (stealth
 Cloudflare Workers يشغّل JavaScript فقط، بدون متصفح وبدون تخزين كوكيز دائمة —
 فالربط الصح هو **خدمة منفصلة** (هذي) وجارفس يناديها كأنها OpenAI.
 
+> 📱 **معك موبايل بس؟** شوف [`README_DEPLOY_FREE_AR.md`](README_DEPLOY_FREE_AR.md) —
+> ٤ طرق مجانية لتشغيل الجسر ٢٤/٧ (Oracle Always Free · Hugging Face Space · Termux · Render).
+
 ## التشغيل
 
 ```bash
@@ -79,6 +82,14 @@ curl -H "Authorization: Bearer <BRIDGE_API_KEY>" -H "content-type: application/j
 | `LMArenaBridge_KEY` | فاضي | مفتاح الجسر المحلي إن وُجد |
 | `G4F_FALLBACK` | `true` | هل يتراجع gpt4free لمزودين آخرين عند فشل Arena |
 | `ARENA_COOKIES` / `ARENA_COOKIES_FILE` | فاضي | كوكيز Arena جاهزة (اختياري — لا ترفعها على Git) |
+
+## النشر المجاني ٢٤/٧
+| المنصة | متطلبات | نوم؟ |
+|---|---|---|
+| **Oracle Cloud Always Free** | بطاقة للتحقق فقط | لا — الأفضل |
+| **Hugging Face Docker Space** | بلا بطاقة | تنام بعد ~48 ساعة خمول → `ARENA_BRIDGE_KEEPALIVE=true` |
+| **Termux (نفس الموبايل)** | Termux + ngrok | يشتغل وقت ما الموبايل شغّال |
+| **Render Free** | GitHub | تنام بعد 15 دقيقة → `ARENA_BRIDGE_KEEPALIVE=true` |
 
 ## الربط بجارفس
 

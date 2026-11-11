@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0 };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false;
 }
 
 const mockKV = () => ({
@@ -50,7 +50,11 @@ global.fetch = async (input, init = {}) => {
   if (url.startsWith("https://arena.test/")) {
     state.arenaCalls++;
     if (url.endsWith("/v1/models")) return j({ object: "list", data: [{ id: "auto" }, { id: "stealth-model" }] });
-    if (url.endsWith("/health")) return j({ status: "ok", service: "jarvis-arena-bridge", has_gpt4free: true });
+    if (url.endsWith("/health")) {
+      if (state.arenaHealthFails > 0) { state.arenaHealthFails--; return j({ error: "starting" }, 503); }
+      return j({ status: "ok", service: "jarvis-arena-bridge", has_gpt4free: true });
+    }
+    if (state.arenaDown) return j({ error: "cold" }, 503);
     return j({ choices: [{ index: 0, message: { role: "assistant", content: "رد من Arena" }, finish_reason: "stop" }] });
   }
   throw new Error("unmocked URL: " + url);
@@ -383,5 +387,64 @@ await t("24) /arena off يوقف الجسر بالكامل", async () => {
   assert.ok(sentTexts().join("\n").includes("ما رد"), "المستخدم ما انطاه تنبيه");
 });
 
-console.log(`\n${passed}/24 اختبارات ناجحة`);
+await t("25) /arena wake يصحّي خدمة نايمة (503 ثم 200)", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_WAKE_GAP_MS: "1" });
+  state.arenaHealthFails = 2;
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena wake"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("صحّي وشغال"), "ما وصل تأكيد الإفاقة: " + all.slice(0, 200));
+  assert.ok(state.arenaCalls >= 3, "عدد محاولات /health غير كافٍ");
+});
+
+await t("26) طلب فاشل يصحّي الجسر ويعيد المحاولة تلقائياً", async () => {
+  const env = makeEnv({ GEMINI_API_KEY: "", OPENROUTER_API_KEY: "", ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_WAKE_GAP_MS: "1" });
+  state.arenaDown = true;
+  // نجعل أول محاولة تفشل فقط ثم ترجع الخدمة
+  const originalFetch = global.fetch;
+  let posts = 0;
+  global.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (url.startsWith("https://arena.test/v1/chat/completions")) {
+      posts++;
+      state.arenaCalls++;
+      if (posts === 1) return new Response(JSON.stringify({ error: "cold" }), { status: 503 });
+      return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "رد بعد الإفاقة" } }] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  };
+  try {
+    const ctx = makeCtx();
+    await runWebhook(env, ctx, tgUpdate("احكي لي عن دبي"));
+  } finally {
+    global.fetch = originalFetch;
+  }
+  assert.equal(posts, 2, "ما صار إعادة محاولة بعد الإفاقة");
+  assert.ok(sentTexts().join("\n").includes("رد بعد الإفاقة"), "رد ما وصل بعد الإفاقة");
+});
+
+await t("27) Keep-alive عبر cron يضرب /health كل 10 دقائق فقط", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_KEEPALIVE: "true" });
+  const ctx = makeCtx();
+  const at = (min) => new Date(Date.UTC(2026, 0, 1, 12, min, 0)).getTime();
+  await worker.scheduled({ scheduledTime: at(30) }, env, ctx);
+  await ctx.drain();
+  const hits30 = state.arenaCalls;
+  assert.ok(hits30 >= 1, "Keep-alive ما ضرب على الدقيقة 30");
+  reset();
+  const ctx2 = makeCtx();
+  await worker.scheduled({ scheduledTime: at(3) }, makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_KEEPALIVE: "true" }), ctx2);
+  await ctx2.drain();
+  assert.equal(state.arenaCalls, 0, "ضرب /health بدقيقة مو مضاعفة للعشرة");
+});
+
+await t("28) Keep-alive معطّل افتراضياً (بدون المتغير)", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await worker.scheduled({ scheduledTime: new Date(Date.UTC(2026, 0, 1, 12, 30, 0)).getTime() }, env, ctx);
+  await ctx.drain();
+  assert.equal(state.arenaCalls, 0, "Keep-alive شغال بدون ما نطلبه");
+});
+
+console.log(`\n${passed}/28 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

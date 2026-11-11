@@ -231,6 +231,10 @@ npx wrangler deploy
 
 اختياري: `ARENA_BRIDGE_MODEL` (افتراضياً `auto`)، و`ARENA_BRIDGE_FIRST=true` إذا بدك Arena **قبل** Gemini بكل ردود البوت.
 
+**الاستضافة المجانية ٢٤/٧ من الموبايل:** شوف [`../arena-bridge/README_DEPLOY_FREE_AR.md`](../arena-bridge/README_DEPLOY_FREE_AR.md) — أربع طرق مجانية (Oracle Always Free · Hugging Face Space · Termux · Render).
+- إذا الاستضافة **بتنام** (Render/HF): `npx wrangler secret put ARENA_BRIDGE_KEEPALIVE` → `true`، وجارفس بيضرب `/health` كل ١٠ دقائق عبر الـ cron الموجود.
+- إذا الجسر نايم وقت الطلب: جارفس يحاول `/health` (Wake) ويعيد المحاولة مرة واحدة، وبعدها يكمّل على باقي المزودين عادي.
+
 ### من تيليجرام
 
 | الأمر | الوظيفة |
@@ -238,6 +242,7 @@ npx wrangler deploy
 | `/arena` | حالة الجسر + قائمة النماذج المتاحة |
 | `/arena on` / `/arena off` | تشغيل/إيقاف استخدام الجسر فوراً (بدون deploy) |
 | `/arena test` | فحص وصول جارفس للجسر |
+| `/arena wake` | تصحيّة الجسر النايم (مهم للاستضافات المجانية) |
 | `/arena <اسم-نموذج>` | اختيار النموذج (مثلاً `/arena stealth-model`) |
 | `/arena_ask <سؤال>` | سؤال مباشر عبر Arena بدون أي مزود آخر |
 
@@ -255,7 +260,7 @@ npx wrangler deploy
 - **أي مفتاح تريد تغيّره** (مثلاً بعد تدوير مفاتيح مالتك القديمة): أعد نفس أمر `npx wrangler secret put <NAME>` بالقيمة الجديدة — يتحدّث تلقائياً بدون deploy جديد.
 - **لوجات البوت الحية:** `npx wrangler tail`
 - **قائمة كل المفاتيح المضافة:** `npx wrangler secret list`
-- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 24 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، وجسر LMArena.
+- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 28 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، وجسر LMArena (بما فيها الإفاقة والـ Keep-alive).
 
 ---
 
