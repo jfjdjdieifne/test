@@ -52,7 +52,15 @@ jobs:
           BRIDGE_API_KEY: ${{ secrets.BRIDGE_API_KEY }}
           SPACE_NAME: ${{ inputs.space_name || 'jarvis-arena-bridge' }}
           WITH_BROWSER: ${{ inputs.browser || 'true' }}
-        run: python arena-bridge/deploy/hf_deploy.py
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "## سجل نشر Hugging Face" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          python arena-bridge/deploy/hf_deploy.py 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          code=${PIPESTATUS[0]}
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
 
       - name: ماذا بعد؟
         if: always()
