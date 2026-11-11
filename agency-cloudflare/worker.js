@@ -69,7 +69,7 @@ export default {
       return handleAsk(request, env, ctx);
     }
     if (url.pathname === "/health") {
-      return jsonResponse({ status: "ok", service: "jarvis-cf", ts: Date.now() });
+      return jsonResponse({ status: "ok", service: "jarvis-cf", ts: Date.now(), ws_len: (env.WEBHOOK_SECRET||"").length, tg_len: (env.TELEGRAM_BOT_TOKEN||"").length, own_len: (env.ALLOWED_TELEGRAM_ID||"").length });
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
