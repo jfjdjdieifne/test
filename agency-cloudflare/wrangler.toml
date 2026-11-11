@@ -1,0 +1,13 @@
+name = "jarvis-cf"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# ⚠️ لا تضع أي مفاتيح/توكنات هنا — Secrets تُضاف عبر: npx wrangler secret put
+#
+# 1) أنشئ مخزن الذاكرة (مجاني):
+#      npx wrangler kv namespace create JARVIS_KV
+# 2) الصق الـ id الناتج هنا بدل العبارة التالية:
+[[kv_namespaces]]
+binding = "JARVIS_KV"
+id = "PUT_YOUR_KV_NAMESPACE_ID_HERE"
