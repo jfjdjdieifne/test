@@ -30,9 +30,33 @@
 
 ---
 
-## الخطوة 2: تشغيله 24/7 في السحابة مجاناً (اختر الطريقة المناسبة لك)
+## الخطوة 2: تشغيله 24/7 في السحابة مجاناً (اختر الطريقة الأسهل لك)
 
-### الطريقة A: بدون بطاقة بنكية نهائياً — Render Free + UptimeRobot (الأسهل، 10 دقائق)
+### الطريقة 1 (الأسهل والأسرع — 0 بطاقة بنكية، 0 نوم): **Cloudflare Workers + ربط GitHub**
+لأننا جهّزنا لك ملف `wrangler.jsonc` وملف `agency/jarvis-stack/cf_worker.js` في المستودع مباشرة، فإن ربط GitHub على Cloudflare ينشر لك **موقع الوكالة + جارفس الصوتي + بوت تيليجرام 24/7 + مجدول المهام كل دقيقة** بضغطة واحدة مجاناً (100,000 طلب/يوم ولا ينام أبداً!):
+
+1. في لوحة **Cloudflare (`dash.cloudflare.com`)** ← **Workers & Pages** ← **Create application**:
+   - **لا تختر** `Upload your static files` (لأنها للملفات فقط بدون سيرفر البوت).
+   - اختر **Import a repository (GitHub)** وسجّل/اربط حسابك في GitHub.
+2. اختر مستودعك **`jfjdjdieifne/test`** واضبط الإعدادات هكذا:
+   - **Project/Worker name:** `jarvis-24-7`
+   - **Git branch / Production branch:** غيّره من `main` إلى **`arena/00d98017-test`** ⚠️ *(مهم جداً)*
+   - **Build command:** اتركه **فارغاً**
+   - **Deploy command:** اتركه الافتراضي **`npx wrangler deploy`**
+   - **Root directory:** اتركه الافتراضي **`/`**
+3. اضغط **Save and Deploy** وانتظر ~40 ثانية حتى يظهر رابطك مثل `https://jarvis-24-7.xxx.workers.dev`.
+4. من داخل المشروع في Cloudflare ادخل **Settings → Variables and Secrets → Add** وأضف:
+   - `TELEGRAM_BOT_TOKEN` (من `@BotFather`)
+   - `ALLOWED_TELEGRAM_ID` (من `@userinfobot`)
+   - مفتاحاً أو أكثر من مفاتيح الذكاء (`GEMINI_API_KEY`، `MISTRAL_API_KEY`، `GROQ_API_KEY`، `NVIDIA_API_KEY`، `OPENROUTER_API_KEY`)
+   - *(اختياري)* `CALLMEBOT_TELEGRAM_USER` + `GITHUB_GIST_ID` + `GITHUB_TOKEN` (لتفعيل الذاكرة والمهام المجدولة في الخلفية كل دقيقة).
+   - اضغط **Deploy / Save** لحفظ المتغيرات.
+5. افتح رابط موقعك متبوعاً بـ **`/setup`** (مثلاً `https://jarvis-24-7.xxx.workers.dev/setup`) ← اكتب رقم الـ Telegram ID الخاص بك واضغط **🔗 ربط بوت تيليجرام الآن**.
+6. مبروك! افتح تيليجرام وأرسل `/start` للبوت — يعمل 24/7 بلا توقف وبـ $0!
+
+---
+
+### الطريقة 2 (بديل بالبايثون الكامل بدون بطاقة): **Render Free + UptimeRobot**
 خطة **Render Free Web Service** تعطيك **750 ساعة شهرياً مجاناً بدون بطاقة بنكية** (الشهر فيه 720–744 ساعة، يعني تغطي الشهر كله 24/7!).
 ولكي لا ينام السيرفر بعد 15 دقيقة خمول، أضفنا في `jarvis_telegram_agent.py` منفذ فحص `/health`؛ فقط تجعل موقع مجاني مثل UptimeRobot ينكز الرابط كل 10 دقائق!
 

@@ -6,10 +6,11 @@
 
 1. **`jarvis.html`** — **مساعدك الصوتي والذكي J.A.R.V.I.S ($0):**
    - واجهة أوامر بالصوت (Web Speech API المجاني في Chrome/Edge) والكتابة، متصلة بمبيعات دبي، مع ربط اختياري مجاني بـ **Google Gemini** أو **Groq** أو **OpenRouter (`openrouter/free`)** و**Webhook** لـ Make.com / n8n.
-2. **`jarvis-stack/`** — **حزمة J.A.R.V.I.S الكاملة 24/7 ($0):**
-   - `BLUEPRINT_AR.md`: المخطط الهندسي الموثق لـ 2026 (Gemini Live الصوتي المباشر، LiveKit رقم أمريكي وارد مجاني، Oracle Cloud Always Free 2 OCPU / 12GB، n8n، OpenClaw، CallMeBot).
-   - `jarvis_telegram_agent.py`: بوت تيليجرام ذكي يعمل بمكتبة بايثون القياسية مباشرة (يستقبل ويفهم الرسائل الصوتية والنصية، يفحص المواقع ويستخرج الثغرات، يدير العملاء والذاكرة والتنبيهات، ويرن عليك عبر CallMeBot).
-   - `docker-compose.yml`: تشغيل n8n المجاني بأمر واحد على جهازك أو سيرفر Oracle Cloud.
+2. **`jarvis-stack/` + `wrangler.jsonc`** — **حزمة J.A.R.V.I.S الكاملة 24/7 ($0):**
+   - `wrangler.jsonc` + `cf_worker.js`: ربط مباشر من GitHub إلى **Cloudflare Workers** بضغطة واحدة (ينشر الموقع + بوت تيليجرام 24/7 بدون توقف + مجدول مهام كل دقيقة، بدون بطاقة بنكية).
+   - `BLUEPRINT_AR.md`: الخطوات الموثقة خطوة بخطوة (Cloudflare Workers، Render، Oracle Cloud، والمفاتيح المجانية).
+   - `jarvis_telegram_agent.py`: نسخة البايثون الكاملة (Render / Oracle / الجهاز الشخصي).
+   - `docker-compose.yml`: تشغيل n8n المجاني بأمر واحد.
 2. **`index.html`** — **غرفة العمليات (War Room):**
    - تعرض 12 شركة حقيقية مفحوصة في دبي (تجميل، أسنان، تجديد فلل، تأسيس شركات، يخوت، سيارات فاخرة، بيوت عطلات).
    - توضح الثغرة الفعلية في موقع كل شركة + العرض المقترح + رسائل واتساب وإيميل مخصصة (EN/AR) + متابعة بعد 48 ساعة + متتبع حالة محلي.

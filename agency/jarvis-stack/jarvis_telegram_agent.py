@@ -265,7 +265,7 @@ def tool_list_leads(limit: int = 12, status_filter: str = "") -> Dict[str, Any]:
     with LEADS_CSV_PATH.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            name = row.get("Business Name") or row.get("name") or ""
+            name = row.get("Company") or row.get("Business Name") or row.get("name") or ""
             st = notes.get(name, {}).get("status", "new")
             if status_filter and st != status_filter:
                 continue
