@@ -44,6 +44,30 @@
 
 ## 🅱️ الطريق B — Hugging Face Space (بلا بطاقة) ⭐
 
+### 🚀 الأسهل: أنشئ الـ Space بضغطة زر من GitHub
+
+هاي الطريقة ما بدها تنزيل ZIP ولا رفع ملفات، وكلها من Safari على الآيفون:
+
+1. اعمل حساب Hugging Face وفعّل الإيميل: `https://huggingface.co/join`.
+2. افتح `https://huggingface.co/settings/tokens` → **Create new token** → اختر **Write** → انسخ التوكن.
+3. افتح مستودع GitHub → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**، وأضف:
+   - الاسم `HF_TOKEN` والقيمة هي التوكن المنسوخ.
+   - كررها باسم `BRIDGE_API_KEY` وقيمة مفتاح طويل من اختيارك، واحفظه بملاحظات الآيفون.
+4. افتح تبويب **Actions** بالمستودع → **Deploy Arena Bridge to Hugging Face Space** → **Run workflow** → **Run workflow**.
+5. انتظر علامة ✅ (أول بناء عادةً ٣–٧ دقائق)، ثم افتح التشغيل واضغط **Summary**. ستجد رابط الجسر وأوامر تيليجرام جاهزة.
+6. أرسل للبوت، كل سطر لوحده:
+   ```
+   /arena url https://<اسمك>-jarvis-arena-bridge.hf.space
+   /arena key <نفس BRIDGE_API_KEY>
+   /arena test
+   ```
+
+> 🔒 لا ترسل `HF_TOKEN` ولا `BRIDGE_API_KEY` لأي شخص. الـ Space عام، لكن GitHub وHugging Face يحجبان قيم الأسرار.
+>
+> إذا ما ظهر تبويب **Actions** أو ما قدرت تضيف Secrets (مثلاً المستودع مش بحسابك)، استخدم الرفع اليدوي تحت. على iPhone قد تحتاج من قائمة Safari **طلب موقع ويب لسطح المكتب** حتى تظهر كل الأزرار.
+
+### الرفع اليدوي (الخطة البديلة)
+
 ### B1) نزّل ملفات المشروع على الآيفون
 1. افتح **Safari** → روح على: `https://github.com/jfjdjdieifne/test`
 2. تأكد فوق إنك على الفرع: **`arena/a02addea-test`** (زر الفروع بجانب اسم الملفات).
