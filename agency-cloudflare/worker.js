@@ -278,7 +278,7 @@ async function callOpenAICompatible(base, key, model, convo, system) {
 
 async function callOpenRouterWithFallback(convo, system, env) {
   if (!env.OPENROUTER_API_KEY) return null;
-  const wanted = [env.OPENROUTER_MODEL, "meta-llama/llama-3.3-70b-instruct:free", "google/gemini-2.0-flash-exp:free", "deepseek/deepseek-chat-v3-0324:free", "openrouter/free"]
+  const wanted = [env.OPENROUTER_MODEL, "moonshotai/kimi-k2:free", "meta-llama/llama-3.3-70b-instruct:free", "google/gemini-2.0-flash-exp:free", "deepseek/deepseek-chat-v3-0324:free", "openrouter/free"]
     .map((m) => String(m || "").trim())
     .filter(Boolean);
   const seen = new Set();
@@ -291,6 +291,35 @@ async function callOpenRouterWithFallback(convo, system, env) {
   return null;
 }
 
+async function callWorkersAI(convo, system, env) {
+  if (!env.AI) return null;
+  try {
+    const res = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
+      messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))],
+      max_tokens: 400,
+      temperature: 0.4,
+    });
+    const text = String(res?.response || res?.result || "").trim();
+    if (text) return text;
+  } catch (e) { console.log("workers-ai error:", e && e.message ? e.message : e); }
+  return null;
+}
+
+async function callPollinations(convo, system, env) {
+  try {
+    const res = await fetch("https://text.pollinations.ai/openai", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "mistral", messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))], max_tokens: 400, temperature: 0.4 }),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return null;
+    const d = await res.json().catch(() => ({}));
+    const text = d?.choices?.[0]?.message?.content?.trim();
+    return text || null;
+  } catch (e) { console.log("pollinations error:", e && e.message ? e.message : e); return null; }
+}
+
 async function llmComplete(convo, system, env) {
   return (
     (await callGemini(convo, system, env)) ||
@@ -298,6 +327,8 @@ async function llmComplete(convo, system, env) {
     (await callOpenAICompatible("https://api.groq.com/openai/v1", env.GROQ_API_KEY, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
     (await callOpenAICompatible("https://integrate.api.nvidia.com/v1", env.NVIDIA_API_KEY, (env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct").trim(), convo, system)) ||
     (await callOpenRouterWithFallback(convo, system, env)) ||
+    (await callWorkersAI(convo, system, env)) ||
+    (await callPollinations(convo, system, env)) ||
     null
   );
 }
@@ -582,7 +613,7 @@ async function agentLoop(userText, env, chatId, opts) {
   const convo = [...hist, { role: "user", content: String(userText) }];
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
-    if (!out) return "تعذر الوصول لكل مزودي الذكاء الآن — تأكد من GEMINI_API_KEY أو OPENROUTER_API_KEY في الأسرار.";
+    if (!out) return "لحظة — كل مزودي الذكاء مشغولين/نفدت حصصها هلقة (غالباً حد اليوم المجاني — يتجدد تلقائياً). جرب بعد شوي، أو أعطني مفتاح جديد.";
     const call = parseToolCall(out);
     if (!call) {
       if (o.mode !== "worker") await saveHistory(env, [...convo, { role: "assistant", content: out }]);
@@ -898,7 +929,12 @@ async function handleCallEnd(request, env, ctx) {
   const transcript = Array.isArray(body?.transcript) ? body.transcript.slice(-40) : [];
   const durationSec = Math.max(0, Number(body?.durationSec || 0));
   const lines = transcript.map((t) => ((t && t.role === "user") ? "أنا: " : "جارفس: ") + String((t && t.text) || "").slice(0, 300)).join("\n");
-  const summaryIn = lines.slice(0, 6000) || "(لا يوجد محتوى)";
+  if (!lines.trim()) {
+    const ownerEmpty = await kvGet(env, "owner_chat_id", null);
+    if (ownerEmpty && transcript.length > 0) await sendMessage(env, ownerEmpty, "📞 المكالمة ما فيها كلام واضح (ما سمعتك) — جرّب مرة ثانية بمكان أردا أو اكتب لي.");
+    return jsonResponse({ ok: true, skipped: "empty" }, 200, CORS_HEADERS);
+  }
+  const summaryIn = lines.slice(0, 6000);
   const summary = await llmComplete(
     [{ role: "user", content: "لخّص هذه المحادثة بإيجاز حاد: أهم النقاط والقرارات وأي مهام/تواريخ/أسماء/أرقام، ثم قائمة تنفيذية قصيرة:\n\n" + summaryIn }],
     "أنت تلخص محادثات عمل باللهجة الشامية. الأهم: نقاط عملية قابلة للتنفيذ بدون حشو.",

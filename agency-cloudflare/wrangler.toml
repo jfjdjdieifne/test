@@ -34,3 +34,7 @@ CALL_ON_BRIEF = "true"
 [[kv_namespaces]]
 binding = "JARVIS_KV"
 id = "1bb9b81dde75449998d5afa33ded0302"
+
+# Workers AI — ذكاء اصطناعي مجاني تاعي Cloudflare يتجدد يومياً (بدون مفتاح)
+[ai]
+binding = "AI"
