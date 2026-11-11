@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "arena/38691ede-test"
+      - "arena/46b2f7b6-test"
     paths:
       - "agency-cloudflare/**"
       - ".github/workflows/deploy-jarvis-cloudflare.yml"

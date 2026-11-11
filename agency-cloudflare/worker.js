@@ -447,11 +447,13 @@ async function callArenaBrowser(convo, system, env) {
     await page.setViewport({ width: 1280, height: 800 });
     const saved = await kvGet(env, "arena_browser_cookies", []);
     if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
-    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.waitForSelector('textarea[name="message"]', { timeout: 20000 });
+    // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
+    // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
+    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
+    await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
     const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
     const responsePromise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Arena stream timeout")), 55000);
+      const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
       page.on("response", async (response) => {
         if (!/\/nextjs-api\/stream\/(create|post)-to-evaluation/.test(response.url())) return;
         try { const body = await response.text(); clearTimeout(timer); resolve(body); }
