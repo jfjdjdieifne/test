@@ -125,6 +125,7 @@
   <div class="callzone">
     <div class="status" id="statusLine"><span class="dot"></span><span id="statusText">جاهز للاتصال</span></div>
     <button id="callBtn">🎙️<br>اتصل<br>بجارفس</button>
+    <button id="endCallBtn" class="chip" style="display:none; background:#3a1414; border-color:#8a3a3a; color:#ffb3b3; font-size:13px; padding:10px 18px;">📵 أنهِ المكالمة (وخليني استلم الملخص على تيليجرام)</button>
     <div class="chips" id="chips">
       <button class="chip">شنو أولوياتي اليوم؟</button>
       <button class="chip">اعطني ملخص العملاء الـ12</button>
@@ -233,79 +234,122 @@ async function handleUserText(text) {
   const t = String(text || "").trim();
   if (!t) return;
   addBubble("me", t);
+  rememberTurn("user", t);
   const reply = await askJarvis(t);
   if (reply) {
+    rememberTurn("assistant", reply);
     addBubble("ai", reply);
     speaking = true;
     await speak(reply);
     speaking = false;
   }
-  if (callActive && !busy) startListening();
+  if (callActive && !busy && !listening) startListening();
 }
 
-/* ------------------------ الاستماع (مايك المايك) ------------------------ */
-let callActive = false, listening = false, speaking = false, busy = false;
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-if (SR) {
-  recognition = new SR();
-  recognition.lang = "ar-AE";
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
+/* --------- الاستماع: تسجيل MediaRecorder + تفريغ من السيرفر (Gemini) --------- */
+let callActive = false, listening = false, speaking = false, busy = false, callStartedAt = 0;
+let mediaStream = null, mediaRecorder = null, recorded = [];
+const transcriptLog = [];
+function rememberTurn(role, text) { transcriptLog.push({ role: role, text: String(text || "").slice(0, 1000) }); }
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
 }
-
-function startListening() {
-  if (!recognition) { showWarn("⚠️ متصفحك ما يدعم التعرف على الصوت — استخدم Chrome أو اكتب بالأسفل."); return; }
-  if (listening || speaking) return;
+async function startListening() {
+  if (busy || speaking || listening) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showWarn("متصفحك ما يدعم المايكروفون — استخدم Chrome أو اكتب بالأسفل."); return; }
+  try { if (!mediaStream) mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { showWarn("⚠️ المايك مرفوض — اضغط القفل 🔒 بجانب الرابط، اسمح بالمايكروفون، ثم حاول مرة ثانية."); setStatus("", "المايك مرفوض"); return; }
+  recorded = [];
+  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+  try { mediaRecorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream); }
+  catch { showWarn("⚠️ تعذر تشغيل التسجيل بهذا المتصفح — جرّب Chrome."); return; }
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recorded.push(e.data); };
+  mediaRecorder.onstop = () => { sendRecording().catch(() => {}); };
+  mediaRecorder.start();
+  listening = true;
+  callBtn.innerHTML = "⏹<br>أوقف<br>وأرسل";
+  setStatus("live", "يسمعك… احكي، وكبس الزر لما تخلص");
+}
+function stopRecording(send) {
+  listening = false;
+  try { if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop(); } catch {}
+  if (send === false) recorded = [];
+  callBtn.innerHTML = "🎙️<br>اتصل<br>بجارفس";
+}
+async function sendRecording() {
+  busy = true; setStatus("think", "جارفس يسمعك…");
   try {
-    recognition.start();
-    listening = true;
-    setStatus("live", "يسمعك… احكي");
-  } catch { /* start() وهي شغالة يرمي — نتجاهل */ }
+    const mime = (mediaRecorder && mediaRecorder.mimeType) || "audio/webm";
+    const blob = new Blob(recorded, { type: mime });
+    const b64 = await blobToBase64(blob);
+    const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
+    const key = localStorage.getItem(LS_KEY) || "";
+    const res = await fetch(base + "/voice-ask", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-jarvis-key": key },
+      body: JSON.stringify({ audio: { mimeType: mime, data: b64 } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    const heard = data.transcript || "🎤 (رسالة صوتية)";
+    rememberTurn("user", heard);
+    addBubble("me", heard);
+    rememberTurn("assistant", data.reply);
+    addBubble("ai", data.reply);
+    speaking = true;
+    await speak(data.reply);
+    speaking = false;
+  } catch (e) {
+    setStatus("", "تعذر سماعك");
+    addBubble("sys", "⚠️ " + (e.message || e) + " — تأكد من المفتاح، أو اكتب بالأسفل.");
+  } finally {
+    busy = false;
+    if (callActive) startListening();
+    else setStatus("", "جاهز");
+  }
 }
-if (recognition) {
-  recognition.onresult = (e) => {
-    listening = false;
-    const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
-    busy = true;
-    handleUserText(transcript).finally(() => { busy = false; });
-  };
-  recognition.onerror = (e) => {
-    listening = false;
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      showWarn("⚠️ المايكروفون مرفوض — اسمح للموقع باستخدام المايك من أيقونة القفل بجانب الرابط.");
-      setStatus("", "المايك مرفوض");
-      callActive = false; callBtn.classList.remove("on"); callBtn.innerHTML = "🎙️<br>اتصل<br>بجارفس";
-    } else if (e.error !== "no-speech" && e.error !== "aborted") {
-      setStatus("", "خطأ صوت: " + e.error);
-    }
-    if (callActive && e.error === "no-speech") startListening();
-  };
-  recognition.onend = () => {
-    listening = false;
-    if (callActive && !speaking && !busy) startListening();
-    else if (!callActive) setStatus("", "جاهز");
-  };
+async function endCall() {
+  callActive = false;
+  stopRecording(false);
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById("endCallBtn").style.display = "none";
+  const durationSec = Math.round((Date.now() - callStartedAt) / 1000);
+  const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
+  const key = localStorage.getItem(LS_KEY) || "";
+  try {
+    fetch(base + "/call-end", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-jarvis-key": key },
+      body: JSON.stringify({ transcript: transcriptLog, durationSec }),
+    }).catch(() => {});
+  } catch {}
+  addBubble("sys", "📴 خلصت المكالمة — الملخص راح يوصلك على تيليجرام خلال لحظات، وانحفظ كل شي بذاكرتي.");
+  setStatus("", "انتهت المكالمة");
+  if (mediaStream) { try { mediaStream.getTracks().forEach((t) => t.stop()); } catch {} mediaStream = null; }
 }
 
 callBtn.addEventListener("click", async () => {
   clearWarn();
-  callActive = !callActive;
-  if (callActive) {
+  if (!callActive) {
+    callActive = true;
+    callStartedAt = Date.now();
+    transcriptLog.length = 0;
+    document.getElementById("endCallBtn").style.display = "inline-block";
     callBtn.classList.add("on");
-    callBtn.innerHTML = "🔴<br>أنهِ<br>المكالمة";
-    addBubble("sys", "📞 بدأت المكالمة — احكي عادي.");
+    addBubble("sys", "📞 بدأت المكالمة — احكي وأنا أرد عليك بصوتي. (لكل دور: اسكت → كبس الزر)");
     startListening();
-  } else {
-    callBtn.classList.remove("on");
-    callBtn.innerHTML = "🎙️<br>اتصل<br>بجارفس";
-    try { recognition && recognition.stop(); } catch {}
-    if (window.speechSynthesis) speechSynthesis.cancel();
-    setStatus("", "انتهت المكالمة");
-    addBubble("sys", "📴 أُغلقت المكالمة.");
+  } else if (listening) {
+    stopRecording(true);
+  } else if (!busy && !speaking) {
+    startListening();
   }
 });
+document.getElementById("endCallBtn").addEventListener("click", () => { endCall(); });
 
 $("sendBtn").addEventListener("click", () => {
   const v = $("textInput").value; $("textInput").value = ""; handleUserText(v);

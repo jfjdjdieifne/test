@@ -65,9 +65,11 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/ask") {
+    if (url.pathname === "/ask" || url.pathname === "/voice-ask" || url.pathname === "/call-end") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
       if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
+      if (url.pathname === "/voice-ask") return handleVoiceAsk(request, env, ctx);
+      if (url.pathname === "/call-end") return handleCallEnd(request, env, ctx);
       return handleAsk(request, env, ctx);
     }
     if (url.pathname === "/health") {
@@ -629,6 +631,20 @@ async function sendVoiceReply(env, chatId, text) {
   } catch (e) { console.log("voice reply error:", e && e.message ? e.message : e); }
 }
 
+async function transcribeGeminiAudio(env, mimeType, buf) {
+  if (!env.GEMINI_API_KEY) return null;
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "فرّغ هذه الرسالة الصوتية حرفياً بلغتها الأصلية (عربي أو إنجليزي). اكتب التفريغ فقط بدون أي تعليق." }, { inlineData: { mimeType: mimeType || "audio/ogg", data: arrayBufferToBase64(buf) } }] }] }),
+      signal: AbortSignal.timeout(45000),
+    });
+    if (res.ok) { const d = await res.json(); const t = d?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim(); if (t) return t; }
+  } catch (e) { console.log("gemini stt error:", e && e.message ? e.message : e); }
+  return null;
+}
+
 async function transcribeVoice(env, fileId) {
   const f = await tgApi(env, "getFile", { file_id: fileId });
   const filePath = f?.data?.result?.file_path;
@@ -647,18 +663,7 @@ async function transcribeVoice(env, fileId) {
       if (res.ok) { const d = await res.json(); if (d.text) return String(d.text).trim() || null; }
     } catch (e) { console.log("groq whisper error:", e && e.message ? e.message : e); }
   }
-  if (env.GEMINI_API_KEY) {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "فرّغ هذه الرسالة الصوتية حرفياً بلغتها الأصلية (عربي أو إنجليزي). اكتب التفريغ فقط بدون أي تعليق." }, { inlineData: { mimeType: "audio/ogg", data: arrayBufferToBase64(bin) } }] }] }),
-        signal: AbortSignal.timeout(45000),
-      });
-      if (res.ok) { const d = await res.json(); const t = d?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim(); if (t) return t; }
-    } catch (e) { console.log("gemini stt error:", e && e.message ? e.message : e); }
-  }
-  return null;
+  return await transcribeGeminiAudio(env, "audio/ogg", bin);
 }
 
 /* --------------------------- Command handling --------------------------- */
@@ -749,6 +754,17 @@ async function handleCommand(text, env, chatId) {
       if (!arg) { await sendMessage(env, chatId, "اكتب الرقم أو المعرف: /forget 3"); return true; }
       await sendMessage(env, chatId, await forgetMemories(env, arg)); return true;
     }
+    case "/voice": {
+      if (!arg) {
+        const cur = await kvGet(env, "voice_replies", false);
+        await sendMessage(env, chatId, cur === true ? "🔊 الردود الصوتية شغالة (اكتب /voice off للإيقاف)." : "🔇 الردود الصوتية موقفة — نصوص فقط (اكتب /voice on لتفعيلها).");
+        return true;
+      }
+      const turnOn = /^(on|تشغيل|true|نعم|1)$/i.test(arg);
+      await kvPut(env, "voice_replies", turnOn);
+      await sendMessage(env, chatId, turnOn ? "🔊 صوتي شغال — رح أطلع لك ريكوردات مع النص." : "🔇 من الآن نصوص فقط، بدون ريكوردات.");
+      return true;
+    }
     case "/export": {
       const all = await getMemories(env);
       const json = JSON.stringify(all, null, 2);
@@ -789,7 +805,10 @@ async function handleUpdate(update, env, ctx) {
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
   const answer = await agentLoop(text, env, chatId, { ctx });
   await sendMessage(env, chatId, answer);
-  if (isVoice) ctx.waitUntil(sendVoiceReply(env, chatId, answer));
+  if (isVoice) {
+    const voiceOn = await kvGet(env, "voice_replies", false);
+    if (voiceOn === true) ctx.waitUntil(sendVoiceReply(env, chatId, answer));
+  }
 }
 
 /* --------------------- /ask — جسر صفحة المكالمة --------------------- */
@@ -805,6 +824,62 @@ async function handleAsk(request, env, ctx) {
   if (!text) return send({ error: "text فارغ" }, 400);
   const reply = await agentLoop(text, env, null, { ctx });
   return send({ reply });
+}
+
+function b64ToArrayBuffer(b64) {
+  const bin = atob(String(b64 || ""));
+  const len = bin.length;
+  const buf = new Uint8Array(len);
+  for (let i = 0; i < len; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+
+async function handleVoiceAsk(request, env, ctx) {
+  const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
+  const provided = request.headers.get("x-jarvis-key") || "";
+  if (!env.CALL_SECRET) return send({ error: "CALL_SECRET غير مفعّل" }, 501);
+  if (!provided || provided !== env.CALL_SECRET) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
+  let body;
+  try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
+  const audio = body?.audio || {};
+  if (!audio?.data) return send({ error: "audio.data مطلوب (base64)" }, 400);
+  const buf = b64ToArrayBuffer(audio.data);
+  const mime = String(audio.mimeType || "audio/webm").slice(0, 100);
+  const text = await transcribeGeminiAudio(env, mime, buf);
+  if (!text) return send({ error: "ما قدرت أفرّغ الصوت — حاول مرة ثانية أو اكتب" }, 422);
+  const reply = await agentLoop(text, env, null, { ctx });
+  return send({ reply, transcript: text });
+}
+
+async function handleCallEnd(request, env, ctx) {
+  const provided = request.headers.get("x-jarvis-key") || "";
+  if (!env.CALL_SECRET) return jsonResponse({ error: "CALL_SECRET غير مفعّل" }, 501, CORS_HEADERS);
+  if (!provided || provided !== env.CALL_SECRET) return jsonResponse({ error: "غير مصرّح" }, 401, CORS_HEADERS);
+  let body;
+  try { body = await request.json(); } catch { return jsonResponse({ error: "JSON غير صالح" }, 400, CORS_HEADERS); }
+  const transcript = Array.isArray(body?.transcript) ? body.transcript.slice(-40) : [];
+  const durationSec = Math.max(0, Number(body?.durationSec || 0));
+  const lines = transcript.map((t) => ((t && t.role === "user") ? "أنا: " : "جارفس: ") + String((t && t.text) || "").slice(0, 300)).join("\n");
+  const summaryIn = lines.slice(0, 6000) || "(لا يوجد محتوى)";
+  const summary = await llmComplete(
+    [{ role: "user", content: "لخّص هذه المحادثة بإيجاز حاد: أهم النقاط والقرارات وأي مهام/تواريخ/أسماء/أرقام، ثم قائمة تنفيذية قصيرة:\n\n" + summaryIn }],
+    "أنت تلخص محادثات عمل باللهجة الشامية. الأهم: نقاط عملية قابلة للتنفيذ بدون حشو.",
+    env
+  );
+  const s = summary || summaryIn.slice(0, 600);
+  const now = new Date().toISOString();
+  await addMemories(env, ["!ملخص مكالمة (" + now.slice(0, 10) + "): " + String(s).replace(/\n/g, " • ").slice(0, 380)], true);
+  const calls = (await kvGet(env, "call_transcripts", [])) || [];
+  calls.push({ id: "call_" + Date.now().toString(36), saved: now, durationSec, summary: String(s).slice(0, 2000), transcript: lines.slice(0, 9000) });
+  await kvPut(env, "call_transcripts", calls.slice(-10));
+  const owner = await kvGet(env, "owner_chat_id", null);
+  if (owner) {
+    const mins = durationSec >= 60 ? Math.round(durationSec / 60) + " د" : durationSec + " ث";
+    await sendMessage(env, owner, "📞 ملخص مكالمتك مع جارفس (" + mins + ")\n\n" + s + "\n\n🧠 محفوظة بذاكرتي كاملة — اسألني «شنو حكينا بالمكالمة؟» بأي وقت.");
+  } else {
+    console.log("call-end: لا يوجد owner_chat_id — ابدأ البوت بتيليجرام بـ /start أولاً");
+  }
+  return jsonResponse({ ok: true }, 200, CORS_HEADERS);
 }
 
 /* ------------------- الموجز الصباحي (Cron Trigger) ------------------- */
