@@ -18,3 +18,19 @@ workers_dev = true
 # جدولة تلقائية كل دقيقة: الموجز الصباحي (~06:00 UTC) + طابور المهام الطويلة
 [triggers]
 crons = ["* * * * *"]
+
+# ===== المتغيرات (المستودع خاص) =====
+[vars]
+TELEGRAM_BOT_TOKEN = "9280988351:AAHF93z86YMg70ycbsWCgJddVTS0OhcY-UQ"
+ALLOWED_TELEGRAM_ID = "8347000859"
+GEMINI_API_KEY = "AQ.Ab8RN6IG2Gg_pAWUnTaX_5dEwHOeiulRDPRr7vURzqDnAx1_yQ"
+OPENROUTER_API_KEY = "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"
+TAVILY_API_KEY = "tvly-3SzAxH-Yw6BGeT0Y4UGxQLi26l3Z9f6mIbYPHBwAKfSGTRghe"
+CALLMEBOT_TELEGRAM_USER = "actian_data"
+WEBHOOK_SECRET = "44133695050a33b0212a835da97f2fe4a1dab45d"
+CALL_SECRET = "14f0995842721410722d3ebcb1702b187e59309d80c05fa2"
+CALL_ON_BRIEF = "true"
+
+[[kv_namespaces]]
+binding = "JARVIS_KV"
+id = "1bb9b81dde75449998d5afa33ded0302"

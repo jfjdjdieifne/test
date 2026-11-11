@@ -1,3 +1,4 @@
+import CALL_PAGE from "./callpage.mjs";
 /**
  * J.A.R.V.I.S — Telegram Agent on Cloudflare Workers
  * ----------------------------------------------------
@@ -69,10 +70,13 @@ export default {
       return handleAsk(request, env, ctx);
     }
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", marker: "v2-nostore-2026", ts: Date.now(), ws_len: (env.WEBHOOK_SECRET||"").length, tg_len: (env.TELEGRAM_BOT_TOKEN||"").length, own_len: (env.ALLOWED_TELEGRAM_ID||"").length }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+      return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", ts: Date.now() }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
+    }
+    if (url.pathname === "/call") {
+      return new Response(CALL_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/webhook" && request.method === "POST") {
       const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";

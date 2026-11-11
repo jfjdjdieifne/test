@@ -153,7 +153,7 @@ const warnBox = $("warn");
 /* ------------------------------ الإعدادات ------------------------------ */
 const LS_URL = "jarvis_worker_url";
 const LS_KEY = "jarvis_call_secret";
-$("workerUrl").value = localStorage.getItem(LS_URL) || "";
+$("workerUrl").value = localStorage.getItem(LS_URL) || location.origin;
 $("callKey").value = localStorage.getItem(LS_KEY) || "";
 $("saveSettings").addEventListener("click", () => {
   localStorage.setItem(LS_URL, $("workerUrl").value.trim().replace(/\/+$/, ""));
@@ -183,7 +183,7 @@ if (!window.isSecureContext) showWarn("⚠️ المتصفح يمنع الماي
 
 /* --------------------------- التحدث مع جارفس --------------------------- */
 async function askJarvis(text) {
-  const base = (localStorage.getItem(LS_URL) || "").replace(/\/+$/, "");
+  const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
   const key = localStorage.getItem(LS_KEY) || "";
   if (!base || !key) {
     $("settingsPanel").classList.add("open");
