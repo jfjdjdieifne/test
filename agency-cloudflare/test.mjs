@@ -203,5 +203,27 @@ await t("10) الردود الطويلة تتقسم تلقائياً برسائ�
   assert.ok(msgs.length >= 2, `متوقع رسالتين على الأقل، وصل ${msgs.length}`);
 });
 
-console.log(`\n${passed}/10 اختبارات ناجحة`);
+
+await t("11) مسار /ask يرفض المفتاح الخاطئ (401)", async () => {
+  const res = await worker.fetch(new Request("http://x/ask", { method: "POST", headers: { "content-type": "application/json", "x-jarvis-key": "wrong" }, body: JSON.stringify({ text: "مرحبا" }) }), makeEnv({ CALL_SECRET: "s3cr3t" }), makeCtx());
+  assert.equal(res.status, 401);
+});
+
+await t("12) مسار /ask يجاوب بالمفتاح الصحيح + CORS", async () => {
+  const env = makeEnv({ CALL_SECRET: "s3cr3t" }); const ctx = makeCtx();
+  state.geminiQueue.push({ text: "أنا جارفس، أسمعك" });
+  const res = await worker.fetch(new Request("http://x/ask", { method: "POST", headers: { "content-type": "application/json", "x-jarvis-key": "s3cr3t" }, body: JSON.stringify({ text: "هلا" }) }), env, ctx);
+  await ctx.drain();
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("access-control-allow-origin"), "*");
+  const body = await res.json();
+  assert.ok(body.reply.includes("أسمعك"));
+});
+
+await t("13) طلب OPTIONS (Preflight) يرجع 204", async () => {
+  const res = await worker.fetch(new Request("http://x/ask", { method: "OPTIONS" }), makeEnv({ CALL_SECRET: "s3cr3t" }), makeCtx());
+  assert.equal(res.status, 204);
+});
+
+console.log(`\n${passed}/13 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

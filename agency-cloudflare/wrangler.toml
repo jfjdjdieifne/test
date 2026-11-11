@@ -11,3 +11,8 @@ workers_dev = true
 [[kv_namespaces]]
 binding = "JARVIS_KV"
 id = "PUT_YOUR_KV_NAMESPACE_ID_HERE"
+
+# موجز صباحي مجدول كل يوم 06:00 UTC (≈ 07:00–08:00 بتوقيت أمستردام حسب التوقيت الصيفي)
+# مجاني بالكامل ضمن Workers Free. لإيقافه احذف هذا القسم فقط.
+[triggers]
+crons = ["0 6 * * *"]

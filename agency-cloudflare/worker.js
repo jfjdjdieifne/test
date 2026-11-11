@@ -59,6 +59,11 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/ask") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+      if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
+      return handleAsk(request, env, ctx);
+    }
     if (url.pathname === "/health") {
       return jsonResponse({ status: "ok", service: "jarvis-cf", ts: Date.now() });
     }
@@ -77,10 +82,20 @@ export default {
     }
     return new Response("not found", { status: 404 });
   },
+  // موجز صباحي مجدول (Cloudflare Cron Trigger — مجاني)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(morningBrief(env));
+  },
 };
 
-function jsonResponse(obj, status) {
-  return new Response(JSON.stringify(obj), { status: status || 200, headers: { "content-type": "application/json; charset=utf-8" } });
+const CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "access-control-allow-headers": "content-type, x-jarvis-key",
+};
+
+function jsonResponse(obj, status, extraHeaders) {
+  return new Response(JSON.stringify(obj), { status: status || 200, headers: { "content-type": "application/json; charset=utf-8", ...(extraHeaders || {}) } });
 }
 
 /* ------------------------------ Telegram ------------------------------ */
@@ -519,4 +534,47 @@ async function handleUpdate(update, env, ctx) {
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
   const answer = await agentLoop(text, env, chatId, { ctx });
   await sendMessage(env, chatId, answer);
+}
+
+/* --------------------- /ask — جسر صفحة المكالمة --------------------- */
+
+async function handleAsk(request, env, ctx) {
+  const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
+  const provided = request.headers.get("x-jarvis-key") || "";
+  if (!env.CALL_SECRET) return send({ error: "CALL_SECRET غير مفعّل على السيرفر — أضفه: npx wrangler secret put CALL_SECRET" }, 501);
+  if (!provided || provided !== env.CALL_SECRET) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
+  let body;
+  try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
+  const text = String(body?.text || "").trim().slice(0, 1500);
+  if (!text) return send({ error: "text فارغ" }, 400);
+  const reply = await agentLoop(text, env, null, { ctx });
+  return send({ reply });
+}
+
+/* ------------------- الموجز الصباحي (Cron Trigger) ------------------- */
+
+async function morningBrief(env) {
+  const owner = await kvGet(env, "owner_chat_id", null);
+  const target = owner || (env.OWNER_CHAT_ID ? Number(env.OWNER_CHAT_ID) : null);
+  if (!target) { console.log("morningBrief: لا يوجد owner_chat_id بعد — ابدأ البوت أولاً بـ /start"); return; }
+  const overlay = await leadsOverlay(env);
+  const stateOf = (i) => (overlay[i] && overlay[i].status) || "جديد";
+  const hotNew = LEADS.filter((l) => l.pri === "هوت" && stateOf(l.i) === "جديد");
+  const counts = {};
+  for (const l of LEADS) counts[stateOf(l.i)] = (counts[stateOf(l.i)] || 0) + 1;
+  const done = (await kvGet(env, "tasks", [])).filter((t) => t.status === "done").slice(0, 3);
+
+  const lines = ["☀️ صباح الخير — موجز جارفس:", ""];
+  lines.push(`🎯 صفقات ساخنة لم تُراسل بعد (${hotNew.length}):`);
+  for (const l of hotNew.slice(0, 5)) lines.push(`• #${l.i} ${l.company} — ${l.sector} (${l.price})`);
+  if (done.length) {
+    lines.push("", "✅ مهام خلّصت:");
+    for (const t of done) lines.push(`• ${t.goal.slice(0, 90)}`);
+  }
+  lines.push("", "📊 الحالة: " + Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(" | "));
+  lines.push("", "قل للبوت «راسل الشركة 1» أو اكتب /leads لكل التفاصيل.");
+  await sendMessage(env, target, lines.join("\n"));
+  if (String(env.CALL_ON_BRIEF).toLowerCase() === "true") {
+    await callMeNow(env, "جارفس: موجز صباحك جاهز — افتح التيليجرام");
+  }
 }
