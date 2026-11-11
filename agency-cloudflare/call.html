@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<title>جارفس — مكالمة مباشرة</title>
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#111936; --card:#151f3f; --card2:#1c2a52;
+    --teal:#2de2c5; --teal-dim:#1b8f7d; --gold:#ffd166; --red:#ff5a5a;
+    --text:#eef2ff; --muted:#8b96c7;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{
+    margin:0; font-family:"Segoe UI",Tahoma,system-ui,-apple-system,sans-serif;
+    background:radial-gradient(1200px 700px at 50% -10%, #1a2656 0%, var(--bg) 60%);
+    color:var(--text); min-height:100vh; display:flex; flex-direction:column;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 18px; border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  .brand{display:flex; align-items:center; gap:10px;}
+  .orb{
+    width:38px;height:38px;border-radius:50%;
+    background:radial-gradient(circle at 35% 35%, #4ef2d4, #0f9d8a 70%, #063 130%);
+    box-shadow:0 0 18px rgba(45,226,197,.5);
+    animation:orbFloat 3.2s ease-in-out infinite;
+  }
+  @keyframes orbFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.05)}}
+  .brand h1{font-size:19px; margin:0; letter-spacing:.5px;}
+  .brand small{display:block; color:var(--muted); font-size:10px; font-weight:400;}
+  .gear{
+    background:var(--card); border:1px solid rgba(255,255,255,.08); color:var(--text);
+    width:40px;height:40px; border-radius:12px; font-size:18px; cursor:pointer;
+  }
+  main{flex:1; display:flex; flex-direction:column; max-width:760px; width:100%; margin:0 auto; padding:10px 14px 18px;}
+  .settings{
+    background:var(--card); border:1px solid rgba(255,255,255,.07); border-radius:16px;
+    padding:14px; margin:8px 0 12px; display:none;
+  }
+  .settings.open{display:block; animation:fadeIn .25s ease;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(-6px)} to{opacity:1; transform:none}}
+  .settings label{font-size:12px; color:var(--muted); display:block; margin:8px 0 4px;}
+  .settings input{
+    width:100%; padding:11px 12px; border-radius:11px; border:1px solid rgba(255,255,255,.1);
+    background:#0d1430; color:var(--text); font-size:14px; direction:ltr; text-align:left;
+  }
+  .settings button{
+    margin-top:10px; width:100%; padding:12px; border:none; border-radius:12px;
+    background:linear-gradient(90deg,var(--teal),#1ec8ab); color:#04241e; font-weight:800; font-size:15px; cursor:pointer;
+  }
+  .hint{font-size:11px; color:var(--muted); margin-top:8px; line-height:1.8;}
+  .log{
+    flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px;
+    padding:6px 2px; min-height:180px;
+  }
+  .bubble{max-width:82%; padding:10px 13px; border-radius:16px; font-size:14.5px; line-height:1.75; white-space:pre-wrap; word-break:break-word; animation:fadeIn .2s ease;}
+  .me{align-self:flex-start; background:var(--card2); border-end-start-radius:4px;}
+  .ai{align-self:flex-end; background:linear-gradient(160deg,#123b35,#0e2b28); border:1px solid rgba(45,226,197,.25); border-end-end-radius:4px;}
+  .sys{align-self:center; background:transparent; color:var(--muted); font-size:12px; text-align:center;}
+  .callzone{display:flex; flex-direction:column; align-items:center; gap:10px; padding:8px 0 4px;}
+  .status{
+    font-size:12.5px; color:var(--muted); min-height:18px; display:flex; align-items:center; gap:8px;
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:#3a466e;}
+  .status.live .dot{background:var(--teal); box-shadow:0 0 10px var(--teal); animation:blink 1s infinite;}
+  .status.think .dot{background:var(--gold); box-shadow:0 0 10px var(--gold); animation:blink .5s infinite;}
+  @keyframes blink{50%{opacity:.35}}
+  #callBtn{
+    width:112px;height:112px;border-radius:50%; border:none; cursor:pointer; font-size:15px; font-weight:800;
+    color:#03211b; background:radial-gradient(circle at 35% 35%, #5bfed7, #17b398 75%);
+    box-shadow:0 0 0 8px rgba(45,226,197,.12), 0 12px 40px rgba(45,226,197,.35);
+    transition:transform .15s; line-height:1.4;
+  }
+  #callBtn:active{transform:scale(.94)}
+  #callBtn.on{
+    background:radial-gradient(circle at 35% 35%, #ffb3b3, #ff5a5a 75%);
+    color:#3d0505; box-shadow:0 0 0 8px rgba(255,90,90,.14), 0 12px 40px rgba(255,90,90,.4);
+    animation:ring 1.4s ease-out infinite;
+  }
+  @keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,90,90,.35)}70%{box-shadow:0 0 0 22px rgba(255,90,90,0)}100%{box-shadow:0 0 0 0 rgba(255,90,90,0)}}
+  .chips{display:flex; gap:8px; flex-wrap:wrap; justify-content:center;}
+  .chip{
+    background:var(--card); border:1px solid rgba(255,255,255,.08); color:var(--text);
+    font-size:11.5px; padding:7px 12px; border-radius:99px; cursor:pointer;
+  }
+  .textrow{display:flex; gap:8px; margin-top:6px;}
+  .textrow input{
+    flex:1; background:#0d1430; border:1px solid rgba(255,255,255,.1); color:var(--text);
+    border-radius:12px; padding:12px; font-size:14px;
+  }
+  .textrow button{background:var(--teal); border:none; color:#04241e; font-weight:800; border-radius:12px; padding:0 18px; font-size:14px; cursor:pointer;}
+  #warn{display:none; background:#3a2b0c; border:1px solid #8a6d1a; color:#ffd166; font-size:12px; padding:8px 12px; border-radius:10px; margin-top:8px; line-height:1.7;}
+  footer{text-align:center; color:#4a5580; font-size:10px; padding:8px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="orb"></div>
+    <div><h1>J.A.R.V.I.S<small>مكالمة مباشرة — مجاني 100% — بلا بطاقة</small></h1></div>
+  </div>
+  <button class="gear" id="gearBtn" aria-label="الإعدادات">⚙️</button>
+</header>
+
+<main>
+  <div class="settings open" id="settingsPanel">
+    <label>رابط الـ Worker (من ناتج <code>wrangler deploy</code>)</label>
+    <input id="workerUrl" placeholder="https://jarvis-cf.اسمك.workers.dev" autocomplete="off">
+    <label>مفتاح المكالمات CALL_SECRET (الذي ولّدته وحفظته)</label>
+    <input id="callKey" placeholder="الصق المفتاح السري هنا" autocomplete="off" type="password">
+    <button id="saveSettings">حفظ على هذا الجهاز 🔒</button>
+    <div class="hint">يُحفظ المفتاح داخل متصفحك فقط ولا يرسل لأي مكان سوى Worker الخاص بك.<br>
+    الصفحة تحتاج <b>https</b> حتى يشتغل المايكروفون (استضافات مجانية: Netlify Drop أو GitHub Pages — بدون بطاقة).<br>
+    لتفادي مشاكل الميكروفون: استخدم <b>Google Chrome</b> (الدعم الأفضل للتعرف على العربية).</div>
+  </div>
+
+  <div class="log" id="log">
+    <div class="bubble sys">أهلاً بك. اضغط زر الاتصال وتكلّم — جارفس يسمعك ويجاوبك بصوته.</div>
+  </div>
+
+  <div class="callzone">
+    <div class="status" id="statusLine"><span class="dot"></span><span id="statusText">جاهز للاتصال</span></div>
+    <button id="callBtn">🎙️<br>اتصل<br>بجارفس</button>
+    <button id="endCallBtn" class="chip" style="display:none; background:#3a1414; border-color:#8a3a3a; color:#ffb3b3; font-size:13px; padding:10px 18px;">📵 أنهِ المكالمة (وخليني استلم الملخص على تيليجرام)</button>
+    <div class="chips" id="chips">
+      <button class="chip">شنو أولوياتي اليوم؟</button>
+      <button class="chip">اعطني ملخص العملاء الـ12</button>
+      <button class="chip">افحص namconsultant.com</button>
+      <button class="chip">اكتب رسالة للشركة 1 على واتساب</button>
+    </div>
+    <div class="textrow">
+      <input id="textInput" placeholder="أو اكتب هنا…" autocomplete="off">
+      <button id="sendBtn">أرسل</button>
+    </div>
+    <div id="warn"></div>
+  </div>
+</main>
+<footer>JARVIS-CF • تعمل بالكامل على متصفحك + Cloudflare Workers Free • بدون خوادم مدفوعة</footer>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+const statusLine = $("statusLine");
+const statusText = $("statusText");
+const callBtn = $("callBtn");
+const warnBox = $("warn");
+
+/* ------------------------------ الإعدادات ------------------------------ */
+const LS_URL = "jarvis_worker_url";
+const LS_KEY = "jarvis_call_secret";
+$("workerUrl").value = localStorage.getItem(LS_URL) || location.origin;
+$("callKey").value = localStorage.getItem(LS_KEY) || "";
+$("saveSettings").addEventListener("click", () => {
+  localStorage.setItem(LS_URL, $("workerUrl").value.trim().replace(/\/+$/, ""));
+  localStorage.setItem(LS_KEY, $("callKey").value.trim());
+  $("settingsPanel").classList.remove("open");
+  addBubble("sys", "✅ حُفظت الإعدادات على هذا الجهاز.");
+});
+$("gearBtn").addEventListener("click", () => $("settingsPanel").classList.toggle("open"));
+if (localStorage.getItem(LS_URL) && localStorage.getItem(LS_KEY)) $("settingsPanel").classList.remove("open");
+
+/* ------------------------------ واجهة ---------------------------------- */
+function addBubble(kind, text) {
+  const div = document.createElement("div");
+  div.className = "bubble " + kind;
+  div.textContent = text;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+  return div;
+}
+function setStatus(mode, txt) {
+  statusLine.className = "status" + (mode ? " " + mode : "");
+  statusText.textContent = txt;
+}
+function showWarn(msg) { warnBox.style.display = "block"; warnBox.textContent = msg; }
+function clearWarn() { warnBox.style.display = "none"; }
+if (!window.isSecureContext) showWarn("⚠️ المتصفح يمنع المايكروفون على الروابط غير الآمنة (http/file). انشر الصفحة على رابط https مجاني (Netlify Drop / GitHub Pages) أو استخدم localhost.");
+
+/* --------------------------- التحدث مع جارفس --------------------------- */
+async function askJarvis(text) {
+  const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
+  const key = localStorage.getItem(LS_KEY) || "";
+  if (!base || !key) {
+    $("settingsPanel").classList.add("open");
+    addBubble("sys", "⚙️ اكتب رابط الـ Worker و CALL_SECRET أولاً ثم اضغط حفظ.");
+    return null;
+  }
+  setStatus("think", "جارفس يفكر…");
+  try {
+    const res = await fetch(base + "/ask", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-jarvis-key": key },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    setStatus(callActive ? "live" : "", callActive ? "يسمعك…" : "جاهز");
+    return String(data.reply || "").trim();
+  } catch (e) {
+    setStatus("", "تعذر الاتصال بالسيرفر");
+    addBubble("sys", "⚠️ " + (e.message || e) + " — تأكد من الرابط والمفتاح وحالة wrangler tail.");
+    return null;
+  }
+}
+
+/* ------------------------ النطق (صوت جارفس) ---------------------------- */
+let arabicVoice = null;
+function pickVoice() {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  const prefs = ["ar-SA", "ar-AE", "ar-SY", "ar-EG", "ar"];
+  arabicVoice = null;
+  for (const pref of prefs) {
+    arabicVoice = voices.find(v => v.lang && v.lang.toLowerCase().replace("_", "-").startsWith(pref.toLowerCase()));
+    if (arabicVoice) break;
+  }
+  if (!arabicVoice) arabicVoice = voices.find(v => /Arabic|العربية|\bar\b/i.test(v.name || "")) || voices.find(v => /^ar/i.test(v.lang || "")) || null;
+}
+if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+function speakBrowserFallback(text) {
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis || !text) return resolve();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = arabicVoice ? arabicVoice.lang : "ar";
+    if (arabicVoice) u.voice = arabicVoice;
+    u.rate = 0.95; u.volume = 1;
+    u.onend = resolve; u.onerror = resolve;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  });
+}
+async function speak(text) {
+  // الصوت الشامي الطبيعي (Edge TTS عبر الـ Worker) — مجاني. عند أي فشل نرجع للمتصفح
+  const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
+  const key = localStorage.getItem(LS_KEY) || "";
+  const clean = String(text || "").replace(/[*_`~#]/g, " ").replace(/\s+/g, " ").trim().slice(0, 700);
+  if (base && key && clean) {
+    try {
+      const audio = new Audio(base + "/tts?key=" + encodeURIComponent(key) + "&text=" + encodeURIComponent(clean));
+      const ok = await new Promise((resolve) => {
+        let settled = false;
+        const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+        audio.onended = () => done(true);
+        audio.onerror = () => done(false);
+        setTimeout(() => done(false), 45000);
+        audio.play().catch(() => done(false));
+      });
+      if (ok) return;
+      console.log("/tts فشل — رجعنا لصوت المتصفح");
+    } catch (e) { console.log("/tts error", e); }
+  }
+  return speakBrowserFallback(text);
+}
+
+async function handleUserText(text) {
+  const t = String(text || "").trim();
+  if (!t) return;
+  addBubble("me", t);
+  rememberTurn("user", t);
+  const reply = await askJarvis(t);
+  if (reply) {
+    rememberTurn("assistant", reply);
+    addBubble("ai", reply);
+    speaking = true;
+    await speak(reply);
+    speaking = false;
+  }
+  if (callActive && !busy && !listening) startListening();
+}
+
+/* --------- الاستماع: تسجيل MediaRecorder + تفريغ من السيرفر (Groq ← Workers AI ← Gemini) --------- */
+let callActive = false, listening = false, speaking = false, busy = false, callStartedAt = 0;
+let mediaStream = null, mediaRecorder = null, recorded = [];
+const transcriptLog = [];
+function rememberTurn(role, text) { transcriptLog.push({ role: role, text: String(text || "").slice(0, 1000) }); }
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+async function startListening() {
+  if (busy || speaking || listening) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showWarn("متصفحك ما يدعم المايكروفون — استخدم Chrome أو اكتب بالأسفل."); return; }
+  try { if (!mediaStream) mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { showWarn("⚠️ المايك مرفوض — اضغط القفل 🔒 بجانب الرابط، اسمح بالمايكروفون، ثم حاول مرة ثانية."); setStatus("", "المايك مرفوض"); return; }
+  recorded = [];
+  const wanted = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/mp4"];
+  let mime = "";
+  for (const m of wanted) { try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) { mime = m; break; } } catch {} }
+  try { mediaRecorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream); }
+  catch { showWarn("⚠️ تعذر تشغيل التسجيل بهذا المتصفح — جرّب Chrome."); return; }
+  mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recorded.push(e.data); };
+  mediaRecorder.onstop = () => { sendRecording().catch(() => {}); };
+  mediaRecorder.start();
+  listening = true;
+  callBtn.innerHTML = "⏹<br>أوقف<br>وأرسل";
+  setStatus("live", "يسمعك… احكي، وكبس الزر لما تخلص");
+}
+function stopRecording(send) {
+  listening = false;
+  try { if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop(); } catch {}
+  if (send === false) recorded = [];
+  callBtn.innerHTML = "🎙️<br>اتصل<br>بجارفس";
+}
+async function sendRecording() {
+  busy = true; setStatus("think", "جارفس يسمعك…");
+  try {
+    const rawMime = (mediaRecorder && mediaRecorder.mimeType) || "audio/ogg";
+    const mimeBase = String(rawMime).split(";")[0] || "audio/ogg";
+    const blob = new Blob(recorded, { type: rawMime });
+    const b64 = await blobToBase64(blob);
+    const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
+    const key = localStorage.getItem(LS_KEY) || "";
+    const res = await fetch(base + "/voice-ask", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-jarvis-key": key },
+      body: JSON.stringify({ audio: { mimeType: mimeBase, data: b64 } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    const heard = data.transcript || "🎤 (رسالة صوتية)";
+    rememberTurn("user", heard);
+    addBubble("me", heard);
+    rememberTurn("assistant", data.reply);
+    addBubble("ai", data.reply);
+    speaking = true;
+    await speak(data.reply);
+    speaking = false;
+  } catch (e) {
+    setStatus("", "تعذر سماعك");
+    addBubble("sys", "⚠️ " + (e.message || e) + " — تأكد من المفتاح، أو اكتب بالأسفل.");
+  } finally {
+    busy = false;
+    if (callActive) startListening();
+    else setStatus("", "جاهز");
+  }
+}
+async function endCall() {
+  callActive = false;
+  stopRecording(false);
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById("endCallBtn").style.display = "none";
+  const durationSec = Math.round((Date.now() - callStartedAt) / 1000);
+  const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
+  const key = localStorage.getItem(LS_KEY) || "";
+  try {
+    fetch(base + "/call-end", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-jarvis-key": key },
+      body: JSON.stringify({ transcript: transcriptLog, durationSec }),
+    }).catch(() => {});
+  } catch {}
+  addBubble("sys", "📴 خلصت المكالمة — الملخص راح يوصلك على تيليجرام خلال لحظات، وانحفظ كل شي بذاكرتي.");
+  setStatus("", "انتهت المكالمة");
+  if (mediaStream) { try { mediaStream.getTracks().forEach((t) => t.stop()); } catch {} mediaStream = null; }
+}
+
+callBtn.addEventListener("click", async () => {
+  clearWarn();
+  if (!callActive) {
+    callActive = true;
+    callStartedAt = Date.now();
+    transcriptLog.length = 0;
+    document.getElementById("endCallBtn").style.display = "inline-block";
+    callBtn.classList.add("on");
+    addBubble("sys", "📞 بدأت المكالمة — احكي وأنا أرد عليك بصوتي. (لكل دور: اسكت → كبس الزر)");
+    startListening();
+  } else if (listening) {
+    stopRecording(true);
+  } else if (!busy && !speaking) {
+    startListening();
+  }
+});
+document.getElementById("endCallBtn").addEventListener("click", () => { endCall(); });
+
+$("sendBtn").addEventListener("click", () => {
+  const v = $("textInput").value; $("textInput").value = ""; handleUserText(v);
+});
+$("textInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("sendBtn").click(); });
+document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => handleUserText(c.textContent)));
+</script>
+</body>
+</html>

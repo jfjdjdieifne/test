@@ -1,0 +1,54 @@
+name = "jarvis-24-7"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# =====================================================
+# الذاكرة (KV) تُربط من لوحة Cloudflare — لا تُكتب هنا:
+#   Workers & Pages → jarvis-cf → Settings → Bindings
+#   → Add binding → KV namespace
+#   Variable name: JARVIS_KV   |   Namespace: JARVIS_KV
+# =====================================================
+# (اختياري) إن أردت الربط من هنا بدلاً من اللوحة، احذف علامات # بالبسطة التالية
+# وضع الـ id الفعلي الذي يظهر عند: Workers & Pages → KV
+# [[kv_namespaces]]
+# binding = "JARVIS_KV"
+# id = "<PUT-YOUR-KV-NAMESPACE-ID-HERE>"
+
+# جدولة تلقائية كل دقيقة: الموجز الصباحي (~06:00 UTC) + طابور المهام الطويلة
+[triggers]
+crons = ["* * * * *"]
+
+# ===== المتغيرات (المستودع خاص) =====
+[vars]
+TELEGRAM_BOT_TOKEN = "9280988351:AAHF93z86YMg70ycbsWCgJddVTS0OhcY-UQ"
+ALLOWED_TELEGRAM_ID = "8347000859"
+GEMINI_API_KEY = "AQ.Ab8RN6IG2Gg_pAWUnTaX_5dEwHOeiulRDPRr7vURzqDnAx1_yQ"
+OPENROUTER_API_KEY = "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"
+TAVILY_API_KEY = "tvly-3SzAxH-Yw6BGeT0Y4UGxQLi26l3Z9f6mIbYPHBwAKfSGTRghe"
+CALLMEBOT_TELEGRAM_USER = "actian_data"
+WEBHOOK_SECRET = "44133695050a33b0212a835da97f2fe4a1dab45d"
+CALL_SECRET = "14f0995842721410722d3ebcb1702b187e59309d80c05fa2"
+CALL_ON_BRIEF = "true"
+
+# ===== جسر LMArena (اختياري) =====
+# شغّل الخدمة من مجلد arena-bridge/ (Python + gpt4free/Arena + LMArenaBridge المحلي)
+# ثم اضبط القيم هنا أو (الأفضل للأمان) عبر:
+#   npx wrangler secret put ARENA_BRIDGE_URL
+#   npx wrangler secret put ARENA_BRIDGE_KEY
+# ملاحظة: الرابط بدون /v1 في النهاية — جارفس يضيف /v1/chat/completions بنفسه.
+# ARENA_BRIDGE_URL = "https://arena-bridge.example.com"
+# ARENA_BRIDGE_KEY = ""            # نفس BRIDGE_API_KEY بملف arena-bridge/.env
+# ARENA_BRIDGE_MODEL = "auto"
+# Arena أساسي تلقائياً بمجرد ضبط ARENA_BRIDGE_URL (وباقي المزودين احتياط).
+# ARENA_BRIDGE_FIRST = "false"     # بدك ترجّع Gemini أول؟ حط false
+# ARENA_BRIDGE_COOLDOWN_MS = "300000"  # مدة تجاهل الجسر بعد فشل متكرر
+# ARENA_BRIDGE_TIMEOUT_MS = "45000"
+
+[[kv_namespaces]]
+binding = "JARVIS_KV"
+id = "1bb9b81dde75449998d5afa33ded0302"
+
+# Workers AI — ذكاء اصطناعي مجاني تاعي Cloudflare يتجدد يومياً (بدون مفتاح)
+[ai]
+binding = "AI"
