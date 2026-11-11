@@ -46,15 +46,16 @@ const TOOL_DOC = `الأدوات المتاحة:
 TOOL_CALL: {"tool":"اسم_الأداة","args":{...}}
 بعد وصول TOOL_RESULT أكمل منطقياً. وعند الاكتمال اكتب الجواب النهائي بالكامل بلا أي TOOL_CALL.`;
 
-const BASE_PROMPT = `أنت "جارفس"، ذكاء اصطناعي عربي خاص بصاحب العمل (المالك الوحيد). أسلوبك: واثق، مهني، موجز، خليجي/فصحى راقية.
+const BASE_PROMPT = `أنت "جارفس"، ذكاء اصطناعي عربي خاص بصاحب العمل (المالك الوحيد). أسلوبك: واثق، مهني، موجز، وباللهجة الشامية السورية دائماً (مثال: "شلونك يا ريس؟ شو بدك اليوم؟"، "تمام، خليني اشيك لك"، "موشكلة، هسع بتدبرلك ياه"). ممنوع الفصحى الجامدة — رد طبيعي كسوري حقيقي.
 - لا تخترع معلومات؛ إن احتجت بيانات استخدم الأداة.
-- ردود قصيرة منظمة بنقاط عند الحاجة.
+- إجابات قصيرة ومنظّمة بنقاط عند الحاجة (السطرز الموازي بالفصحى بس داخل الكود).
+- إذا كانت الرسالة صوتية: ردك جملتين أو ثلاث قصيرة فقط (عشان تتحول لصوت بسرعة).
 - جميع الأرقام بالإنجليزية (واتساب، أسعار، روابط).
 ${TOOL_DOC}`;
 
 const WORKER_PROMPT = `أنت "جارفس" تنفذ مهمة خلفية مستقلة نيابة عن المالك، بدون سؤاله.
 اتبع الأدوات خطوة خطوة حتى الإنجاز، ثم اكتب تقريراً عربياً موجزاً وحاداً.
-إذا احتجت قرار المالك فقط استخدم call_me_now(message) موجزاً.
+تحدث باللهجة الشامية السورية وبالإيجاز. إذا احتجت قرار المالك فقط استخدم call_me_now(message) موجزاً.
 ${TOOL_DOC}`;
 
 const MAX_HISTORY = 14;
@@ -564,6 +565,55 @@ function arrayBufferToBase64(buf) {
   return btoa(bin);
 }
 
+
+/* ------------------- النطق: تحويل رد جارفس إلى صوت عربي ------------------- */
+/* غير رسمي عبر Google Translate TTS — مجاني، والصوت عربي عام (مو شامي مئة بالمئة).
+   عند أي فشل: الرد النصي يصل دائماً — الصوت ميزة إضافية ولا يكسر شيء. */
+function splitForTts(text, max) {
+  const words = String(text || "").split(/\s+/);
+  const chunks = [];
+  let cur = "";
+  for (const w of words) {
+    if ((cur + " " + w).trim().length > (max || 170)) { if (cur.trim()) chunks.push(cur.trim()); cur = w; }
+    else cur += " " + w;
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+  return chunks;
+}
+async function ttsArabicMp3(chunk) {
+  const q = encodeURIComponent(chunk);
+  const url = "https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-in-chrome&tl=ar&q=" + q;
+  const res = await fetch(url, {
+    headers: {
+      "user-agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+      "referer": "https://translate.google.com/",
+    },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) return null;
+  try { return new Uint8Array(await res.arrayBuffer()); } catch { return null; }
+}
+async function tgSendVoice(env, chatId, mp3Bytes, name) {
+  try {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    form.append("voice", new Blob([mp3Bytes], { type: "audio/mpeg" }), name || "jarvis.mp3");
+    const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendVoice`, { method: "POST", body: form });
+    const d = await res.json().catch(() => ({}));
+    return res.ok && d && d.ok !== false;
+  } catch (e) { console.log("sendVoice error:", e && e.message ? e.message : e); return false; }
+}
+async function sendVoiceReply(env, chatId, text) {
+  try {
+    const clean = String(text || "").replace(/[*_`~]/g, "").replace(/https?:\/\/\S+/g, "الرابط").trim();
+    const chunks = splitForTts(clean, 170).slice(0, 3);
+    for (let i = 0; i < chunks.length; i++) {
+      const mp3 = await ttsArabicMp3(chunks[i]);
+      if (mp3) await tgSendVoice(env, chatId, mp3, "jarvis_" + i + ".mp3");
+    }
+  } catch (e) { console.log("voice reply error:", e && e.message ? e.message : e); }
+}
+
 async function transcribeVoice(env, fileId) {
   const f = await tgApi(env, "getFile", { file_id: fileId });
   const filePath = f?.data?.result?.file_path;
@@ -708,6 +758,7 @@ async function handleUpdate(update, env, ctx) {
   const msg = update.message || update.edited_message;
   if (!msg || !msg.chat || !msg.from) return;
   const chatId = msg.chat.id;
+  const isVoice = !!msg.voice;
   const userId = String(msg.from.id);
   if (!env.ALLOWED_TELEGRAM_ID || userId !== String(env.ALLOWED_TELEGRAM_ID).trim()) {
     await sendMessage(env, chatId, "⛔ هذا جارفس خاص بالمالك فقط.");
@@ -723,6 +774,7 @@ async function handleUpdate(update, env, ctx) {
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
   const answer = await agentLoop(text, env, chatId, { ctx });
   await sendMessage(env, chatId, answer);
+  if (isVoice) ctx.waitUntil(sendVoiceReply(env, chatId, answer));
 }
 
 /* --------------------- /ask — جسر صفحة المكالمة --------------------- */
