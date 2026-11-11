@@ -69,7 +69,7 @@ export default {
       return handleAsk(request, env, ctx);
     }
     if (url.pathname === "/health") {
-      return jsonResponse({ status: "ok", service: "jarvis-cf", ts: Date.now(), ws_len: (env.WEBHOOK_SECRET||"").length, tg_len: (env.TELEGRAM_BOT_TOKEN||"").length, own_len: (env.ALLOWED_TELEGRAM_ID||"").length });
+      return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", marker: "v2-nostore-2026", ts: Date.now(), ws_len: (env.WEBHOOK_SECRET||"").length, tg_len: (env.TELEGRAM_BOT_TOKEN||"").length, own_len: (env.ALLOWED_TELEGRAM_ID||"").length }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
