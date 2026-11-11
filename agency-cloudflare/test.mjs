@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0 };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0 };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0;
 }
 
 const mockKV = () => ({
@@ -45,6 +45,7 @@ global.fetch = async (input, init = {}) => {
   }
   if (url.startsWith("https://api.callmebot.com/")) { state.callmebot++; return new Response("OK", { status: 200 }); }
   if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+  if (url.startsWith("https://script.google.com/")) { state.appsScript++; return j({ ok: true }); }
   throw new Error("unmocked URL: " + url);
 };
 
@@ -225,5 +226,94 @@ await t("13) طلب OPTIONS (Preflight) يرجع 204", async () => {
   assert.equal(res.status, 204);
 });
 
-console.log(`\n${passed}/13 اختبارات ناجحة`);
+
+await t("14) /learn يحفظ الحقائق (مع تثبيت !) و/memories تعرضها", async () => {
+  const env = makeEnv(); const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/learn ! أنا مالك وكالة تسويق بدبي\nميزانيتي 15000 بالشهر"));
+  const mem = JSON.parse(state.kv.get("mem:all"));
+  assert.equal(mem.length, 2);
+  assert.equal(mem[0].pinned, true);
+  assert.equal(mem[1].pinned, false);
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/memories"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("وكالة تسويق"));
+  assert.ok(all.includes("15000"));
+});
+
+await t("15) remember/forget عبر أدوات LLM تعمل وتحفظ بالـ KV", async () => {
+  const env = makeEnv(); const ctx = makeCtx();
+  state.geminiQueue.push(
+    { text: 'TOOL_CALL: {"tool":"remember","args":{"fact":"العميل المفضل هو NAM Consultant"}}' },
+    { text: "حُفظت في ذاكرتي" }
+  );
+  await runWebhook(env, ctx, tgUpdate("تذكر إن العميل المفضل NAM"));
+  let mem = JSON.parse(state.kv.get("mem:all"));
+  assert.ok(mem.some((m) => m.text.includes("NAM Consultant")));
+  const ctx2 = makeCtx();
+  state.geminiQueue.push({ text: 'TOOL_CALL: {"tool":"forget_memory","args":{"query":"NAM"}}' }, { text: "تم النسيان" });
+  await runWebhook(env, ctx2, tgUpdate("انسى العميل المفضل"));
+  mem = JSON.parse(state.kv.get("mem:all"));
+  assert.ok(!mem.some((m) => m.text.includes("NAM Consultant")));
+});
+
+await t("16) /forget بالرقم يحذف الحقيقة المحددة", async () => {
+  const env = makeEnv(); const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/learn هدفنا الربع الجاري 10 صفقات\nنشتغل بس على واتساب بزنس"));
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/forget 1"));
+  const mem = JSON.parse(state.kv.get("mem:all"));
+  assert.equal(mem.length, 1);
+  assert.ok(mem[0].text.includes("واتساب"));
+});
+
+await t("17) send_email يبني بطاقة موافقة بأزرار بدل الإرسال المباشر", async () => {
+  const env = makeEnv({ OWNER_CHAT_ID: "1000", APPS_SCRIPT_URL: "https://script.google.com/macros/s/ABC/exec", APPS_SCRIPT_SECRET: "s" });
+  const ctx = makeCtx();
+  state.geminiQueue.push(
+    { text: 'TOOL_CALL: {"tool":"send_email","args":{"to":"info@namconsultant.com","subject":"عرض شراكة","body":"أهلاً…"}}' },
+    { text: "الإيميل بانتظار موافقتك" }
+  );
+  await runWebhook(env, ctx, tgUpdate("ابعت إيميل لـ NAM Consultant بعرض الشراكة"));
+  assert.equal(state.appsScript, 0, "الإيميل انرسل بدون موافقة! هذا خطأ");
+  const appr = JSON.parse(state.kv.get("approvals"));
+  assert.equal(appr.length, 1);
+  assert.equal(appr[0].payload.to, "info@namconsultant.com");
+  const card = state.sent.find((x) => x.method === "sendMessage" && x.body.reply_markup);
+  assert.ok(card, "بطاقة الأزرار ما وصلت");
+  assert.equal(card.body.reply_markup.inline_keyboard[0][0].callback_data, "approve:" + appr[0].id);
+});
+
+await t("18) ضغط زر ✅ يُرسل عبر Apps Script ويحفظ الحالة", async () => {
+  const env = makeEnv({ OWNER_CHAT_ID: "1000", APPS_SCRIPT_URL: "https://script.google.com/macros/s/ABC/exec", APPS_SCRIPT_SECRET: "s" });
+  const ctx = makeCtx();
+  state.geminiQueue.push(
+    { text: 'TOOL_CALL: {"tool":"send_email","args":{"to":"info@namconsultant.com","subject":"عرض شراكة","body":"أهلاً…"}}' },
+    { text: "بانتظار موافقتك" }
+  );
+  await runWebhook(env, ctx, tgUpdate("ابعت الإيميل"));
+  const appr = JSON.parse(state.kv.get("approvals"))[0];
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, { callback_query: { id: "cbq1", data: "approve:" + appr.id, from: { id: 42 }, message: { chat: { id: 1000 }, message_id: 555 } } });
+  assert.equal(state.appsScript, 1, "Apps Script ما انادى");
+  const edited = state.sent.find((x) => x.method === "editMessageText");
+  assert.ok(edited && edited.body.text.includes("أُرسل"));
+  assert.equal(JSON.parse(state.kv.get("approvals")).length, 0, "الموافقة ما اختفت من الطابور");
+});
+
+await t("19) ضغط زر ❌ يلغي بدون إرسال لأي جهة", async () => {
+  const env = makeEnv({ OWNER_CHAT_ID: "1000", APPS_SCRIPT_URL: "https://script.google.com/macros/s/ABC/exec", APPS_SCRIPT_SECRET: "s" });
+  const ctx = makeCtx();
+  state.geminiQueue.push(
+    { text: 'TOOL_CALL: {"tool":"send_email","args":{"to":"a@b.com","subject":"s","body":"b"}}' },
+    { text: "بانتظار موافقتك" }
+  );
+  await runWebhook(env, ctx, tgUpdate("ابعت إيميل"));
+  const appr = JSON.parse(state.kv.get("approvals"))[0];
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, { callback_query: { id: "cbq2", data: "cancel:" + appr.id, from: { id: 42 }, message: { chat: { id: 1000 }, message_id: 556 } } });
+  assert.equal(state.appsScript, 0);
+  assert.equal(JSON.parse(state.kv.get("approvals")).length, 0);
+});
+console.log(`\n${passed}/19 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);
