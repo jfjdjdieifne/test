@@ -40,6 +40,7 @@ jobs:
         run: npm test
 
       - name: Deploy Worker + Browser Rendering
+        id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -50,6 +51,8 @@ jobs:
           code=$?
           set -e
           printf '%s\n' "$output"
+          worker_url=$(printf '%s\n' "$output" | grep -Eo 'https://[A-Za-z0-9._-]+\.workers\.dev' | tail -1 || true)
+          echo "worker_url=$worker_url" >> "$GITHUB_OUTPUT"
           {
             echo '## نشر Jarvis إلى Cloudflare'
             echo '```text'
@@ -61,3 +64,20 @@ jobs:
             echo "::error title=Cloudflare deployment failed::$one_line"
           fi
           exit "$code"
+
+      - name: Live health check + Arena test in Telegram
+        env:
+          WORKER_URL: ${{ steps.deploy.outputs.worker_url }}
+        shell: bash
+        run: |
+          test -n "$WORKER_URL"
+          curl --fail --show-error --silent "$WORKER_URL/health" | tee /tmp/health.json
+          grep -q '"status":"ok"' /tmp/health.json
+          SECRET=$(sed -n 's/^WEBHOOK_SECRET = "\(.*\)"/\1/p' wrangler.toml)
+          OWNER=$(sed -n 's/^ALLOWED_TELEGRAM_ID = "\(.*\)"/\1/p' wrangler.toml)
+          NOW=$(date +%s)
+          curl --fail --show-error --silent -X POST "$WORKER_URL/webhook" \
+            -H 'content-type: application/json' \
+            -H "X-Telegram-Bot-Api-Secret-Token: $SECRET" \
+            --data "{\"update_id\":$NOW,\"message\":{\"message_id\":$NOW,\"date\":$NOW,\"chat\":{\"id\":$OWNER,\"type\":\"private\"},\"from\":{\"id\":$OWNER,\"is_bot\":false,\"first_name\":\"Owner\"},\"text\":\"/arena test\"}}"
+          echo "✅ Worker health passed; /arena test was sent to Telegram." >> "$GITHUB_STEP_SUMMARY"
