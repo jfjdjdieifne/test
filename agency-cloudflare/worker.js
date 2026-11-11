@@ -641,6 +641,7 @@ async function transcribeGeminiAudio(env, mimeType, buf) {
       signal: AbortSignal.timeout(45000),
     });
     if (res.ok) { const d = await res.json(); const t = d?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim(); if (t) return t; }
+    else { console.log("gemini stt HTTP", res.status, (await res.text().catch(() => "")).slice(0, 300)); }
   } catch (e) { console.log("gemini stt error:", e && e.message ? e.message : e); }
   return null;
 }

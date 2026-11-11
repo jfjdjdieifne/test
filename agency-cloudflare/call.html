@@ -213,7 +213,13 @@ async function askJarvis(text) {
 let arabicVoice = null;
 function pickVoice() {
   const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
-  arabicVoice = voices.find(v => /^ar[-_]/i.test(v.lang)) || voices.find(v => /Arabic|العربية|ar\b/i.test(v.name)) || null;
+  const prefs = ["ar-SA", "ar-AE", "ar-SY", "ar-EG", "ar"];
+  arabicVoice = null;
+  for (const pref of prefs) {
+    arabicVoice = voices.find(v => v.lang && v.lang.toLowerCase().replace("_", "-").startsWith(pref.toLowerCase()));
+    if (arabicVoice) break;
+  }
+  if (!arabicVoice) arabicVoice = voices.find(v => /Arabic|العربية|\bar\b/i.test(v.name || "")) || voices.find(v => /^ar/i.test(v.lang || "")) || null;
 }
 if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
@@ -223,7 +229,7 @@ function speak(text) {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = arabicVoice ? arabicVoice.lang : "ar";
     if (arabicVoice) u.voice = arabicVoice;
-    u.rate = 1.02;
+    u.rate = 0.95; u.volume = 1;
     u.onend = resolve; u.onerror = resolve;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
@@ -265,7 +271,9 @@ async function startListening() {
   try { if (!mediaStream) mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch { showWarn("⚠️ المايك مرفوض — اضغط القفل 🔒 بجانب الرابط، اسمح بالمايكروفون، ثم حاول مرة ثانية."); setStatus("", "المايك مرفوض"); return; }
   recorded = [];
-  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+  const wanted = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/mp4"];
+  let mime = "";
+  for (const m of wanted) { try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) { mime = m; break; } } catch {} }
   try { mediaRecorder = mime ? new MediaRecorder(mediaStream, { mimeType: mime }) : new MediaRecorder(mediaStream); }
   catch { showWarn("⚠️ تعذر تشغيل التسجيل بهذا المتصفح — جرّب Chrome."); return; }
   mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) recorded.push(e.data); };
@@ -284,15 +292,16 @@ function stopRecording(send) {
 async function sendRecording() {
   busy = true; setStatus("think", "جارفس يسمعك…");
   try {
-    const mime = (mediaRecorder && mediaRecorder.mimeType) || "audio/webm";
-    const blob = new Blob(recorded, { type: mime });
+    const rawMime = (mediaRecorder && mediaRecorder.mimeType) || "audio/ogg";
+    const mimeBase = String(rawMime).split(";")[0] || "audio/ogg";
+    const blob = new Blob(recorded, { type: rawMime });
     const b64 = await blobToBase64(blob);
     const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
     const key = localStorage.getItem(LS_KEY) || "";
     const res = await fetch(base + "/voice-ask", {
       method: "POST",
       headers: { "content-type": "application/json", "x-jarvis-key": key },
-      body: JSON.stringify({ audio: { mimeType: mime, data: b64 } }),
+      body: JSON.stringify({ audio: { mimeType: mimeBase, data: b64 } }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
