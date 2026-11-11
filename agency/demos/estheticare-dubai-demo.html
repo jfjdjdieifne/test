@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EsthetiCare Clinic Dubai — Jumeirah Luxury Aesthetics &amp; Interactive Quote Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #faf8f5;
+      --surface: #ffffff;
+      --surface-warm: #f3eee7;
+      --ink: #171412;
+      --muted: #665e57;
+      --gold: #b58d52;
+      --gold-dark: #8f6b35;
+      --border: #e7dfd4;
+      --green: #16803c;
+      --wa: #128c7e;
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', 'Tajawal', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    html[dir="rtl"] body {
+      font-family: 'Tajawal', 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
+    .serif { font-family: 'Cormorant Garamond', Georgia, serif; }
+    html[dir="rtl"] .serif { font-family: 'Tajawal', serif; }
+
+    /* Top Prototype Audit Ribbon */
+    .audit-bar {
+      background: #171412;
+      color: #f9f5ee;
+      padding: 10px 18px;
+      font-size: 13px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid #302923;
+    }
+    .audit-bar strong { color: #e2bd7e; }
+    .audit-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(226, 189, 126, 0.14);
+      color: #f5d8a7;
+      border: 1px solid rgba(226, 189, 126, 0.35);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .audit-drawer {
+      display: none;
+      background: #231e1a;
+      color: #eee7dc;
+      padding: 16px 22px;
+      border-bottom: 1px solid #3a3129;
+      font-size: 13.5px;
+    }
+    .audit-drawer.open { display: block; }
+    .audit-grid {
+      max-width: 1140px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+    .audit-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 12px 14px;
+      border-radius: 12px;
+    }
+    .audit-card h4 { color: #f5d8a7; margin-bottom: 4px; font-size: 13px; }
+
+    /* Nav */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(250, 248, 245, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      flex-direction: column;
+    }
+    .brand-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand-sub {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--gold-dark);
+      font-weight: 600;
+    }
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 18px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 14px;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: var(--ink);
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(23, 20, 18, 0.14);
+    }
+    .btn-wa {
+      background: var(--wa);
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(18, 140, 126, 0.22);
+    }
+    .btn-outline {
+      background: var(--surface);
+      color: var(--ink);
+      border-color: var(--border);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 46px 0 56px;
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (max-width: 920px) {
+      .hero { grid-template-columns: 1fr; padding-top: 28px; }
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+      padding: 6px 13px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--gold-dark);
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: clamp(34px, 4.6vw, 54px);
+      line-height: 1.08;
+      margin-bottom: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .hero p.lead {
+      font-size: 17px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      max-width: 560px;
+    }
+    .hero-cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .trust-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .stat-box strong {
+      display: block;
+      font-size: 22px;
+      color: var(--ink);
+    }
+    .stat-box span {
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    /* Interactive Calculator Card */
+    .calc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 24px 50px rgba(32, 24, 16, 0.08);
+    }
+    .calc-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 8px;
+    }
+    .calc-badge {
+      background: #edf7f1;
+      color: var(--green);
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .field { margin-bottom: 15px; }
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--ink);
+    }
+    select, input[type="range"] {
+      width: 100%;
+    }
+    select {
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .chip-group {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .chip {
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--bg);
+      font-size: 12.5px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+    .chip.active {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+    .result-box {
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      margin: 16px 0;
+    }
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .price-big {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--ink);
+    }
+    .meta-note {
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* Sections */
+    section { padding: 48px 0; }
+    .section-head {
+      margin-bottom: 26px;
+    }
+    .section-head h2 {
+      font-size: clamp(26px, 3.2vw, 38px);
+      margin-bottom: 8px;
+    }
+    .section-head p { color: var(--muted); max-width: 620px; }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px;
+    }
+    .card h3 { font-size: 18px; margin-bottom: 8px; }
+    .card p { font-size: 14px; color: var(--muted); margin-bottom: 14px; }
+    .tag {
+      display: inline-block;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--gold-dark);
+      background: var(--surface-warm);
+      padding: 3px 9px;
+      border-radius: 999px;
+      margin-bottom: 10px;
+    }
+
+    .doctors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .doc-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+    }
+    .doc-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--surface-warm);
+      color: var(--gold-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0 80px;
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+    .sticky-wa {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      z-index: 50;
+    }
+    html[dir="rtl"] .sticky-wa { right: auto; left: 18px; }
+  </style>
+</head>
+<body>
+
+  <!-- Prototype Audit Bar -->
+  <div class="audit-bar">
+    <div>
+      <strong>Interactive Conversion Prototype</strong> prepared specifically for <strong>EsthetiCare Clinic Dubai</strong> (Al Wasl Rd, Jumeirah)
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="audit-pill" id="toggleAuditBtn">Why This Increases Bookings (3 Fixes) ▾</button>
+      <button class="audit-pill" id="langToggleBtn">العربية / EN</button>
+    </div>
+  </div>
+  <div class="audit-drawer" id="auditDrawer">
+    <div class="audit-grid">
+      <div class="audit-card">
+        <h4>1. Fixed Dead "#" Consultation Links</h4>
+        <p>On the live homepage (<code>estheticaredubai.ae/en/</code>), primary "Book A Consultation", "Book Appointment", and "Enter Gallery" buttons point to <code>#</code> dead links. Every CTA here opens a pre-filled WhatsApp booking.</p>
+      </div>
+      <div class="audit-card">
+        <h4>2. Interactive Treatment &amp; Graft Estimator</h4>
+        <p>Instead of making high-intent Jumeirah patients hunt across pages for pricing, they calculate an instant indicative AED range and send their exact selection straight to +971 55 912 8418.</p>
+      </div>
+      <div class="audit-card">
+        <h4>3. Fixed WhatsApp Format + Arabic Switcher</h4>
+        <p>Replaces <code>wa.me/+971...</code> with official <code>wa.me/971559128418</code> deep links plus instant EN/AR toggle for Emirati &amp; GCC patients.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="nav">
+      <div class="brand">
+        <span class="brand-title serif" data-en="EsthetiCare Clinic Dubai" data-ar="عيادة إستيتي كير دبي">EsthetiCare Clinic Dubai</span>
+        <span class="brand-sub" data-en="Villa 1166 · Al Wasl Rd, Umm Suqeim 2 · Jumeirah" data-ar="فيلا 1166 · شارع الوصل، أم سقيم 2 · جميرا">Villa 1166 · Al Wasl Rd, Umm Suqeim 2 · Jumeirah</span>
+      </div>
+      <div class="nav-actions">
+        <a class="btn btn-outline" href="tel:+97142140700">📞 +971 4 214 0700</a>
+        <a class="btn btn-wa" id="navWaBtn" href="https://wa.me/971559128418?text=Hi%20EsthetiCare%20Dubai%2C%20I%20would%20like%20to%20book%20a%20doctor%20consultation." target="_blank" rel="noopener" data-en="Book on WhatsApp" data-ar="احجز عبر واتساب">Book on WhatsApp</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Hero + Calculator -->
+    <section class="hero">
+      <div>
+        <div class="eyebrow" data-en="DHA-Licensed Medical Specialists · 4.9★ Rated" data-ar="أطباء مرخصون من هيئة الصحة بدبي · تقييم 4.9★">DHA-Licensed Medical Specialists · 4.9★ Rated</div>
+        <h1 class="serif" data-en="Natural-Looking Aesthetics, Dermatology &amp; Hair Restoration in Jumeirah." data-ar="تجميل طبي طبيعي النتائج، جلدية وزراعة شعر في جميرا.">Natural-Looking Aesthetics, Dermatology &amp; Hair Restoration in Jumeirah.</h1>
+        <p class="lead" data-en="Aesthetic brand of Medicure Clinic with 15+ years serving Dubai and 25,000+ procedures performed. Estimate your treatment plan in 20 seconds and book directly with our Jumeirah medical team." data-ar="العلامة التجميلية لعيادة ميديكيور بخبرة تتجاوز 15 عاماً في دبي وأكثر من 25,000 إجراء طبي. احسب التكلفة التقديرية خلال 20 ثانية واحجز مباشرة مع فريقنا الطبي في جميرا.">Aesthetic brand of Medicure Clinic with 15+ years serving Dubai and 25,000+ procedures performed. Estimate your treatment plan in 20 seconds and book directly with our Jumeirah medical team.</p>
+
+        <div class="hero-cta-row">
+          <a class="btn btn-primary" href="#calculator" data-en="Estimate Treatment Cost ↓" data-ar="احسب تكلفة الإجراء ↓">Estimate Treatment Cost ↓</a>
+          <a class="btn btn-outline" href="https://wa.me/971559128418?text=Hello%20EsthetiCare%20team%2C%20I%27d%20like%20to%20schedule%20a%20free%20doctor%20assessment%20at%20Al%20Wasl%20Road." target="_blank" rel="noopener" data-en="Free Doctor Assessment" data-ar="استشارة طبية أولية">Free Doctor Assessment</a>
+        </div>
+
+        <div class="trust-strip">
+          <div class="stat-box">
+            <strong>25,000+</strong>
+            <span data-en="Treatments Performed" data-ar="إجراء طبي ناجح">Treatments Performed</span>
+          </div>
+          <div class="stat-box">
+            <strong>15+ Yrs</strong>
+            <span data-en="Serving Dubai Patients" data-ar="عاماً في خدمة دبي">Serving Dubai Patients</span>
+          </div>
+          <div class="stat-box">
+            <strong>12PM–8PM</strong>
+            <span data-en="Open Daily · Al Wasl Rd" data-ar="يومياً · شارع الوصل">Open Daily · Al Wasl Rd</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Quote Tool -->
+      <div class="calc-card" id="calculator">
+        <div class="calc-header">
+          <h3 class="serif" style="font-size:23px;" data-en="Instant Treatment Estimator" data-ar="حاسبة التكلفة الفورية">Instant Treatment Estimator</h3>
+          <span class="calc-badge" data-en="Direct WhatsApp Quote" data-ar="عرض مباشر عبر واتساب">Direct WhatsApp Quote</span>
+        </div>
+
+        <div class="field">
+          <label for="treatmentSelect" data-en="1. Select Treatment Category" data-ar="1. اختر التخصص / الإجراء">1. Select Treatment Category</label>
+          <select id="treatmentSelect">
+            <option value="hair">FUE / Robotic Hair Transplant</option>
+            <option value="injectables">Botox &amp; Dermal Fillers</option>
+            <option value="laser">Full Body / Area Laser Hair Removal</option>
+            <option value="hydra">Signature HydraFacial &amp; Skin Glow</option>
+            <option value="prp">PRP Hair Restoration Session</option>
+            <option value="surgical">Surgical Consultation (Rhinoplasty / Body)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label data-en="2. Select Scope / Intensity" data-ar="2. اختر مستوى التغطية">2. Select Scope / Intensity</label>
+          <div class="chip-group" id="tierGroup">
+            <div class="chip active" data-tier="starter" data-en="Focused" data-ar="منطقة محددة">Focused</div>
+            <div class="chip" data-tier="standard" data-en="Standard" data-ar="خطة متكاملة">Standard</div>
+            <div class="chip" data-tier="vip" data-en="Comprehensive" data-ar="شاملة VIP">Comprehensive</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="branchPref" data-en="3. Preferred Consultation Mode" data-ar="3. طريقة الاستشارة المفضلة">3. Preferred Consultation Mode</label>
+          <select id="branchPref">
+            <option value="In-Clinic Visit (Villa 1166, Al Wasl Rd)">In-Clinic Visit (Villa 1166, Al Wasl Rd)</option>
+            <option value="Private Video / WhatsApp Pre-Assessment">Private Video / WhatsApp Pre-Assessment</option>
+          </select>
+        </div>
+
+        <div class="result-box">
+          <div class="result-row">
+            <span style="font-size:13px; color:var(--muted);" data-en="Indicative Clinic Range:" data-ar="النطاق التقديري بالعيادة:">Indicative Clinic Range:</span>
+            <span class="price-big" id="priceRange">AED 6,500 – 9,500</span>
+          </div>
+          <div class="meta-note" id="scopeDesc">Includes doctor evaluation, DHA-licensed medical protocol &amp; personalized post-care plan (2,000–2,500 grafts).</div>
+        </div>
+
+        <a id="calcWaBtn" class="btn btn-wa" style="width:100%;" target="_blank" rel="noopener" href="#">
+          <span data-en="Send Estimate &amp; Book on WhatsApp →" data-ar="أرسل التقدير واحجز عبر واتساب →">Send Estimate &amp; Book on WhatsApp →</span>
+        </a>
+        <p style="font-size:11.5px; color:var(--muted); margin-top:10px; text-align:center;" data-en="Final medical pricing is confirmed after doctor suitability assessment." data-ar="يُعتمد السعر الطبي النهائي بعد فحص الطبيب المختص.">Final medical pricing is confirmed after doctor suitability assessment.</p>
+      </div>
+    </section>
+
+    <!-- Core Pillars -->
+    <section>
+      <div class="section-head">
+        <h2 class="serif" data-en="Core Medical Specialties" data-ar="التخصصات الطبية الرئيسية">Core Medical Specialties</h2>
+        <p data-en="Every link below launches an immediate pre-filled WhatsApp inquiry directly to EsthetiCare's Jumeirah reception desk — zero broken buttons." data-ar="كل زر أدناه يفتح محادثة واتساب جاهزة ومحددة التخصص مباشرة مع استقبال العيادة — بدون أي روابط معطلة.">Every link below launches an immediate pre-filled WhatsApp inquiry directly to EsthetiCare's Jumeirah reception desk — zero broken buttons.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <span class="tag" data-en="Hair Restoration" data-ar="زراعة الشعر">Hair Restoration</span>
+          <h3 data-en="FUE, Beard &amp; Robotic Transplant" data-ar="زراعة الشعر واللحية بتقنية FUE والروبوت">FUE, Beard &amp; Robotic Transplant</h3>
+          <p data-en="Natural hairline design with PRP growth factor support, performed by DHA-licensed specialists." data-ar="تصميم خط شعر طبيعي مع جلسات بلازما PRP بإشراف أطباء مرخصين.">Natural hairline design with PRP growth factor support, performed by DHA-licensed specialists.</p>
+          <a class="btn btn-outline" target="_blank" rel="noopener" href="https://wa.me/971559128418?text=Hi%20EsthetiCare%20Dubai%2C%20I%27m%20interested%20in%20a%20Hair%20Transplant%20consultation." data-en="Ask About Hair Transplant →" data-ar="استفسر عن زراعة الشعر ←">Ask About Hair Transplant →</a>
+        </div>
+        <div class="card">
+          <span class="tag" data-en="Dermatology &amp; Injectables" data-ar="الجلدية والحقن التجميلية">Dermatology &amp; Injectables</span>
+          <h3 data-en="Botox, Dermal Fillers &amp; HydraFacial" data-ar="بوتوكس، فيلر وهيدرافيشل">Botox, Dermal Fillers &amp; HydraFacial</h3>
+          <p data-en="Balanced, subtle enhancements tailored to facial harmony and skin health." data-ar="نتائج متوازنة وطبيعية مصممة لتناسق ملامح الوجه ونضارة البشرة.">Balanced, subtle enhancements tailored to facial harmony and skin health.</p>
+          <a class="btn btn-outline" target="_blank" rel="noopener" href="https://wa.me/971559128418?text=Hi%20EsthetiCare%20Dubai%2C%20I%27d%20like%20to%20book%20a%20Dermatology%20or%20Injectables%20consultation." data-en="Book Skin &amp; Injectables →" data-ar="احجز استشارة جلدية ←">Book Skin &amp; Injectables →</a>
+        </div>
+        <div class="card">
+          <span class="tag" data-en="Plastic Surgery" data-ar="جراحة التجميل">Plastic Surgery</span>
+          <h3 data-en="Rhinoplasty, Fat Transfer &amp; Body Contouring" data-ar="تجميل الأنف، حقن الدهون ونحت القوام">Rhinoplasty, Fat Transfer &amp; Body Contouring</h3>
+          <p data-en="Consultant-led surgical planning with clear recovery guidance and transparent pre-op assessments." data-ar="تخطيط جراحي بإشراف استشاريين مع متابعة واضحة قبل وبعد الإجراء.">Consultant-led surgical planning with clear recovery guidance and transparent pre-op assessments.</p>
+          <a class="btn btn-outline" target="_blank" rel="noopener" href="https://wa.me/971559128418?text=Hi%20EsthetiCare%20Dubai%2C%20I%20would%20like%20a%20private%20Plastic%20Surgery%20consultation." data-en="Request Surgical Consult →" data-ar="طلب استشارة جراحية ←">Request Surgical Consult →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Medical Team -->
+    <section>
+      <div class="section-head">
+        <h2 class="serif" data-en="DHA-Licensed Medical Team" data-ar="الفريق الطبي المرخص">DHA-Licensed Medical Team</h2>
+        <p data-en="Verified practitioners at Villa 1166, Al Wasl Road, Umm Suqeim 2, Jumeirah." data-ar="أطباء متخصصون في فيلا 1166، شارع الوصل، أم سقيم 2، جميرا.">Verified practitioners at Villa 1166, Al Wasl Road, Umm Suqeim 2, Jumeirah.</p>
+      </div>
+      <div class="doctors-grid">
+        <div class="doc-card">
+          <div class="doc-avatar">ST</div>
+          <h3>Dr. Samir Tarar</h3>
+          <p style="font-size:13px; color:var(--muted);">Medical Director · Aesthetic Medicine &amp; Skin Rejuvenation</p>
+        </div>
+        <div class="doc-card">
+          <div class="doc-avatar">SK</div>
+          <h3>Dr. Shaziya Kalam</h3>
+          <p style="font-size:13px; color:var(--muted);">Consultant Dermatologist · 15+ Years Clinical Experience</p>
+        </div>
+        <div class="doc-card">
+          <div class="doc-avatar">AB</div>
+          <h3>Dr. Audumbar Borgaonkar</h3>
+          <p style="font-size:13px; color:var(--muted);">Senior Plastic &amp; Reconstructive Surgeon</p>
+        </div>
+        <div class="doc-card">
+          <div class="doc-avatar">UH</div>
+          <h3>Dr. Umair Hafeez</h3>
+          <p style="font-size:13px; color:var(--muted);">Aesthetic Physician · DHA &amp; MOH Licensed (12+ Yrs)</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <strong>EsthetiCare Clinic Dubai (Medicure Aesthetics)</strong> · Villa 1166, Al Wasl Road, Umm Suqeim 2, Jumeirah, Dubai ·
+      Tel: +971 4 214 0700 · WhatsApp: +971 55 912 8418 · Email: info@estheticaredubai.ae
+    </div>
+  </footer>
+
+  <div class="sticky-wa">
+    <a class="btn btn-wa" href="https://wa.me/971559128418?text=Hi%20EsthetiCare%20Dubai%2C%20I%27d%20like%20to%20book%20a%20consultation." target="_blank" rel="noopener">
+      💬 WhatsApp Reception
+    </a>
+  </div>
+
+  <script>
+    const pricingData = {
+      hair: {
+        nameEn: "FUE / Robotic Hair Transplant",
+        nameAr: "زراعة الشعر بتقنية FUE / الروبوت",
+        starter: { range: "AED 5,500 – 7,500", descEn: "1,500–2,000 grafts · Crown or hairline touch-up + 1 PRP session.", descAr: "1,500–2,000 بصيلة · مقدمة الرأس أو التاج + جلسة بلازما." },
+        standard: { range: "AED 7,500 – 11,500", descEn: "2,500–3,500 grafts · Full frontal restoration + post-op care kit.", descAr: "2,500–3,500 بصيلة · تغطية أمامية كاملة + حقيبة العناية." },
+        vip: { range: "AED 11,500 – 16,500", descEn: "Max density 4,000+ grafts + 3 PRP boosters & follow-ups.", descAr: "أقصى كثافة 4,000+ بصيلة + 3 جلسات بلازما ومتابعة." }
+      },
+      injectables: {
+        nameEn: "Botox & Dermal Fillers",
+        nameAr: "بوتوكس وفيلر تجميلي",
+        starter: { range: "AED 950 – 1,500", descEn: "Single area Botox or 1ml premium hyaluronic lip/smile filler.", descAr: "بوتوكس لمنطقة واحدة أو 1 مل فيلر." },
+        standard: { range: "AED 2,200 – 3,800", descEn: "3-area Botox refresh or 2ml contour/cheek/jawline balancing.", descAr: "بوتوكس 3 مناطق أو 2 مل كنتور وتحديد الوجه." },
+        vip: { range: "AED 4,500 – 7,200", descEn: "Full facial harmonization package with DHA specialist follow-up.", descAr: "باقة تناسق الوجه الكاملة مع متابعة الطبيب." }
+      },
+      laser: {
+        nameEn: "Laser Hair Removal",
+        nameAr: "إزالة الشعر بالليزر",
+        starter: { range: "AED 350 – 650", descEn: "Single session targeted zone (face, underarms, or bikini).", descAr: "جلسة واحدة لمنطقة محددة." },
+        standard: { range: "AED 1,100 – 1,900", descEn: "Full body 1 session or multi-session targeted zone package.", descAr: "جلسة جسم كامل أو باقة عدة جلسات لمنطقة." },
+        vip: { range: "AED 3,800 – 6,000", descEn: "6-session full body DHA-medical laser course.", descAr: "باقة 6 جلسات جسم كامل بأحدث أجهزة الليزر الطبي." }
+      },
+      hydra: {
+        nameEn: "Signature HydraFacial & Skin Glow",
+        nameAr: "هيدرافيشل ونضارة البشرة",
+        starter: { range: "AED 650 – 950", descEn: "Deep cleanse, gentle extraction & hydrating serum infusion.", descAr: "تنظيف عميق وترطيب وتفتيح فوري." },
+        standard: { range: "AED 1,200 – 1,800", descEn: "HydraFacial + skin booster or gentle LED recovery.", descAr: "هيدرافيشل + ميزوثيرابي نضارة أو جلسة ضوئية." },
+        vip: { range: "AED 2,900 – 4,500", descEn: "3-session glow & anti-aging dermatology program.", descAr: "برنامج 3 جلسات نضارة ومقاومة علامات التقدم بالعمر." }
+      },
+      prp: {
+        nameEn: "PRP Hair Restoration",
+        nameAr: "علاج تساقط الشعر بالبلازما PRP",
+        starter: { range: "AED 850 – 1,200", descEn: "Single medical PRP scalp revitalization session.", descAr: "جلسة واحدة لتحفيز بصيلات الشعر." },
+        standard: { range: "AED 2,200 – 3,100", descEn: "3-session PRP density protocol (recommended starter).", descAr: "باقة 3 جلسات متتالية لتعزيز الكثافة." },
+        vip: { range: "AED 3,900 – 5,400", descEn: "6-session PRP + mesotherapy vitamin cocktail.", descAr: "برنامج 6 جلسات مع ميزوثيرابي فيتامينات." }
+      },
+      surgical: {
+        nameEn: "Plastic Surgery Consultation",
+        nameAr: "استشارة جراحة التجميل",
+        starter: { range: "AED 14,000 – 22,000", descEn: "Targeted surgical procedure (e.g. localized fat transfer / eyelid).", descAr: "إجراء جراحي محدد (مثل حقن دهون موضعي)." },
+        standard: { range: "AED 22,000 – 34,000", descEn: "Primary rhinoplasty or gynecomastia surgical plan.", descAr: "خطة تجميل الأنف أو الجراحة التجميلية المتكاملة." },
+        vip: { range: "AED 35,000 – 55,000+", descEn: "Comprehensive body contouring / multi-area surgical care.", descAr: "نحت قوام شامل أو إجراءات جراحية متعددة." }
+      }
+    };
+
+    let currentTier = 'starter';
+    let currentLang = 'en';
+
+    const treatmentSelect = document.getElementById('treatmentSelect');
+    const branchPref = document.getElementById('branchPref');
+    const priceRange = document.getElementById('priceRange');
+    const scopeDesc = document.getElementById('scopeDesc');
+    const calcWaBtn = document.getElementById('calcWaBtn');
+
+    function updateCalculator() {
+      const key = treatmentSelect.value;
+      const item = pricingData[key][currentTier];
+      const name = currentLang === 'ar' ? pricingData[key].nameAr : pricingData[key].nameEn;
+      priceRange.textContent = item.range;
+      scopeDesc.textContent = currentLang === 'ar' ? item.descAr : item.descEn;
+
+      const msg = currentLang === 'ar'
+        ? `مرحباً عيادة إستيتي كير دبي، استخدمت حاسبة التكلفة وأرغب بحجز استشارة لـ: ${name} (الخطة: ${currentTier} | النطاق التقديري: ${item.range} | النوع: ${branchPref.value}).`
+        : `Hi EsthetiCare Clinic Dubai, I just used your treatment estimator and would like to book a consultation for: ${name} (Tier: ${currentTier}, Indicative Range: ${item.range}, Mode: ${branchPref.value}).`;
+      calcWaBtn.href = `https://wa.me/971559128418?text=${encodeURIComponent(msg)}`;
+    }
+
+    document.getElementById('tierGroup').addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      document.querySelectorAll('#tierGroup .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentTier = chip.dataset.tier;
+      updateCalculator();
+    });
+
+    treatmentSelect.addEventListener('change', updateCalculator);
+    branchPref.addEventListener('change', updateCalculator);
+
+    document.getElementById('toggleAuditBtn').addEventListener('click', () => {
+      document.getElementById('auditDrawer').classList.toggle('open');
+    });
+
+    document.getElementById('langToggleBtn').addEventListener('click', () => {
+      currentLang = currentLang === 'en' ? 'ar' : 'en';
+      document.documentElement.lang = currentLang;
+      document.documentElement.dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+      document.querySelectorAll('[data-en][data-ar]').forEach(el => {
+        el.textContent = currentLang === 'ar' ? el.dataset.ar : el.dataset.en;
+      });
+      updateCalculator();
+    });
+
+    updateCalculator();
+  </script>
+</body>
+</html>
