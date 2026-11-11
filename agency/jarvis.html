@@ -436,15 +436,16 @@
         <label>مزود الذكاء الاصطناعي</label>
         <select id="providerSel">
           <option value="offline">الوضع المحلي الفوري (بدون API - $0 دائماً)</option>
-          <option value="gemini">Google Gemini (طبقة مجانية من aistudio.google.com)</option>
+          <option value="gemini">Google Gemini 2.5 Flash (طبقة مجانية من aistudio.google.com)</option>
           <option value="groq">Groq Llama 3.3 70B (طبقة مجانية سريعة من console.groq.com)</option>
+          <option value="openrouter">OpenRouter Free Router — openrouter/free (مجاني من openrouter.ai)</option>
         </select>
       </div>
 
       <div class="field">
         <label>مفتاح API المجاني (اتركه فارغاً للوضع المحلي)</label>
-        <input type="password" id="apiKeyInput" placeholder="AIza... أو gsk_..." />
-        <div class="hint">تحصل عليه مجاناً بدون بطاقة بنكية من Google AI Studio أو Groq Console.</div>
+        <input type="password" id="apiKeyInput" placeholder="AIza... أو gsk_... أو sk-or-..." />
+        <div class="hint">تحصل عليه مجاناً بدون بطاقة بنكية من Google AI Studio أو Groq أو OpenRouter.</div>
       </div>
 
       <div class="field">
@@ -660,6 +661,30 @@
         const data = await res.json();
         const txt = data?.choices?.[0]?.message?.content;
         if (!txt) throw new Error(data?.error?.message || 'Groq error');
+        return txt;
+      }
+
+      if (config.provider === 'openrouter' && config.apiKey) {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.apiKey}`,
+            'HTTP-Referer': location.href,
+            'X-Title': 'JARVIS Dubai B2B Agency'
+          },
+          body: JSON.stringify({
+            model: 'openrouter/free',
+            messages: [
+              { role: 'system', content: sys },
+              { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.5
+          })
+        });
+        const data = await res.json();
+        const txt = data?.choices?.[0]?.message?.content;
+        if (!txt) throw new Error(data?.error?.message || 'OpenRouter error');
         return txt;
       }
 
