@@ -172,8 +172,65 @@ async function kvGet(env, key, fallback) {
 async function kvPut(env, key, value) {
   try { if (env.JARVIS_KV) await env.JARVIS_KV.put(key, JSON.stringify(value)); } catch (e) { console.log("kvPut error:", e && e.message ? e.message : e); }
 }
-const getHistory = (env) => kvGet(env, "history", []);
+const getHistory = (env) => kvGet(env, "history", []); // legacy fallback
 const saveHistory = (env, convo) => kvPut(env, "history", convo.slice(-MAX_HISTORY));
+
+/* ---------------- مدير المشاريع/الشاتات فوق Arena ----------------
+   Arena قد ينسى الجلسة؛ جارفس لا يعتمد على session المزود. كل مشروع له سياقه في KV،
+   ويُعاد حقنه لأي محرك (Arena أو fallback)، لذلك نقدر نرجع لشغل من مبارح أو أسبوع. */
+const THREADS_KEY = "context_threads_v1";
+const ACTIVE_THREAD_KEY = "active_context_thread_v1";
+function threadWords(s) {
+  return [...new Set(String(s || "").toLowerCase().replace(/[^\p{L}\p{N}_-]+/gu, " ").split(/\s+/)
+    .filter((w) => w.length > 2 && !/^(هذا|هاي|هاد|على|الى|إلى|فيها|عليه|في|من|شو|بدي|كمل|تمام|the|and|for|with)$/.test(w)))];
+}
+function threadLabel(text) {
+  return String(text || "محادثة جديدة").replace(/\s+/g, " ").trim().slice(0, 64) || "محادثة جديدة";
+}
+async function getThreads(env) { return (await kvGet(env, THREADS_KEY, [])) || []; }
+async function putThreads(env, rows) { await kvPut(env, THREADS_KEY, rows.slice(0, 40)); }
+function threadScore(t, text) {
+  const q = new Set(threadWords(text));
+  const hay = new Set(threadWords([t.title, t.summary, ...(t.keywords || []), ...((t.messages || []).slice(-4).map((m) => m.content))].join(" ")));
+  let n = 0; for (const w of q) if (hay.has(w)) n++;
+  const ageDays = (Date.now() - (t.updated || 0)) / 86400000;
+  return n * 10 - Math.min(ageDays, 30) * 0.12;
+}
+async function resolveThread(env, text, forceId) {
+  const rows = await getThreads(env);
+  const active = forceId || await kvGet(env, ACTIVE_THREAD_KEY, "");
+  if (forceId) {
+    const exact = rows.find((t) => t.id === forceId || t.id.endsWith(forceId));
+    if (exact) return { rows, thread: exact, reason: "manual" };
+  }
+  const explicitNew = /^(موضوع|مشروع|شات|محادثة)\s+(جديد|جديدة)|خلينا نبدأ|ابدأ من الصفر/i.test(String(text).trim());
+  const continuation = /^(كمل|كمّل|تابع|تمام|طيب|اي|نعم|لا|اعملها|نفذ|نفّذ|وبعدين|شو صار)/i.test(String(text).trim());
+  let picked = null, reason = "new";
+  if (!explicitNew && rows.length) {
+    const ranked = rows.map((t) => ({ t, s: threadScore(t, text) })).sort((a, b) => b.s - a.s);
+    const activeThread = rows.find((t) => t.id === active);
+    if (ranked[0] && ranked[0].s >= 9.5) { picked = ranked[0].t; reason = "matched"; }
+    else if (continuation && activeThread) { picked = activeThread; reason = "continuation"; }
+    else if (activeThread && Date.now() - (activeThread.updated || 0) < 45 * 60000) { picked = activeThread; reason = "recent"; }
+  }
+  if (!picked) {
+    picked = { id: "ctx_" + Date.now().toString(36), title: threadLabel(text), summary: "", keywords: threadWords(text).slice(0, 16), messages: [], created: Date.now(), updated: Date.now(), status: "active" };
+    rows.unshift(picked);
+  }
+  await kvPut(env, ACTIVE_THREAD_KEY, picked.id);
+  return { rows, thread: picked, reason };
+}
+async function saveThreadTurn(env, resolved, convo) {
+  const t = resolved.thread;
+  t.messages = convo.slice(-MAX_HISTORY).map((m) => ({ role: m.role, content: String(m.content || "").slice(0, 3500) }));
+  const userTexts = t.messages.filter((m) => m.role === "user").map((m) => m.content);
+  t.keywords = threadWords([t.title, ...userTexts].join(" ")).slice(0, 24);
+  t.summary = userTexts.slice(-4).join(" | ").slice(0, 900);
+  t.updated = Date.now();
+  const i = resolved.rows.findIndex((x) => x.id === t.id);
+  if (i >= 0) resolved.rows[i] = t; else resolved.rows.unshift(t);
+  await putThreads(env, resolved.rows.sort((a, b) => (b.updated || 0) - (a.updated || 0)));
+}
 
 /* ---------------- الذاكرة طويلة المدى — بلا استنزاف توكنات -------------- */
 // الحفظ خما (بدون LLM): صفر توكنات للتخزين. الاسترجاع محلي بتطابق كلمات: صفر توكنات.
@@ -816,7 +873,8 @@ async function queueApprovedTask(env, goal, ctx) {
   const g = String(goal || "").trim().slice(0, 500);
   const tasks = await kvGet(env, "tasks", []);
   const id = "task_" + Date.now();
-  tasks.unshift({ id, goal: g, status: "queued", trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0, consecutiveFailures: 0 });
+  const threadId = await kvGet(env, ACTIVE_THREAD_KEY, "");
+  tasks.unshift({ id, goal: g, threadId, status: "queued", trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0, consecutiveFailures: 0 });
   await kvPut(env, "tasks", tasks.slice(0, 30));
   if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(processTaskQueue(env, STEPS_PER_TICK));
   return id;
@@ -908,15 +966,17 @@ async function processTaskQueue(env, maxSteps) {
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
   const memBlock = o.mode === "worker" ? "" : await relevantMemories(env, userText);
-  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : ""));
-  const hist = o.mode === "worker" ? [] : await getHistory(env);
+  const resolved = o.mode === "worker" ? null : await resolveThread(env, userText, o.threadId);
+  const threadBlock = resolved ? `\n\nسياق مساحة العمل الحالية:\n- الاسم: ${resolved.thread.title}\n- المعرف: ${resolved.thread.id}\n- سبب اختيارها: ${resolved.reason}\n- الملخص السابق: ${resolved.thread.summary || "أول رسالة"}\nالتزم بهذه المهمة فقط ولا تخلطها بمشروع آخر.` : "";
+  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : "") + threadBlock);
+  const hist = o.mode === "worker" ? [] : (resolved.thread.messages || []);
   const convo = [...hist, { role: "user", content: String(userText) }];
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
     if (!out) return "لحظة — كل مزودي الذكاء مشغولين/نفدت حصصها هلقة (غالباً حد اليوم المجاني — يتجدد تلقائياً). جرب بعد شوي، أو أعطني مفتاح جديد.";
     const call = parseToolCall(out);
     if (!call) {
-      if (o.mode !== "worker") await saveHistory(env, [...convo, { role: "assistant", content: out }]);
+      if (o.mode !== "worker") await saveThreadTurn(env, resolved, [...convo, { role: "assistant", content: out }]);
       return out;
     }
     const result = await runTool(call, env, o.ctx || null);
@@ -925,7 +985,7 @@ async function agentLoop(userText, env, chatId, opts) {
   }
   const finalOut = await llmComplete([...convo, { role: "user", content: "أعطني الجواب النهائي الآن فقط بدون أدوات." }], system, env);
   const answer = finalOut || "اكتملت الخطوات — راجع النتائج أعلاه.";
-  if (o.mode !== "worker") await saveHistory(env, [...convo, { role: "assistant", content: answer }]);
+  if (o.mode !== "worker") await saveThreadTurn(env, resolved, [...convo, { role: "assistant", content: answer }]);
   return answer;
 }
 
@@ -1322,6 +1382,9 @@ const WELCOME = [
   "/lead <رقم> — تفاصيل عميل 1–12",
   "/audit <موقع> — تدقيق سريع لموقع",
   "/tasks — آخر المهام الخلفية مع عدد الخطوات",
+  "/chats — كل مساحات العمل القديمة والجديدة",
+  "/chat new <اسم> — افتح مشروعاً منفصلاً | /chat <رقم> — ارجع لشات قديم",
+  "/progress — تقدم وسياق مساحة العمل الحالية",
   "/cancel task_ID — إلغاء مهمة جارية",
   "/learn <نص> — احفظ حقائق (كل سطر = حقيقة، ابدأ بـ ! للتثبيت الدائم)",
   "/memories — كل اللي كنت تعلمته",
@@ -1370,6 +1433,38 @@ async function handleCommand(text, env, chatId) {
       t.status = "cancelled"; t.lockedAt = 0; t.updated = Date.now();
       await kvPut(env, "tasks", tasks);
       await sendMessage(env, chatId, `⛔ أُلغيت المهمة ${id}`); return true;
+    }
+    case "/chats": case "/contexts": case "/شاتات": {
+      const rows = await getThreads(env);
+      const active = await kvGet(env, ACTIVE_THREAD_KEY, "");
+      if (!rows.length) { await sendMessage(env, chatId, "ما في مساحات عمل بعد. ابعت أول طلب وأنا بفتحها تلقائياً."); return true; }
+      const tasks = await kvGet(env, "tasks", []);
+      const lines = rows.slice(0, 15).map((t, i) => {
+        const linked = tasks.filter((x) => x.threadId === t.id && ["queued", "running"].includes(x.status)).length;
+        const age = Math.max(0, Math.floor((Date.now() - (t.updated || Date.now())) / 3600000));
+        return `${t.id === active ? "🟢" : "⚪"} ${i + 1}. ${t.title}\n   ${t.id} · آخر نشاط ${age < 24 ? age + " ساعة" : Math.floor(age / 24) + " يوم"}${linked ? ` · ${linked} مهمة شغالة` : ""}`;
+      });
+      await sendMessage(env, chatId, `🗂 مساحات العمل:\n\n${lines.join("\n")}\n\n/chat <رقم أو ctx_...> للرجوع · /chat new <اسم> للجديد · /progress للتقدم`); return true;
+    }
+    case "/chat": case "/context": {
+      const rows = await getThreads(env);
+      if (/^(new|جديد|جديدة)(\s|$)/i.test(arg)) {
+        const title = threadLabel(arg.replace(/^(new|جديد|جديدة)\s*/i, "") || "محادثة جديدة");
+        const t = { id: "ctx_" + Date.now().toString(36), title, summary: "", keywords: threadWords(title), messages: [], created: Date.now(), updated: Date.now(), status: "active" };
+        rows.unshift(t); await putThreads(env, rows); await kvPut(env, ACTIVE_THREAD_KEY, t.id);
+        await sendMessage(env, chatId, `✅ فتحت مساحة جديدة: «${title}»\n${t.id}`); return true;
+      }
+      const n = Number(arg); const t = Number.isInteger(n) && n > 0 ? rows[n - 1] : rows.find((x) => x.id === arg || x.id.endsWith(arg));
+      if (!t) { await sendMessage(env, chatId, "ما لقيتها. استخدم /chats وشوف الرقم أو المعرف."); return true; }
+      await kvPut(env, ACTIVE_THREAD_KEY, t.id);
+      await sendMessage(env, chatId, `🟢 رجعت لمساحة «${t.title}»\nآخر سياق: ${t.summary || "فارغة"}\nهلق أي «كمل» رح ينفهم ضمنها.`); return true;
+    }
+    case "/progress": case "/تقدم": {
+      const rows = await getThreads(env); const active = await kvGet(env, ACTIVE_THREAD_KEY, "");
+      const t = rows.find((x) => x.id === active); if (!t) { await sendMessage(env, chatId, "ما في شات نشط بعد."); return true; }
+      const tasks = (await kvGet(env, "tasks", [])).filter((x) => x.threadId === t.id || (!x.threadId && String(x.goal || "").toLowerCase().includes(String(t.title).toLowerCase())));
+      const lines = tasks.slice(0, 8).map((x) => `${x.status === "done" ? "✅" : x.status === "running" ? "⏳" : "▫️"} ${x.goal.slice(0, 100)} — خطوة ${x.stepCount || 0}`);
+      await sendMessage(env, chatId, `📍 ${t.title}\nالمعرف: ${t.id}\nآخر سياق: ${t.summary || "—"}\n\nالمهام:\n${lines.join("\n") || "لا توجد مهمة خلفية مرتبطة بعد."}`); return true;
     }
     case "/report": {
       const merged = await mergedLeads(env);
@@ -1441,9 +1536,13 @@ async function handleCommand(text, env, chatId) {
         "",
         "⚠️ ما فيني أوصل ملفات على تلفونك مباشرة — بس كل ملف تطرشيلي بقراه وبتعامل معه وبرجعيلك الناتج.",
       ].join("\n")); return true;
-    case "/reset":
+    case "/reset": {
+      const rows = await getThreads(env); const active = await kvGet(env, ACTIVE_THREAD_KEY, "");
+      const t = rows.find((x) => x.id === active);
+      if (t) { t.messages = []; t.summary = ""; t.updated = Date.now(); await putThreads(env, rows); }
       await kvPut(env, "history", []);
-      await sendMessage(env, chatId, "تم مسح ذاكرة المحادثة."); return true;
+      await sendMessage(env, chatId, t ? `تم مسح رسائل «${t.title}» فقط. باقي الشاتات والمهام محفوظة.` : "تم مسح ذاكرة المحادثة."); return true;
+    }
     case "/arena": {
       const cfg = await arenaCfg(env);
       const on = await arenaIsOn(env);

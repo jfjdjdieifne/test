@@ -49,7 +49,23 @@ jobs:
           BRIDGE_API_KEY: ${{ secrets.BRIDGE_API_KEY }}
           SPACE_NAME: ${{ inputs.space_name || 'jarvis-arena-bridge' }}
           WITH_BROWSER: ${{ inputs.browser || 'true' }}
-        run: python arena-bridge/deploy/hf_deploy.py
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "## سجل نشر Hugging Face" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          output=$(python arena-bridge/deploy/hf_deploy.py 2>&1)
+          code=$?
+          set -e
+          printf '%s\n' "$output" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            # اجعل الخطأ مقروءاً عبر GitHub Checks API حتى لو حُجبت ملفات logs.
+            one_line=$(printf '%s' "$output" | tail -c 4000 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=Hugging Face deployment failed::$one_line"
+          fi
+          exit "$code"
 
       - name: ماذا بعد؟
         if: always()

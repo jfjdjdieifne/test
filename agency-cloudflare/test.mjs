@@ -543,5 +543,40 @@ await t("37) /arena يعرض أن العنوان محفوظ من تيليجرا�
   assert.ok(sentTexts().join("\n").includes("محفوظ من تيليجرام"), "المصدر ما ظهر");
 });
 
-console.log(`\n${passed}/37 اختبارات ناجحة`);
+await t("38) مدير السياق يفتح مساحة ويربط كمل بنفسها", async () => {
+  const env = makeEnv();
+  state.geminiQueue.push({ text: "بدأت المشروع" }, { text: "كملت بنفس السياق" });
+  await runWebhook(env, makeCtx(), tgUpdate("ابني متجر الزهور الجديد"));
+  let rows = JSON.parse(state.kv.get("context_threads_v1"));
+  assert.equal(rows.length, 1, "ما فتح مساحة");
+  const id = rows[0].id;
+  await runWebhook(env, makeCtx(), tgUpdate("كمل واضف الدفع"));
+  rows = JSON.parse(state.kv.get("context_threads_v1"));
+  assert.equal(rows.length, 1, "فتح شات جديد بدل الاستمرار");
+  assert.equal(JSON.parse(state.kv.get("active_context_thread_v1")), id);
+});
+
+await t("39) موضوع جديد ينفصل ويمكن الرجوع للقديم", async () => {
+  const env = makeEnv();
+  state.geminiQueue.push({ text: "أ" }, { text: "ب" });
+  await runWebhook(env, makeCtx(), tgUpdate("مشروع جديد حملة مطعم دمشق"));
+  await runWebhook(env, makeCtx(), tgUpdate("مشروع جديد تطبيق العقارات"));
+  let rows = JSON.parse(state.kv.get("context_threads_v1"));
+  assert.equal(rows.length, 2, "المشروعين اختلطوا");
+  await runWebhook(env, makeCtx(), tgUpdate("/chat 2"));
+  assert.equal(JSON.parse(state.kv.get("active_context_thread_v1")), rows[1].id, "ما رجع للشات القديم");
+});
+
+await t("40) /chats و/progress يعرضان المساحات والتقدم", async () => {
+  const env = makeEnv();
+  state.geminiQueue.push({ text: "جاهز" });
+  await runWebhook(env, makeCtx(), tgUpdate("جهز خطة إطلاق المنتج"));
+  await runWebhook(env, makeCtx(), tgUpdate("/chats"));
+  await runWebhook(env, makeCtx(), tgUpdate("/progress"));
+  const out = sentTexts().join("\n");
+  assert.ok(out.includes("مساحات العمل"));
+  assert.ok(out.includes("آخر سياق"));
+});
+
+console.log(`\n${passed}/40 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);
