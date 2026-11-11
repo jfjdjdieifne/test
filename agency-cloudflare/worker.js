@@ -49,7 +49,7 @@ TOOL_CALL: {"tool":"اسم_الأداة","args":{...}}
 const BASE_PROMPT = `أنت "جارفس"، ذكاء اصطناعي عربي خاص بصاحب العمل (المالك الوحيد). أسلوبك: واثق، مهني، موجز، وباللهجة الشامية السورية دائماً (مثال: "شلونك يا ريس؟ شو بدك اليوم؟"، "تمام، خليني اشيك لك"، "موشكلة، هسع بتدبرلك ياه"). ممنوع الفصحى الجامدة — رد طبيعي كسوري حقيقي.
 - لا تخترع معلومات؛ إن احتجت بيانات استخدم الأداة.
 - إجابات قصيرة ومنظّمة بنقاط عند الحاجة (السطرز الموازي بالفصحى بس داخل الكود).
-- إذا كانت الرسالة صوتية: ردك جملتين أو ثلاث قصيرة فقط (عشان تتحول لصوت بسرعة).
+- إذا كانت الرسالة صوتية: ردك جملتين أو ثلاث قصيرة فقط (عشان تتحول لصوت بسرعة)، وكلام طبيعي بدون نقاط أو رموز تنسيق — كإنك صديق ذكي يحكي وياه.
 - جميع الأرقام بالإنجليزية (واتساب، أسعار، روابط).
 ${TOOL_DOC}`;
 
@@ -247,8 +247,8 @@ async function callGemini(convo, system, env) {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ system_instruction: { parts: [{ text: system }] }, contents }),
-      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({ system_instruction: { parts: [{ text: system }] }, contents, generationConfig: { maxOutputTokens: 400, temperature: 0.4 } }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) { console.log("gemini HTTP", res.status); return null; }
     const data = await res.json();
@@ -264,8 +264,8 @@ async function callOpenAICompatible(base, key, model, convo, system) {
     const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))], temperature: 0.4 }),
-      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))], temperature: 0.4, max_tokens: 400 }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) { console.log("llm HTTP", res.status, base); return null; }
     const data = await res.json();
@@ -274,13 +274,28 @@ async function callOpenAICompatible(base, key, model, convo, system) {
   } catch (e) { console.log("llm error:", e && e.message ? e.message : e); return null; }
 }
 
+async function callOpenRouterWithFallback(convo, system, env) {
+  if (!env.OPENROUTER_API_KEY) return null;
+  const wanted = [env.OPENROUTER_MODEL, "meta-llama/llama-3.3-70b-instruct:free", "google/gemini-2.0-flash-exp:free", "deepseek/deepseek-chat-v3-0324:free", "openrouter/free"]
+    .map((m) => String(m || "").trim())
+    .filter(Boolean);
+  const seen = new Set();
+  for (const model of wanted) {
+    if (seen.has(model)) continue;
+    seen.add(model);
+    const out = await callOpenAICompatible("https://openrouter.ai/api/v1", env.OPENROUTER_API_KEY, model, convo, system);
+    if (out) return out;
+  }
+  return null;
+}
+
 async function llmComplete(convo, system, env) {
   return (
     (await callGemini(convo, system, env)) ||
     (await callOpenAICompatible("https://api.mistral.ai/v1", env.MISTRAL_API_KEY, (env.MISTRAL_MODEL || "mistral-large-latest").trim(), convo, system)) ||
     (await callOpenAICompatible("https://api.groq.com/openai/v1", env.GROQ_API_KEY, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
     (await callOpenAICompatible("https://integrate.api.nvidia.com/v1", env.NVIDIA_API_KEY, (env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct").trim(), convo, system)) ||
-    (await callOpenAICompatible("https://openrouter.ai/api/v1", env.OPENROUTER_API_KEY, "openrouter/free", convo, system)) ||
+    (await callOpenRouterWithFallback(convo, system, env)) ||
     null
   );
 }
