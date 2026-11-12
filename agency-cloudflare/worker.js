@@ -122,7 +122,7 @@ export default {
       const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
       if (!token) return jsonResponse({ ok: false, reason: "not_configured" }, 200);
       let b; try {
-        b = await remotePuppeteer.connect({ browserWSEndpoint: `wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000` });
+        b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
         const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
         await kvPut(env, "browserless_last_error_v1", null); return jsonResponse({ ok: true }, 200);
       } catch (e) {
@@ -563,6 +563,25 @@ function arenaSessionFromStorage(storage) {
   return null;
 }
 
+async function connectBrowserlessNative(endpoint) {
+  // puppeteer-core يحاول استعمال حزمة ws الخاصة بـNode، وهي غير متاحة داخل Workers.
+  // هذا Transport يربطه مباشرةً بـWebSocket الأصلي في Cloudflare Workers.
+  const socket = new WebSocket(endpoint);
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Browserless WebSocket open timeout")), 15000);
+    socket.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Browserless WebSocket handshake failed")); }, { once: true });
+  });
+  const transport = {
+    onmessage: null, onclose: null,
+    send(message) { socket.send(message); },
+    close() { try { socket.close(); } catch {} },
+  };
+  socket.addEventListener("message", (event) => transport.onmessage?.(typeof event.data === "string" ? event.data : new TextDecoder().decode(event.data)));
+  socket.addEventListener("close", () => transport.onclose?.());
+  return await remotePuppeteer.connect({ transport });
+}
+
 async function acquireArenaBrowser(env) {
   // Browserless المجاني: 1000 وحدة/شهر، بلا بطاقة، ويدعم Puppeteer وCAPTCHA.
   // هو المسار الأول؛ Cloudflare (10 دقائق/يوم) يبقى احتياطياً تلقائياً.
@@ -570,7 +589,7 @@ async function acquireArenaBrowser(env) {
   if (browserlessToken) {
     try {
       const endpoint = `wss://production-ams.browserless.io?token=${encodeURIComponent(browserlessToken)}&timeout=60000`;
-      return { browser: await remotePuppeteer.connect({ browserWSEndpoint: endpoint }), provider: "browserless" };
+      return { browser: await connectBrowserlessNative(endpoint), provider: "browserless" };
     } catch (e) {
       const message = String(e?.message || e);
       console.log("browserless connect error:", message);
@@ -2060,7 +2079,7 @@ async function handleCommand(text, env, chatId) {
         const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
         if (!token) { await sendMessage(env, chatId, "اربط التوكن أولاً: /browserless TOKEN"); return true; }
         let b; try {
-          b = await remotePuppeteer.connect({ browserWSEndpoint: `wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000` });
+          b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
           const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
           await kvPut(env, "browserless_last_error_v1", null);
           await sendMessage(env, chatId, "✅ Browserless اتصل فعلياً وفتح صفحة اختبار. صار جاهز لـArena.");
