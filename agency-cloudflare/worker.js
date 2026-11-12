@@ -124,7 +124,9 @@ export default {
       let b; try {
         b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
         const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
-        await kvPut(env, "browserless_last_error_v1", null); return jsonResponse({ ok: true }, 200);
+        await kvPut(env, "browserless_last_error_v1", null);
+        const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
+        return jsonResponse({ ok: true }, 200);
       } catch (e) {
         const message = String(e?.message || e); await kvPut(env, "browserless_last_error_v1", { at: Date.now(), error: message.slice(0, 300) });
         return jsonResponse({ ok: false, reason: message.slice(0, 300) }, 200);
@@ -2100,6 +2102,7 @@ async function handleCommand(text, env, chatId) {
       if (sub.length < 20 || /\s/.test(sub)) { await sendMessage(env, chatId, "التوكن شكله غير صالح. انسخه وحده بعد /browserless"); return true; }
       await kvPut(env, "browserless_token_v1", sub.slice(0, 500));
       await kvPut(env, "arena_skip_until", 0);
+      const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
       await sendMessage(env, chatId, "✅ تم ربط Browserless كمسار أول: 1000 وحدة مجانية بالشهر، متصفحين متزامنين، وCloudflare صار احتياط تلقائي. ما رح أعرض التوكن بأي سجل.");
       return true;
     }
