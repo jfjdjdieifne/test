@@ -1,4 +1,5 @@
 name: Deploy Jarvis to Cloudflare
+# Live diagnostic rerun after importing the authenticated Arena session.
 
 on:
   push:
