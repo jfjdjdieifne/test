@@ -1110,6 +1110,11 @@ async function arenaSelftest(env, deep) {
 }
 
 async function llmComplete(convo, system, env) {
+  const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
+  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "groq" && groqKey) {
+    const fast = await callOpenAICompatible("https://api.groq.com/openai/v1", groqKey, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system);
+    if (fast) return fast;
+  }
   // Arena هو الأساس افتراضياً (بمجرد ضبط ARENA_BRIDGE_URL). باقي المزودين احتياط،
   // فإذا الجسر نايم/فشل، رد جارفس ما يتوقف — بس ما بيوصل من Arena.
   if (await arenaIsPrimary(env)) {
@@ -1121,7 +1126,7 @@ async function llmComplete(convo, system, env) {
   return (
     (await callGemini(convo, system, env)) ||
     (await callOpenAICompatible("https://api.mistral.ai/v1", env.MISTRAL_API_KEY, (env.MISTRAL_MODEL || "mistral-large-latest").trim(), convo, system)) ||
-    (await callOpenAICompatible("https://api.groq.com/openai/v1", env.GROQ_API_KEY, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
+    (await callOpenAICompatible("https://api.groq.com/openai/v1", groqKey, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
     (await callOpenAICompatible("https://integrate.api.nvidia.com/v1", env.NVIDIA_API_KEY, (env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct").trim(), convo, system)) ||
     (await callOpenRouterWithFallback(convo, system, env)) ||
     (await callArenaBridge(convo, system, env)) ||
@@ -1673,12 +1678,13 @@ async function sendVoiceReply(env, chatId, text) {
 }
 
 async function transcribeGroqAudio(env, buf) {
-  if (!env.GROQ_API_KEY) return null;
+  const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
+  if (!groqKey) return null;
   try {
     const fd = new FormData();
     fd.append("model", "whisper-large-v3-turbo");
     fd.append("file", new Blob([buf], { type: "audio/ogg" }), "voice.ogg");
-    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${env.GROQ_API_KEY}` }, body: fd, signal: AbortSignal.timeout(45000) });
+    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${groqKey}` }, body: fd, signal: AbortSignal.timeout(45000) });
     if (res.ok) { const d = await res.json(); if (d.text) return String(d.text).trim() || null; }
     else { console.log("groq whisper HTTP", res.status, (await res.text().catch(() => "")).slice(0, 300)); }
   } catch (e) { console.log("groq whisper error:", e && e.message ? e.message : e); }
@@ -2033,6 +2039,17 @@ async function handleCommand(text, env, chatId) {
       for (const [k, v] of Object.entries(counts)) lines.push(`• ${k}: ${v}`);
       lines.push("", "للتفاصيل: /leads و /lead <رقم>");
       await sendMessage(env, chatId, lines.join("\n")); return true;
+    }
+    case "/groq": {
+      const gm = arg.match(/^key\s+(.+)$/i);
+      if (gm) {
+        const key = gm[1].trim(); if (!key.startsWith("gsk_") || key.length < 30) { await sendMessage(env, chatId, "مفتاح Groq غير صالح."); return true; }
+        await kvPut(env, "groq_api_key_v1", key); await kvPut(env, "primary_intelligence_v1", "groq");
+        await sendMessage(env, chatId, "✅ حُفظ مفتاح Groq بخصوصية وصار المحرك السريع الأساسي. احذف رسالة المفتاح من تيليجرام، ثم ابعت سؤالاً عادياً للتجربة."); return true;
+      }
+      if (/^on$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "groq"); await sendMessage(env, chatId, "✅ Groq صار المحرك الأساسي السريع."); return true; }
+      if (/^off$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "arena"); await sendMessage(env, chatId, "✅ رجعت Arena كمحرك أساسي."); return true; }
+      await sendMessage(env, chatId, "الأوامر: /groq key NEW_KEY أو /groq on أو /groq off"); return true;
     }
     case "/gemini": {
       const km = arg.match(/^key\s+(.+)$/i);
