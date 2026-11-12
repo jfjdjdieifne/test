@@ -686,21 +686,23 @@ async function callArenaBrowser(convo, system, env) {
     if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
     // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
-    // افتح Direct Chat صراحةً. لا نستخدم الصفحة الرئيسية لأنها تبدأ Battle Mode.
-    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
     const imported = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
     const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
+    // لازم كوكي المصادقة تنحط قبل أول تحميل؛ وإلا Arena تفتح حوار الدخول وتبقيه
+    // حتى بعد reload، وهذا كان يجعل النقل الناجح من Safari يبدو كأنه غير مصادق.
+    if (importedCookie) {
+      const specs = importedCookie.split(";").map((part) => { const i = part.indexOf("="); return i > 0 ? { name: part.slice(0, i).trim(), value: part.slice(i + 1).trim(), url: "https://arena.ai/", path: "/", secure: true } : null; }).filter(Boolean);
+      if (specs.length) { try { await page.setCookie(...specs); } catch {} }
+    }
+    const session = arenaSessionFromStorage(imported);
+    if (session) {
+      const encoded = "base64-" + btoa(unescape(encodeURIComponent(JSON.stringify(session))));
+      try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, url: "https://arena.ai/", path: "/", secure: true }); } catch {}
+    }
+    // افتح Direct Chat صراحةً. لا نستخدم الصفحة الرئيسية لأنها تبدأ Battle Mode.
+    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
     if ((imported && typeof imported === "object" && Object.keys(imported).length) || importedCookie) {
       if (imported && typeof imported === "object") await page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v); }, imported);
-      if (importedCookie) {
-        const specs = importedCookie.split(";").map((part) => { const i = part.indexOf("="); return i > 0 ? { name: part.slice(0, i).trim(), value: part.slice(i + 1).trim(), domain: "arena.ai", path: "/", secure: true } : null; }).filter(Boolean);
-        if (specs.length) { try { await page.setCookie(...specs); } catch {} }
-      }
-      const session = arenaSessionFromStorage(imported);
-      if (session) {
-        const encoded = "base64-" + btoa(unescape(encodeURIComponent(JSON.stringify(session))));
-        try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, domain: "arena.ai", path: "/", secure: true }); } catch {}
-      }
       await page.reload({ waitUntil: "domcontentloaded", timeout: 8000 });
       // احتفظ بأي access/refresh session حدّثتها Arena؛ لا ترجع كل مرة للنسخة القديمة.
       try {
@@ -2255,7 +2257,7 @@ async function handleCommand(text, env, chatId) {
             anyOk ? "✅ في محرك شغال — Arena جاهز" : "⚠️ ولا محرك رد الآن",
             "", ...lines,
             "",
-            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : "إذا كلهن أحمر: تأكد من الكوكيز/الجلسة أو شغّل LMArenaBridge وحدد LMArenaBridge_URL",
+            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : "جلسة Safari وصلت، لكن Arena لم تقبل المصادقة بعد. الطلب محفوظ وسيُعاد تلقائياً — لا تعِد الربط الآن.",
           ].join("\n"));
           return true;
         }
