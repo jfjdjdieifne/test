@@ -1,4 +1,5 @@
 import CALL_PAGE from "./callpage.mjs";
+import puppeteer from "@cloudflare/puppeteer";
 /**
  * J.A.R.V.I.S — Telegram Agent on Cloudflare Workers
  * ----------------------------------------------------
@@ -29,8 +30,10 @@ const LEADS = [
   { i: 12, pri: "دافئ", company: "One Perfect Stay", website: "https://oneperfectstay.com/", wa: "971565663842", phone: "+971 52 566 4648", deal: "15,000–80,000+ AED/سنة", sector: "إدارة وحدات فندقية Airbnb", issues: "صفحة المالك ترسل لزمن توقع عام بدل حاسبة عائد فوري على الصفحة", offer: "حاسبة عائد تأجير قصير/طويل تفاعلية + قمع مالك عربي", price: "$300–$600" },
 ];
 
-const TOOL_DOC = `الأدوات المتاحة:
+const TOOL_DOC = `الأدوات التالية واجهة Jarvis المحلية وليست حداً لقدرات Arena أو التطبيقات المربوطة بحسابها. لا تدّعِ أن Arena عاجزة عن شيء لمجرد أنه غير موجود بالقائمة:
 - search_web(query): بحث ويب حي
+- open_url(url): افتح أي رابط واقرأ نص الصفحة (مناسب للتحقق من صفحة، سعر، خبر، شروط…)
+- arena_chat(prompt, model?): اسأل نماذج LMArena مباشرة (رأي تاني أو نموذج محدد)
 - audit_website(url): فحص سريع لموقع (أزرار # الميتة، واتساب خاطئ، لغة/عنوان/نماذج)
 - list_leads(status?): قائمة الـ 12 عميل (فلتر اختياري: جديد/راسلته/مهتم/عرض/مقفل)
 - get_lead(index): تفاصيل عميل 1-12
@@ -61,6 +64,13 @@ ${TOOL_DOC}`;
 const MAX_HISTORY = 14;
 const MAX_TOOL_STEPS = 6;
 
+function arenaConnectPage(origin, token) {
+  const endpoint = `${origin}/arena-session-import`;
+  const js = `javascript:(async()=>{try{const s={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);s[k]=localStorage.getItem(k)}const r=await fetch(${JSON.stringify(endpoint)},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:${JSON.stringify(token)},storage:s,cookie:document.cookie||''})});const d=await r.json();alert(d.ok?'✅ تم نقل جلسة Arena إلى Jarvis. ارجع لتيليجرام واكتب /arena test للتأكد من صلاحيتها':'❌ '+(d.error||r.status))}catch(e){alert('❌ '+e.message)}})()`;
+  const escaped = js.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!doctype html><html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ربط Arena مع Jarvis</title><style>body{font-family:system-ui;background:#07111f;color:#eef;padding:24px;line-height:1.7;max-width:650px;margin:auto}.box{background:#11223b;padding:18px;border-radius:16px;margin:14px 0}button{font-size:18px;padding:14px;width:100%;border:0;border-radius:12px;background:#39d98a;color:#06140d;font-weight:700}code{word-break:break-all;color:#9ff}b{color:#6ef}</style><h1>🔐 ربط جلسة Arena</h1><p>لا تُنقل كلمة مرور Google. يُنقل رمز جلسة Arena فقط، والرابط صالح عشر دقائق ولمرة واحدة.</p><div class="box"><b>1.</b> اضغط الزر لنسخ كود الربط.<br><button onclick="navigator.clipboard.writeText(document.getElementById('code').textContent).then(()=>alert('تم النسخ ✅'))">انسخ كود الربط</button><code id="code" style="display:none">${escaped}</code></div><div class="box"><b>2.</b> في Safari اعمل Bookmark لأي صفحة، ثم Edit وبدّل عنوانه بالكود المنسوخ. سمّه «ربط جارفس».</div><div class="box"><b>3.</b> افتح <a style="color:#6ef" href="https://arena.ai">arena.ai</a> وأنت مسجّل دخول، ثم افتح Bookmark «ربط جارفس».</div><div class="box"><b>4.</b> بعد ظهور ✅ ارجع لتيليجرام واكتب <code>/arena test</code>.</div></html>`;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -72,8 +82,48 @@ export default {
       if (url.pathname === "/call-end") return handleCallEnd(request, env, ctx);
       return handleAsk(request, env, ctx);
     }
+    if (url.pathname === "/arena-session-import") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...CORS_HEADERS, "access-control-allow-headers": "content-type" } });
+      if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
+      let body; try { body = await request.json(); } catch { return jsonResponse({ error: "bad json" }, 400, CORS_HEADERS); }
+      const expected = await kvGet(env, "arena_connect_token", null);
+      const expires = Number(await kvGet(env, "arena_connect_expires", 0)) || 0;
+      if (!expected || body?.token !== expected || expires < Date.now()) return jsonResponse({ error: "expired or invalid link" }, 401, CORS_HEADERS);
+      const storage = body?.storage && typeof body.storage === "object" ? body.storage : {};
+      const safeStorage = {};
+      // Arena غيّرت أسماء مفاتيح الجلسة أكثر من مرة؛ المصدر محصور بـarena.ai عبر الـbookmarklet.
+      for (const [k, v] of Object.entries(storage)) if (typeof k === "string" && k.length < 200 && typeof v === "string" && v.length < 30000) safeStorage[k] = v;
+      const cookie = typeof body?.cookie === "string" ? body.cookie.slice(0, 20000) : "";
+      if (!Object.keys(safeStorage).length && !cookie) return jsonResponse({ error: "Arena browser storage is empty; reload Arena and try again" }, 422, CORS_HEADERS);
+      await kvPut(env, "arena_imported_storage", safeStorage);
+      await kvPut(env, "arena_runtime_storage", safeStorage);
+      await kvPut(env, "arena_imported_cookie", cookie);
+      await kvPut(env, "arena_imported_at", Date.now());
+      await kvPut(env, "arena_connect_token", null);
+      await kvPut(env, "arena_connect_expires", 0);
+      await kvPut(env, "arena_skip_until", 0);
+      await kvPut(env, "arena_session_alerted_at", 0);
+      await kvPut(env, "arena_direct_session_v3", null);
+      return jsonResponse({ ok: true, imported: Object.keys(safeStorage).length }, 200, CORS_HEADERS);
+    }
+    if (url.pathname === "/arena-connect") {
+      const token = url.searchParams.get("token") || "";
+      const expected = await kvGet(env, "arena_connect_token", null);
+      const expires = Number(await kvGet(env, "arena_connect_expires", 0)) || 0;
+      if (!token || token !== expected || expires < Date.now()) return new Response("رابط الربط منتهي. اطلب /arena connect من جديد.", { status: 401, headers: { "content-type": "text/plain;charset=utf-8" } });
+      return new Response(arenaConnectPage(url.origin, token), { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } });
+    }
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", ts: Date.now() }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
+    if (url.pathname === "/arena-status") {
+      if (!env.CALL_SECRET || url.searchParams.get("key") !== env.CALL_SECRET) return jsonResponse({ error: "unauthorized" }, 401);
+      const lastError = await kvGet(env, "arena_browser_last_error", null);
+      const lastOk = await kvGet(env, "arena_browser_last_ok", null);
+      const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
+      const skipUntil = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
+      let browserLimits = null; try { browserLimits = env.BROWSER ? await puppeteer.limits(env.BROWSER) : null; } catch {}
+      return jsonResponse({ lastError, lastOk, browserLimits, pendingDirect: (await kvGet(env, "arena_pending_direct_v1", [])).length, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
@@ -93,6 +143,9 @@ export default {
       }
       let update;
       try { update = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
+      // نحتاج العنوان لبناء رابط /arena connect بدون متغير يدوي.
+      ctx.waitUntil(kvPut(env, "public_worker_url", url.origin));
+      ctx.waitUntil(kvPut(env, "last_user_activity_at", Date.now()));
       ctx.waitUntil(handleUpdate(update, env, ctx).catch((e) => console.log("handler error:", e && e.message ? e.message : e)));
       return new Response("ok", { status: 200 });
     }
@@ -104,8 +157,22 @@ export default {
       try {
         const now = new Date(event?.scheduledTime || Date.now());
         if (now.getUTCHours() === 6 && now.getUTCMinutes() === 0) await morningBrief(env);
+        // Keep-alive لجسر LMArena: يمنع Hosting المجاني (Render/HF) من تنويم الخدمة
+        const kaBase = (await arenaCfg(env)).base;
+        if (arenaKeepAliveOn(env, kaBase) && kaBase && now.getUTCMinutes() % 10 === 0) {
+          const alive = await arenaWake(env, 1, 0);
+          if (!alive) console.log("arena keepalive: لا استجابة من الجسر");
+        }
+        // لا تفتح Browser لمجرد keep-alive: حصة Cloudflare المجانية محدودة،
+        // والتجديد يتم عند أول استخدام حقيقي مع حفظ refresh token المحدث.
       } catch (e) { console.log("brief error:", e && e.message ? e.message : e); }
-      try { await processTaskQueue(env, STEPS_PER_TICK); } catch (e) { console.log("queue error:", e && e.message ? e.message : e); }
+      try { await processDirectRetries(env); } catch (e) { console.log("direct retry error:", e?.message || e); }
+      try {
+        const lastUser = Number(await kvGet(env, "last_user_activity_at", 0)) || 0;
+        // أعطِ رسائل المستخدم أولوية على المهام الخلفية حتى لا تتنافس على Browser.
+        if (Date.now() - lastUser > 2 * 60000) await processTaskQueue(env, STEPS_PER_TICK);
+      } catch (e) { console.log("queue error:", e && e.message ? e.message : e); }
+      try { await proactiveTaskReview(env); } catch (e) { console.log("proactive review error:", e && e.message ? e.message : e); }
     })());
   },
 };
@@ -164,8 +231,83 @@ async function kvGet(env, key, fallback) {
 async function kvPut(env, key, value) {
   try { if (env.JARVIS_KV) await env.JARVIS_KV.put(key, JSON.stringify(value)); } catch (e) { console.log("kvPut error:", e && e.message ? e.message : e); }
 }
-const getHistory = (env) => kvGet(env, "history", []);
+const getHistory = (env) => kvGet(env, "history", []); // legacy fallback
 const saveHistory = (env, convo) => kvPut(env, "history", convo.slice(-MAX_HISTORY));
+
+/* ---------------- مدير المشاريع/الشاتات فوق Arena ----------------
+   Arena قد ينسى الجلسة؛ جارفس لا يعتمد على session المزود. كل مشروع له سياقه في KV،
+   ويُعاد حقنه لأي محرك (Arena أو fallback)، لذلك نقدر نرجع لشغل من مبارح أو أسبوع. */
+const THREADS_KEY = "context_threads_v1";
+const ACTIVE_THREAD_KEY = "active_context_thread_v1";
+const AGENTS_KEY = "arena_agent_registry_v1";
+
+/* Registry مفتوح: الاسم/الدستور/skills يحددها المالك، ولا نفترض حدود قدرات Arena. */
+async function getAgentRegistry(env) { return (await kvGet(env, AGENTS_KEY, [])) || []; }
+async function saveAgentRegistry(env, rows) { await kvPut(env, AGENTS_KEY, rows.slice(0, 100)); }
+async function findMentionedAgent(env, text) {
+  const rows = await getAgentRegistry(env); const hay = String(text || "").toLowerCase();
+  return rows.find((a) => hay.includes(String(a.name || "").toLowerCase())) || null;
+}
+function arenaRouteIntent(text) {
+  const s = String(text || "").trim();
+  const forcedDirect = /^(سؤال|اسأل|اشرح|فسر|شو يعني|ما هو|ما هي)\b/i.test(s);
+  const forcedAgent = /^(مهمة|نفّذ|نفذ|ابني|اصنع|صمم|صمّم|ابحث|حقق|حقّق)\b/i.test(s);
+  const complex = /(pdf|ملف|تقرير|دراسة|خطة كاملة|مشروع|github|git hub|drive|درايف|gmail|ايميل|إيميل|notion|نوشن|vercel|supabase|sheets|slides|docs|ارفع|نزّل|حلّل|حلل|قارن|افحص|صمّم|صمم|ابني|ابحث|راسل|نفّذ|نفذ)/i.test(s);
+  if (forcedDirect) return { mode: "direct", reason: "explicit-question" };
+  if (forcedAgent || complex) return { mode: "agent", reason: forcedAgent ? "explicit-task" : "complex-action" };
+  return { mode: "direct", reason: "conversation" };
+}
+function threadWords(s) {
+  return [...new Set(String(s || "").toLowerCase().replace(/[^\p{L}\p{N}_-]+/gu, " ").split(/\s+/)
+    .filter((w) => w.length > 2 && !/^(هذا|هاي|هاد|على|الى|إلى|فيها|عليه|في|من|شو|بدي|كمل|تمام|the|and|for|with)$/.test(w)))];
+}
+function threadLabel(text) {
+  return String(text || "محادثة جديدة").replace(/\s+/g, " ").trim().slice(0, 64) || "محادثة جديدة";
+}
+async function getThreads(env) { return (await kvGet(env, THREADS_KEY, [])) || []; }
+async function putThreads(env, rows) { await kvPut(env, THREADS_KEY, rows.slice(0, 40)); }
+function threadScore(t, text) {
+  const q = new Set(threadWords(text));
+  const hay = new Set(threadWords([t.title, t.summary, ...(t.keywords || []), ...((t.messages || []).slice(-4).map((m) => m.content))].join(" ")));
+  let n = 0; for (const w of q) if (hay.has(w)) n++;
+  const ageDays = (Date.now() - (t.updated || 0)) / 86400000;
+  return n * 10 - Math.min(ageDays, 30) * 0.12;
+}
+async function resolveThread(env, text, forceId) {
+  const rows = await getThreads(env);
+  const active = forceId || await kvGet(env, ACTIVE_THREAD_KEY, "");
+  if (forceId) {
+    const exact = rows.find((t) => t.id === forceId || t.id.endsWith(forceId));
+    if (exact) return { rows, thread: exact, reason: "manual" };
+  }
+  const explicitNew = /^(موضوع|مشروع|شات|محادثة)\s+(جديد|جديدة)|خلينا نبدأ|ابدأ من الصفر/i.test(String(text).trim());
+  const continuation = /^(كمل|كمّل|تابع|تمام|طيب|اي|نعم|لا|اعملها|نفذ|نفّذ|وبعدين|شو صار)/i.test(String(text).trim());
+  let picked = null, reason = "new";
+  if (!explicitNew && rows.length) {
+    const ranked = rows.map((t) => ({ t, s: threadScore(t, text) })).sort((a, b) => b.s - a.s);
+    const activeThread = rows.find((t) => t.id === active);
+    if (ranked[0] && ranked[0].s >= 9.5) { picked = ranked[0].t; reason = "matched"; }
+    else if (continuation && activeThread) { picked = activeThread; reason = "continuation"; }
+    else if (activeThread && Date.now() - (activeThread.updated || 0) < 45 * 60000) { picked = activeThread; reason = "recent"; }
+  }
+  if (!picked) {
+    picked = { id: "ctx_" + Date.now().toString(36), title: threadLabel(text), summary: "", keywords: threadWords(text).slice(0, 16), messages: [], created: Date.now(), updated: Date.now(), status: "active" };
+    rows.unshift(picked);
+  }
+  await kvPut(env, ACTIVE_THREAD_KEY, picked.id);
+  return { rows, thread: picked, reason };
+}
+async function saveThreadTurn(env, resolved, convo) {
+  const t = resolved.thread;
+  t.messages = convo.slice(-MAX_HISTORY).map((m) => ({ role: m.role, content: String(m.content || "").slice(0, 3500) }));
+  const userTexts = t.messages.filter((m) => m.role === "user").map((m) => m.content);
+  t.keywords = threadWords([t.title, ...userTexts].join(" ")).slice(0, 24);
+  t.summary = userTexts.slice(-4).join(" | ").slice(0, 900);
+  t.updated = Date.now();
+  const i = resolved.rows.findIndex((x) => x.id === t.id);
+  if (i >= 0) resolved.rows[i] = t; else resolved.rows.unshift(t);
+  await putThreads(env, resolved.rows.sort((a, b) => (b.updated || 0) - (a.updated || 0)));
+}
 
 /* ---------------- الذاكرة طويلة المدى — بلا استنزاف توكنات -------------- */
 // الحفظ خما (بدون LLM): صفر توكنات للتخزين. الاسترجاع محلي بتطابق كلمات: صفر توكنات.
@@ -190,6 +332,8 @@ function scoreFact(fact, terms) {
 async function relevantMemories(env, userText) {
   const all = await getMemories(env);
   if (!all.length) return "";
+  const asksAboutSelf = /(شو|ماذا|ايش|إيش|شنو).*تعرف.*(عني|عنّي)|مين أنا|ذاكرتك.*عني|كل.*معلومات.*عني/i.test(String(userText || ""));
+  if (asksAboutSelf) return "كل الذاكرة الثابتة المسجلة عن المالك (اعرضها بصدق ونظّمها، ولا تضف شيئاً غير موجود):\n" + all.slice(-40).map((m) => "- " + m.text).join("\n") + "\n";
   const terms = tokenize(userText).slice(0, 40);
   const pinned = all.filter((m) => m.pinned).slice(0, 4);
   const scored = all.map((m) => [scoreFact(m, terms), m])
@@ -217,6 +361,7 @@ async function addMemories(env, lines, pinPrefix) {
 async function recallMemories(env, query) {
   const all = await getMemories(env);
   if (!all.length) return "(الذاكرة فارغة حتى الآن)";
+  if (/^(المالك|عني|عنّي|كل شي|كل شيء|كل المعلومات|everything|owner)$/i.test(String(query || "").trim())) return all.slice(-40).map((m) => "- (" + m.id.slice(-4) + ") " + (m.pinned ? "📌 " : "") + m.text).join("\n");
   const terms = tokenize(query).slice(0, 30);
   const scored = all.map((m) => [scoreFact(m, terms), m]).filter(([sc]) => sc > 0).sort((a, b) => b[0] - a[0]).slice(0, 8);
   if (!scored.length) return all.slice(-8).reverse().map((m) => "- (" + m.id.slice(-4) + ") " + m.text).join("\n");
@@ -325,13 +470,588 @@ async function callPollinations(convo, system, env) {
   } catch (e) { console.log("pollinations error:", e && e.message ? e.message : e); return null; }
 }
 
+/* ------------------------- LMArena bridge (اختياري) -------------------- */
+/*
+ * الجسور الأصلية (CloudWaddie/LMArenaBridge · Blacklisted-Binary/LMArenaProxy ·
+ * lianues/lmarenabridge · xtekky/gpt4free) كلها Python + متصفح حقيقي، فما تشتغل
+ * داخل Cloudflare Worker. الحل: خدمة `arena-bridge/` بمستودعنا تكشف API متوافق
+ * مع OpenAI، وجارفس بيناديها هنا كمزود إضافي.
+ *
+ * المتغيرات:
+ *   ARENA_BRIDGE_URL    — مطلوب للتفعيل، مثال: https://arena.example.com (بدون /v1)
+ *   ARENA_BRIDGE_KEY    — اختياري (يُرسل كـ Bearer)
+ *   ARENA_BRIDGE_MODEL  — النموذج الافتراضي، افتراضياً "auto"
+ *   ARENA_BRIDGE_FIRST  — "true" يخلي Arena أول مزود قبل Gemini
+ *   ARENA_BRIDGE_TIMEOUT_MS — افتراضياً 45000 (المتصفح بطيء)
+ */
+function arenaBridgeConfig(env) {
+  const e = env || {};
+  const base = String(e.ARENA_BRIDGE_URL || "").trim().replace(/\/+$/, "");
+  const key = String(e.ARENA_BRIDGE_KEY || "").trim();
+  return { base, key, enabled: !!base, url: base ? base + "/v1/chat/completions" : "" };
+}
+
+/**
+ * إعدادات الجسر الفعلية: قيم KV (من أوامر تيليجرام) تتقدّم على متغيرات البيئة.
+ * يعني تقدر تضبط كل شي من تيليجرام بدون wrangler ولا لوحة Cloudflare.
+ */
+async function arenaCfg(env) {
+  const envCfg = arenaBridgeConfig(env);
+  const kvUrl = await kvGet(env, "arena_url", null);
+  const kvKey = await kvGet(env, "arena_key", null);
+  const base = String(kvUrl || envCfg.base || "").trim().replace(/\/+$/, "");
+  const key = String(kvKey || envCfg.key || "").trim();
+  return { base, key, browser: !!(env && env.BROWSER), enabled: !!base || !!(env && env.BROWSER), url: base ? base + "/v1/chat/completions" : "" };
+}
+
+function parseArenaDataStream(raw) {
+  const chunks = [];
+  const add = (value) => { if (typeof value === "string" && value !== "hasArenaError") chunks.push(value); };
+  for (let line of String(raw || "").split(/\r?\n/)) {
+    line = line.trim(); if (!line) continue;
+    try {
+      // Arena استعمل a0 سابقاً، وVercel AI Data Stream يستعمل 0 حالياً.
+      if (/^(?:a0|0):/.test(line)) { add(JSON.parse(line.slice(line.indexOf(":") + 1))); continue; }
+      // بعض إصدارات Direct ترسل SSE حديثاً.
+      if (line.startsWith("data:")) {
+        const payload = line.slice(5).trim(); if (!payload || payload === "[DONE]") continue;
+        const v = JSON.parse(payload);
+        if (v?.type === "text-delta") add(v.delta ?? v.textDelta ?? v.text);
+        else if (typeof v?.delta === "string") add(v.delta);
+        else if (typeof v?.content === "string" && /assistant|text/i.test(String(v.type || v.role || "text"))) add(v.content);
+      }
+    } catch {}
+  }
+  return chunks.join("").trim();
+}
+
+function arenaStreamShape(raw) {
+  const counts = {};
+  for (const line of String(raw || "").split(/\r?\n/)) {
+    const m = line.trim().match(/^([a-zA-Z0-9_-]{1,20})(?=:)/); const k = m?.[1] || (line.trim().startsWith("data:") ? "data" : "other");
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  return counts;
+}
+
+function arenaSessionFromStorage(storage) {
+  const seen = new Set();
+  function walk(v) {
+    if (!v || typeof v !== "object" || seen.has(v)) return null; seen.add(v);
+    if (typeof v.access_token === "string" && typeof v.refresh_token === "string") return v;
+    for (const x of Object.values(v)) { const found = walk(x); if (found) return found; }
+    return null;
+  }
+  for (const raw of Object.values(storage || {})) {
+    if (typeof raw !== "string") continue;
+    try { const found = walk(JSON.parse(raw)); if (found) return found; } catch {}
+  }
+  return null;
+}
+
+async function acquireArenaBrowser(env) {
+  // Workers Free يمنح 600 ثانية Browser يومياً. افحص قبل launch كي لا نهدر محاولة.
+  try {
+    const limits = await puppeteer.limits(env.BROWSER);
+    if (Number(limits?.usedBrowserTimeSeconds || 0) >= 598) throw new Error("DAILY_BROWSER_LIMIT");
+  } catch (e) { if (String(e?.message || e).includes("DAILY_BROWSER_LIMIT")) throw e; }
+  // keep_alive قصير، ثم close فوراً: الجلسة المنفصلة تظل تحسب من حصة 10 دقائق.
+  return { browser: await puppeteer.launch(env.BROWSER, { keep_alive: 60000 }), reused: false };
+}
+
+async function releaseArenaBrowser(browser) {
+  if (!browser) return;
+  try { await browser.close(); } catch {}
+}
+
+async function arenaReconnectLink(env) {
+  const base = String(await kvGet(env, "public_worker_url", "")).replace(/\/+$/, "");
+  if (!base) return "";
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  await kvPut(env, "arena_connect_token", token);
+  await kvPut(env, "arena_connect_expires", Date.now() + 10 * 60 * 1000);
+  return `${base}/arena-connect?token=${token}`;
+}
+
+async function refreshArenaSession(env) {
+  if (!env?.BROWSER || !(await arenaIsOn(env))) return false;
+  let browser;
+  try {
+    const storage = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
+    if (!storage || !Object.keys(storage).length) return false;
+    browser = (await acquireArenaBrowser(env)).browser;
+    const page = await browser.newPage();
+    const cookies = await kvGet(env, "arena_browser_cookies", []);
+    if (Array.isArray(cookies) && cookies.length) try { await page.setCookie(...cookies); } catch {}
+    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 10000 });
+    await page.evaluate((items) => { for (const [k, v] of Object.entries(items || {})) localStorage.setItem(k, v); }, storage);
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 10000 });
+    await new Promise((r) => setTimeout(r, 3500));
+    const fresh = await page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; });
+    if (fresh && Object.keys(fresh).length) await kvPut(env, "arena_runtime_storage", fresh);
+    await kvPut(env, "arena_browser_cookies", await page.cookies());
+    const session = arenaSessionFromStorage(fresh || {});
+    const healthy = !!session && (!session.expires_at || Number(session.expires_at) * 1000 > Date.now() + 2 * 60000);
+    if (healthy) { await kvPut(env, "arena_session_alerted_at", 0); return true; }
+    const last = Number(await kvGet(env, "arena_session_alerted_at", 0)) || 0;
+    if (Date.now() - last > 6 * 60 * 60000) {
+      await kvPut(env, "arena_session_alerted_at", Date.now());
+      const owner = await getOwnerChatId(env); const link = await arenaReconnectLink(env);
+      if (owner) await sendMessage(env, owner, `🔐 جلسة Arena بحاجة لتجديد. حضرتلك رابط آمن صالح 10 دقائق:\n${link || "اكتب /arena connect"}\n\nما تخزّن كلمات مرور، وما في داعي تبعتلي أي توكن.`);
+    }
+    return false;
+  } catch (e) { console.log("arena session refresh error:", e?.message || e); return false; }
+  finally { await releaseArenaBrowser(browser); }
+}
+
+/** Arena بلا سيرفر: Chromium مُدار من Cloudflare Browser Rendering.
+ * نستخدم واجهة Arena الحقيقية، لذلك الصفحة نفسها تنشئ reCAPTCHA والجلسة؛ ثم نحفظ
+ * cookies في KV ليستمر تسجيل الدخول بين تشغيل وآخر. */
+async function callArenaBrowser(convo, system, env) {
+  if (!env || !env.BROWSER) return null;
+  if (!(await arenaIsOn(env)) || await arenaInCooldown(env)) return null;
+  let browser;
+  try {
+    browser = (await acquireArenaBrowser(env)).browser;
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    const saved = await kvGet(env, "arena_browser_cookies", []);
+    if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
+    // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
+    // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
+    // افتح Direct Chat صراحةً. لا نستخدم الصفحة الرئيسية لأنها تبدأ Battle Mode.
+    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
+    const imported = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
+    const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
+    if ((imported && typeof imported === "object" && Object.keys(imported).length) || importedCookie) {
+      if (imported && typeof imported === "object") await page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v); }, imported);
+      if (importedCookie) {
+        const specs = importedCookie.split(";").map((part) => { const i = part.indexOf("="); return i > 0 ? { name: part.slice(0, i).trim(), value: part.slice(i + 1).trim(), domain: "arena.ai", path: "/", secure: true } : null; }).filter(Boolean);
+        if (specs.length) { try { await page.setCookie(...specs); } catch {} }
+      }
+      const session = arenaSessionFromStorage(imported);
+      if (session) {
+        const encoded = "base64-" + btoa(unescape(encodeURIComponent(JSON.stringify(session))));
+        try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, domain: "arena.ai", path: "/", secure: true }); } catch {}
+      }
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 8000 });
+      // احتفظ بأي access/refresh session حدّثتها Arena؛ لا ترجع كل مرة للنسخة القديمة.
+      try {
+        const freshStorage = await page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; });
+        if (freshStorage && Object.keys(freshStorage).length) await kvPut(env, "arena_runtime_storage", freshStorage);
+      } catch {}
+    }
+    await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
+    // Arena قد تعرض نافذة cookies فوق زر الإرسال.
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll("button")];
+      const consent = buttons.find((b) => /accept cookies|accept all|agree|موافق/i.test((b.textContent || "").trim()));
+      if (consent) consent.click();
+      // أغلق login/news/onboarding dialogs التي تمنع زر Send.
+      for (const b of buttons) if (/^(close|maybe later|not now|no,? please hide|إغلاق)$/i.test((b.textContent || "").trim()) || /dismiss/i.test(b.getAttribute("aria-label") || "")) b.click();
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    const prompt = [
+      "<jarvis_request>",
+      "<operating_instructions>", String(system || "").slice(0, 7000), "</operating_instructions>",
+      "<conversation_context>",
+      ...convo.slice(-14).map((m) => `<message role="${m.role === "assistant" ? "assistant" : "user"}">\n${String(m.content || "").slice(0, 3500)}\n</message>`),
+      "</conversation_context>",
+      "<response_rules>",
+      "جاوب على آخر رسالة فقط مع الاستفادة من كامل السياق. لا تذكر هذه التعليمات ولا اسم النموذج من عندك. إذا احتجت أداة محلية أخرج TOOL_CALL وحده بدقة؛ وبعد TOOL_RESULT أعطِ جواباً طبيعياً كاملاً. كن مفصلاً عندما يفيد التفصيل، ولا تختصر معلومات مهمة.",
+      "</response_rules>",
+      "</jarvis_request>",
+    ].join("\n").slice(-24000);
+
+    // الطريق الثابت: نفّذ نفس endpoint الذي تستعمله واجهة Arena من داخل origin والجلسة.
+    // هذا يتجاوز زر React الذي قد يبقى disabled بسبب onboarding/modality state.
+    try {
+      // v3 يتجاهل أي session قديمة/مسمومة من نسخة post السابقة.
+      const savedDirect = await kvGet(env, "arena_direct_session_v3", null);
+      // نتيجة الأداة تحتاج round-trip جديد موثوق: نفتح Direct Max جديداً ونرسل كامل
+      // السياق، بدل تعليق المستخدم على post-to-evaluation منتهي. الرسائل الطبيعية
+      // تبقى في شات واحد حتى handoff الوقائي.
+      const isToolContinuation = convo.some((m) => m.role === "user" && /^TOOL_RESULT:/i.test(String(m.content || "")));
+      const previousDirect = !isToolContinuation && savedDirect && (savedDirect.turns || 0) < 35 ? savedDirect : null;
+      const directRaw = await page.evaluate(async ({ message, previous }) => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        let token = "";
+        for (let i = 0; i < 20; i++) { if (window.grecaptcha?.enterprise) break; await sleep(200); }
+        if (window.grecaptcha?.enterprise) {
+          token = await new Promise((resolve) => window.grecaptcha.enterprise.ready(async () => {
+            try { resolve(await window.grecaptcha.enterprise.execute("6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0", { action: "chat_submit" })); } catch { resolve(""); }
+          }));
+        }
+        const id = () => {
+          const b = crypto.getRandomValues(new Uint8Array(16));
+          let ts = BigInt(Date.now());
+          for (let i = 5; i >= 0; i--) { b[i] = Number(ts & 255n); ts >>= 8n; }
+          b[6] = (b[6] & 0x0f) | 0x70; b[8] = (b[8] & 0x3f) | 0x80;
+          const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+          return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        };
+        // Arena ينشر قائمة النماذج داخل HTML. Max هو أول/أسرع اختيار في Direct Chat؛
+        // نقرأ الـid ديناميكياً بدل تثبيت اسم قد تغيّره Arena.
+        let modelAId = "";
+        try {
+          const html = await (await fetch("/text/direct")).text();
+          const marker = html.indexOf("initialModels");
+          if (marker >= 0) {
+            const start = html.indexOf("[", marker); let depth = 0, quoted = false, esc = false, end = -1;
+            for (let i = start; i >= 0 && i < html.length; i++) { const c = html[i]; if (quoted) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') quoted = false; } else if (c === '"') quoted = true; else if (c === "[") depth++; else if (c === "]" && --depth === 0) { end = i + 1; break; } }
+            if (end > start) { const models = JSON.parse(html.slice(start, end).replace(/\\"/g, '"')); const max = models.find((m) => /^max$/i.test(m.publicName || m.name || "")) || models[0]; modelAId = max?.id || ""; }
+          }
+        } catch {}
+        if (!modelAId) throw new Error("Arena Direct Max model id was not found");
+        const evaluationId = previous?.id || id();
+        const data = { id: evaluationId, mode: "direct-battle", userMessageId: id(), modelAMessageId: id(), modelAId, userMessage: { content: message, experimental_attachments: [], metadata: {} }, modality: "chat", recaptchaV3Token: token || "" };
+        const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
+        try {
+          const endpoint = previous?.id ? `/nextjs-api/stream/post-to-evaluation/${previous.id}` : "/nextjs-api/stream/create-evaluation";
+          const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data), signal: ctl.signal });
+          const text = await res.text();
+          return { status: res.status, text, evaluationId, modelAId };
+        } finally { clearTimeout(timer); }
+      }, { message: prompt, previous: previousDirect });
+      const directText = directRaw && directRaw.status < 400 ? parseArenaDataStream(directRaw.text) : "";
+      if (directText) {
+        try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
+        await kvPut(env, "arena_direct_session_v3", { id: directRaw.evaluationId, modelId: directRaw.modelAId, turns: (previousDirect?.turns || 0) + 1, updated: Date.now() });
+        await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "direct-max" });
+        return directText;
+      }
+      const streamShape = arenaStreamShape(directRaw?.text || "");
+      console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, has_body: !!directRaw?.text, streamShape }));
+      await kvPut(env, "arena_stream_shape", { at: Date.now(), status: directRaw?.status || 0, streamShape });
+      // إذا Arena قبلت الطلب وأنشأت الشات، ممنوع إعادة إرساله عبر UI وخلق نسخة ثانية.
+      if (directRaw?.status > 0 && directRaw.status < 400 && directRaw.text) {
+        await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: "Arena stream format not recognized" });
+        return null;
+      }
+      // قد تنتهي جلسة Direct أو يرفض Arena إضافة turn جديد. لا نرمي جواب المستخدم:
+      // افتح handoff جديد فوراً مع كامل السياق المرسل وحاول مرة واحدة تلقائياً.
+      if (previousDirect) {
+        await kvPut(env, "arena_direct_session_v3", null);
+        await releaseArenaBrowser(browser); browser = null;
+        return await callArenaBrowser(convo, system, env);
+      }
+    } catch (e) {
+      console.log("arena direct error:", e && e.message ? e.message : e);
+      const stale = await kvGet(env, "arena_direct_session_v3", null);
+      if (stale) { await kvPut(env, "arena_direct_session_v3", null); await releaseArenaBrowser(browser); browser = null; return await callArenaBrowser(convo, system, env); }
+    }
+
+    let responseStarted = false;
+    const responsePromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
+      page.on("response", async (response) => {
+        // Arena غيّرت اسم endpoint أكثر من مرة (evaluation/direct chat). التقط أي
+        // stream تابع لـnextjs-api؛ الصفحة نفسها هي origin الموثوق، ثم حلّل الداتا.
+        if (!/\/nextjs-api\/stream\//.test(response.url())) return;
+        responseStarted = true;
+        try { const body = await response.text(); clearTimeout(timer); resolve(body); }
+        catch (e) { clearTimeout(timer); reject(e); }
+      });
+    });
+    const box = await page.$('textarea[name="message"]');
+    await box.click();
+    // React controlled textarea: Puppeteer.type يغيّر DOM أحياناً دون state، فيبقى Send disabled.
+    await page.evaluate((text) => {
+      const ta = document.querySelector('textarea[name="message"]');
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      if (!ta || !setter) return;
+      setter.call(ta, text);
+      ta.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+      ta.dispatchEvent(new Event("change", { bubbles: true }));
+    }, prompt);
+    try { await page.waitForFunction(() => { const b = document.querySelector('button[aria-label="Send message"]'); return b && !b.disabled; }, { timeout: 3500 }); } catch {}
+    const clicked = await page.evaluate(() => {
+      const ta = document.querySelector('textarea[name="message"]');
+      const form = ta && ta.closest("form");
+      // ممنوع اختيار أي submit عام: نافذة التسجيل فيها Continue with Google من نفس النوع.
+      const exact = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
+      const candidates = form ? [...form.querySelectorAll("button")] : [];
+      const submit = exact || candidates.find((b) => !b.disabled && /send|إرسال/i.test(`${b.getAttribute("aria-label") || ""} ${b.textContent || ""}`));
+      if (!submit) return false;
+      submit.click(); return true;
+    });
+    if (!clicked) await page.keyboard.press("Enter");
+    // أحياناً Arena تفتح Login modal عند أول إرسال للزائر. أغلقها وأعد الإرسال مرة.
+    await new Promise((r) => setTimeout(r, 900));
+    if (!responseStarted) {
+      const dismissed = await page.evaluate(() => {
+        const action = [...document.querySelectorAll("button")].find((b) => /^(agree|close|maybe later|not now|موافق|إغلاق)$/i.test((b.textContent || "").trim()));
+        if (action) { action.click(); return true; }
+        return false;
+      });
+      if (dismissed) await new Promise((r) => setTimeout(r, 700));
+      let retryBox = await page.$('textarea[name="message"]');
+      if (retryBox) {
+        const current = await page.evaluate(() => document.querySelector('textarea[name="message"]')?.value || "");
+        if (!current.trim()) {
+          await retryBox.click();
+          await page.evaluate((text) => { const ta = document.querySelector('textarea[name="message"]'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set; if (ta && set) { set.call(ta, text); ta.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text })); } }, prompt);
+        }
+        const sent = await page.evaluate(() => {
+          const send = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
+          if (send && !send.disabled) { send.click(); return true; }
+          return false;
+        });
+        if (!sent) await page.keyboard.press("Enter");
+      }
+    }
+    let raw;
+    try { raw = await responsePromise; }
+    catch (e) {
+      const diag = await page.evaluate(() => {
+        const send = document.querySelector('button[aria-label="Send message"]');
+        return {
+          path: location.pathname,
+          authenticated: !![...document.querySelectorAll("button")].find((b) => /@/.test((b.textContent || "").trim())),
+          textarea: !!document.querySelector('textarea[name="message"]'),
+          valueLength: (document.querySelector('textarea[name="message"]') || {}).value?.length || 0,
+          sendPresent: !!send,
+          sendDisabled: !!send?.disabled,
+          dialogCount: document.querySelectorAll('[role="dialog"]').length,
+        };
+      });
+      console.log("arena browser diagnostic:", JSON.stringify(diag));
+      await kvPut(env, "arena_browser_last_diagnostic", { at: Date.now(), ...diag });
+      if (!diag.authenticated && diag.dialogCount > 0 && diag.valueLength > 0) {
+        await kvPut(env, "arena_skip_until", 0);
+        return "🔐 جلسة Arena انتهت وفتحت نافذة تسجيل الدخول بدل إرسال الرسالة. اكتب /arena connect بتيليجرام، افتح الرابط من Safari وسوّي خطوات الربط مرة واحدة، وبعدها ابعت سؤالك مباشرة.";
+      }
+      throw e;
+    }
+    const text = parseArenaDataStream(raw);
+    try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
+    if (!text) throw new Error("Arena browser returned an empty stream");
+    await arenaMarkUp(env);
+    await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: text.length });
+    return text;
+  } catch (e) {
+    const message = String(e && e.message ? e.message : e);
+    console.log("arena browser error:", message);
+    await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: message.slice(0, 300) });
+    await arenaMarkDown(env, 60000);
+    if (/DAILY_BROWSER_LIMIT|Browser time limit exceeded/i.test(message)) return "__ARENA_RETRY_DAILY__";
+    if (/429|rate limit|Unable to create new browser/i.test(message)) return "__ARENA_RETRY_429__";
+    return null;
+  } finally { await releaseArenaBrowser(browser); }
+}
+
+function arenaBridgeHeaders(cfg) {
+  // ngrok-skip-browser-warning: يمنع صفحة التحذير تبع ngrok المجاني من اعتراض الردود
+  const headers = { "content-type": "application/json", "ngrok-skip-browser-warning": "1" };
+  if (cfg.key) headers.authorization = "Bearer " + cfg.key;
+  return headers;
+}
+
+async function arenaIsOn(env) {
+  const cfg = await arenaCfg(env);
+  if (!cfg.enabled) return false;
+  const flag = await kvGet(env, "arena_enabled", true);
+  return flag !== false;
+}
+
+async function arenaCurrentModel(env) {
+  const runtime = await kvGet(env, "arena_model", null);
+  const m = String(runtime || (env && env.ARENA_BRIDGE_MODEL) || "auto").trim();
+  return m || "auto";
+}
+
+const arenaFlagOn = (v) => /^(1|true|yes|on)$/i.test(String(v || ""));
+
+async function arenaBridgeAttempt(cfg, model, convo, system, env) {
+  const timeout = Number(env.ARENA_BRIDGE_TIMEOUT_MS || 45000);
+  const res = await fetch(cfg.url, {
+    method: "POST",
+    headers: arenaBridgeHeaders(cfg),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))],
+      temperature: 0.4,
+      max_tokens: 400,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(Number.isFinite(timeout) && timeout > 0 ? timeout : 45000),
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const data = await res.json();
+  const text = data?.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error("رد فارغ");
+  return text;
+}
+
+/**
+ * هل Arena هو المحرك الأساسي لجارفس؟
+ * الترتيب: KV (من أمر /arena primary) ← ثم ARENA_BRIDGE_FIRST ← ثم الافتراضي: نعم.
+ * يعني بمجرد ضبط ARENA_BRIDGE_URL، Arena يصير الأساس وباقي المزودين احتياط.
+ */
+async function arenaIsPrimary(env) {
+  if (!(await arenaCfg(env)).enabled) return false;
+  const kv = await kvGet(env, "arena_primary", null);
+  if (kv === true || kv === false) return kv;
+  const raw = env.ARENA_BRIDGE_FIRST;
+  if (raw == null || String(raw).trim() === "") return true;
+  return !/^(0|false|no|off)$/i.test(String(raw).trim());
+}
+
+/**
+ * Keep-alive: افتراضياً يشتغل تلقائياً إذا العنوان من منصة مجانية بتنوّم
+ * (hf.space / onrender.com / fly.dev)، ويمكن فرضه أو إطفاؤه بالمتغير.
+ */
+function arenaKeepAliveOn(env, base) {
+  const raw = env.ARENA_BRIDGE_KEEPALIVE;
+  if (raw != null && String(raw).trim() !== "") return arenaFlagOn(raw);
+  const url = String(base || (env && env.ARENA_BRIDGE_URL) || "");
+  return /hf\.space|onrender\.com|fly\.dev|koyeb\.app/i.test(url);
+}
+
+/** قاطع الدائرة: بعد فشل متكرر نتجاهل الجسر مدة قصيرة حتى لا يتأخر كل رد. */
+async function arenaInCooldown(env) {
+  const until = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
+  return until > Date.now();
+}
+
+async function arenaMarkDown(env, msOverride) {
+  const ms = Math.max(15000, Number(msOverride || env.ARENA_BRIDGE_COOLDOWN_MS || 300000));
+  await kvPut(env, "arena_skip_until", Date.now() + ms);
+}
+
+async function arenaMarkUp(env) {
+  await kvPut(env, "arena_skip_until", 0);
+}
+
+async function callArenaBridge(convo, system, env, modelOverride) {
+  const cfg = await arenaCfg(env);
+  if (!cfg.enabled) return null;
+  if (!cfg.base && cfg.browser) return await callArenaBrowser(convo, system, env);
+  try {
+    if (!(await arenaIsOn(env))) return null;
+    if (await arenaInCooldown(env)) return null;
+    const model = String(modelOverride || (await arenaCurrentModel(env)) || "auto").trim() || "auto";
+    try {
+      const text = await arenaBridgeAttempt(cfg, model, convo, system, env);
+      await arenaMarkUp(env);
+      return text;
+    } catch (e) {
+      console.log("arena bridge attempt failed:", e && e.message ? e.message : e);
+      // الاستضافات المجانية (Render/HF/…) بتنوّم عند الخمول — نصحّيها ونعيد مرة وحدة
+      if (arenaFlagOn(env.ARENA_BRIDGE_WAKE == null ? "true" : env.ARENA_BRIDGE_WAKE)) {
+        const woke = await arenaWake(env, 3, Number(env.ARENA_BRIDGE_WAKE_GAP_MS || 5000));
+        if (woke) {
+          try {
+            const text = await arenaBridgeAttempt(cfg, model, convo, system, env);
+            await arenaMarkUp(env);
+            return text;
+          } catch (e2) {
+            console.log("arena bridge retry failed:", e2 && e2.message ? e2.message : e2);
+          }
+        }
+      }
+      // فشل نهائي — افتح القاطع مؤقتاً وكمّل على الاحتياط.
+      // الخدمة ميتة؟ كولداون كامل. الخدمة حية بس الرد فشل (كوكيز/حصة)؟ كولداون قصير.
+      const h = await arenaBridgeHealth(env);
+      await arenaMarkDown(env, h.ok ? 60000 : undefined);
+      return null;
+    }
+  } catch (e) { console.log("arena bridge error:", e && e.message ? e.message : e); return null; }
+}
+
+/**
+ * يصحّي خدمة الجسر (تنفع للاستضافات المجانية اللي بتنام عند الخمول).
+ * يرجّع true إذا صار /health سليم.
+ */
+async function arenaWake(env, attempts = 5, gapMs = 5000) {
+  const cfg = await arenaCfg(env);
+  if (!cfg.enabled) return false;
+  const tries = Math.max(1, Math.min(10, Number(attempts) || 5));
+  const gap = Math.max(0, Math.min(30000, Number(gapMs) || 0));
+  for (let i = 0; i < tries; i++) {
+    const h = await arenaBridgeHealth(env);
+    if (h.ok) return true;
+    if (i < tries - 1 && gap > 0) await new Promise((r) => setTimeout(r, gap));
+  }
+  return false;
+}
+
+async function arenaBridgeHealth(env) {
+  const cfg = await arenaCfg(env);
+  if (!cfg.enabled) return { ok: false, reason: "لا يوجد جسر ولا Browser Rendering" };
+  if (!cfg.base && cfg.browser) {
+    const ok = await kvGet(env, "arena_browser_last_ok", null);
+    const err = await kvGet(env, "arena_browser_last_error", null);
+    return { ok: true, data: { engine: "cloudflare-browser-rendering", ready: true, last_ok: ok, last_error: err } };
+  }
+  try {
+    const res = await fetch(cfg.base + "/health", {
+      method: "GET",
+      headers: arenaBridgeHeaders(cfg),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return { ok: false, reason: "HTTP " + res.status };
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, data };
+  } catch (e) { return { ok: false, reason: e && e.message ? e.message : String(e) }; }
+}
+
+async function arenaBridgeModels(env) {
+  const cfg = await arenaCfg(env);
+  if (!cfg.enabled) return [];
+  try {
+    const res = await fetch(cfg.base + "/v1/models", {
+      method: "GET",
+      headers: arenaBridgeHeaders(cfg),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    return (Array.isArray(data?.data) ? data.data : []).map((m) => String(m && m.id ? m.id : m)).filter(Boolean);
+  } catch (e) { console.log("arena models error:", e && e.message ? e.message : e); return []; }
+}
+
+/**
+ * تشخيص عميق: يسأل الجسر عن حالة محركاته (LMArenaBridge / gpt4free / compat).
+ * يرجّع null لو الجسر ما يدعم /arena/selftest (نسخة قديمة) حتى نرجع لفحص /health.
+ */
+async function arenaSelftest(env, deep) {
+  const cfg = await arenaCfg(env);
+  if (!cfg.enabled) return null;
+  if (!cfg.base && cfg.browser) {
+    const answer = deep ? await callArenaBrowser([{ role: "user", content: "رد بكلمة OK فقط" }], "اختبار اتصال قصير", env) : null;
+    return { ok: deep ? !!answer : true, engines: [{ name: "cloudflare-browser-rendering", ready: true, ok: deep ? !!answer : true, ms: 0, sample: answer ? answer.slice(0, 80) : "Chromium binding ready", error: answer || !deep ? "" : "Arena لم يرجع جواباً" }] };
+  }
+  try {
+    const url = cfg.base + "/arena/selftest" + (deep ? "?deep=1" : "");
+    const res = await fetch(url, {
+      method: "GET",
+      headers: arenaBridgeHeaders(cfg),
+      signal: AbortSignal.timeout(deep ? 150000 : 20000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!data || !Array.isArray(data.engines)) return null;
+    return data;
+  } catch (e) { console.log("arena selftest error:", e && e.message ? e.message : e); return null; }
+}
+
 async function llmComplete(convo, system, env) {
+  // Arena هو الأساس افتراضياً (بمجرد ضبط ARENA_BRIDGE_URL). باقي المزودين احتياط،
+  // فإذا الجسر نايم/فشل، رد جارفس ما يتوقف — بس ما بيوصل من Arena.
+  if (await arenaIsPrimary(env)) {
+    const arena = await callArenaBridge(convo, system, env);
+    if (arena) return arena;
+    // وضع Arena-only يمنع تبديل العقل بصمت. خدمات الصوت/التفريغ أدوات مستقلة وليست عقل الرد.
+    if (/^(1|true|yes|on)$/i.test(String(env.ARENA_ONLY || ""))) return null;
+  }
   return (
     (await callGemini(convo, system, env)) ||
     (await callOpenAICompatible("https://api.mistral.ai/v1", env.MISTRAL_API_KEY, (env.MISTRAL_MODEL || "mistral-large-latest").trim(), convo, system)) ||
     (await callOpenAICompatible("https://api.groq.com/openai/v1", env.GROQ_API_KEY, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
     (await callOpenAICompatible("https://integrate.api.nvidia.com/v1", env.NVIDIA_API_KEY, (env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct").trim(), convo, system)) ||
     (await callOpenRouterWithFallback(convo, system, env)) ||
+    (await callArenaBridge(convo, system, env)) ||
     (await callWorkersAI(convo, system, env)) ||
     (await callPollinations(convo, system, env)) ||
     null
@@ -500,11 +1220,57 @@ function parseToolCall(out) {
   return null;
 }
 
+/** يفتح أي رابط ويستخرج نصاً مقروءاً — يخدم "أي مهمة تحتاج إنترنت". */
+async function openUrl(url) {
+  const raw = String(url || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return "لازم رابط كامل يبدأ بـ http:// أو https://";
+  try {
+    const res = await fetch(raw, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; JarvisBot/1.0)", accept: "text/html,text/plain,*/*" },
+      signal: AbortSignal.timeout(20000),
+      redirect: "follow",
+    });
+    if (!res.ok) return `تعذر فتح الرابط (HTTP ${res.status})`;
+    const ct = String(res.headers.get("content-type") || "");
+    const body = await res.text();
+    if (!/html/i.test(ct)) return body.slice(0, 3500) || "الصفحة فاضية";
+    const text = body
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/\s+/g, " ")
+      .trim();
+    const title = (body.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1];
+    const head = title ? `العنوان: ${title.replace(/<[^>]+>/g, "").trim()}\n\n` : "";
+    return (head + text).slice(0, 3500) || "ما لقيت نص بالصفحة (غالباً JS أو محتوى محمي)";
+  } catch (e) {
+    return "خطأ بفتح الرابط: " + (e && e.message ? e.message : e);
+  }
+}
+
+/** سؤال مباشر لنماذج Arena — يتجاوز سلسلة الـ failover. */
+async function arenaAskDirect(prompt, model, env) {
+  const p = String(prompt || "").trim();
+  if (!p) return "prompt فارغ";
+  if (!(await arenaCfg(env)).enabled) return "جسر Arena مو مضبوط (ARENA_BRIDGE_URL).";
+  const out = await callArenaBridge(
+    [{ role: "user", content: p }],
+    "أنت جارفس — رد بالعربي الشامي، موجز ومفيد.",
+    env,
+    model || undefined
+  );
+  return out || "جسر Arena ما رد — جرّب /arena test";
+}
+
 async function runTool(call, env, ctx) {
   try {
     const a = call.args || {};
     switch (call.tool) {
       case "search_web": return await searchWeb(a.query, env);
+      case "open_url": return await openUrl(a.url);
+      case "arena_chat": return await arenaAskDirect(a.prompt, a.model, env);
       case "audit_website": return await auditWebsite(a.url);
       case "list_leads": return await listLeads(env, a.status);
       case "get_lead": { const m = await mergedLeads(env); return getLeadText(m, a.index); }
@@ -531,11 +1297,13 @@ async function getOwnerChatId(env) {
   return env.OWNER_CHAT_ID ? Number(env.OWNER_CHAT_ID) : null;
 }
 
-async function queueApprovedTask(env, goal, ctx) {
-  const g = String(goal || "").trim().slice(0, 500);
+async function queueApprovedTask(env, goal, ctx, meta) {
+  const g = String(goal || "").trim().slice(0, 6000);
   const tasks = await kvGet(env, "tasks", []);
   const id = "task_" + Date.now();
-  tasks.unshift({ id, goal: g, status: "queued", trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0, consecutiveFailures: 0 });
+  const threadId = await kvGet(env, ACTIVE_THREAD_KEY, "");
+  const m = meta || {};
+  tasks.unshift({ id, goal: g, threadId, route: m.route || "agent", agentId: m.agentId || null, agentName: m.agentName || null, status: "queued", phase: "queued", progress: 0, trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0, consecutiveFailures: 0 });
   await kvPut(env, "tasks", tasks.slice(0, 30));
   if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(processTaskQueue(env, STEPS_PER_TICK));
   return id;
@@ -579,6 +1347,22 @@ async function finishTask(task, tasks, env, status, note) {
   await callMeNow(env, `جارفس: مهمتك ${status === "done" ? "خلصت" : "توقفت"} — افتح التيليجرام`);
 }
 
+async function proactiveTaskReview(env) {
+  const tasks = await kvGet(env, "tasks", []);
+  const now = Date.now(); let changed = false;
+  const owner = await getOwnerChatId(env);
+  for (const task of tasks) {
+    if (!["queued", "running"].includes(task.status)) continue;
+    const quiet = now - (task.updated || task.created || now);
+    // لا نزعج المستخدم كل دقيقة: تنبيه استباقي واحد إذا علقت المهمة فعلاً.
+    if (quiet > 12 * 60000 && (!task.proactiveAlertAt || now - task.proactiveAlertAt > 60 * 60000)) {
+      task.proactiveAlertAt = now; changed = true;
+      if (owner) await sendMessage(env, owner, `⚠️ انتبهت إن المهمة معلّقة وما عم تتقدم:\n${String(task.goal).slice(0, 180)}\n\nآخر مرحلة: ${task.phase || task.status}\nرح ضل راقبها وأعيد المحاولة تلقائياً. إذا بدك غيّر الأولوية خبرني.`);
+    }
+  }
+  if (changed) await kvPut(env, "tasks", tasks);
+}
+
 async function processTaskQueue(env, maxSteps) {
   let tasks = await kvGet(env, "tasks", []);
   const now = Date.now();
@@ -600,6 +1384,11 @@ async function processTaskQueue(env, maxSteps) {
   for (let i = 0; i < budget; i++) {
     const convo = [{ role: "user", content: buildTaskPrompt(task) }];
     const out = await llmComplete(convo, WORKER_PROMPT, env);
+    if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") {
+      task.lockedAt = 0; task.phase = "waiting_for_browser"; task.updated = Date.now();
+      const idxR = tasks.findIndex((t) => t.id === task.id); if (idxR !== -1) tasks[idxR] = { ...task };
+      await kvPut(env, "tasks", tasks); return;
+    }
     task.stepCount = (task.stepCount || 0) + 1;
     if (!out) {
       task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
@@ -615,8 +1404,15 @@ async function processTaskQueue(env, maxSteps) {
     const call = parseToolCall(out);
     if (!call) { await finishTask(task, tasks, env, "done", out); return; }
     const result = await runTool(call, env, null);
-    task.trace = (task.trace || []).concat([{ step: task.stepCount, tool: call.tool, args: call.args, result: String(result).slice(0, 1200) }]).slice(-40);
+    task.trace = (task.trace || []).concat([{ step: task.stepCount, tool: call.tool, args: call.args, result: String(result).slice(0, 1200), at: Date.now() }]).slice(-40);
+    task.phase = call.tool || "working";
+    task.progress = Math.min(95, Math.max(task.progress || 0, 10 + task.stepCount * 7));
     task.updated = Date.now();
+    if (!task.lastProgressAt || Date.now() - task.lastProgressAt > 2 * 60000) {
+      task.lastProgressAt = Date.now();
+      const owner = await getOwnerChatId(env);
+      if (owner) await sendMessage(env, owner, `⏳ ${task.agentName ? task.agentName + " · " : ""}${String(task.goal).slice(0, 100)}\nالتقدم: ${task.progress}% · المرحلة: ${task.phase}\nآخر نتيجة: ${String(result).slice(0, 350)}`);
+    }
     const idx2 = tasks.findIndex((t) => t.id === task.id);
     if (idx2 !== -1) tasks[idx2] = { ...task };
     await kvPut(env, "tasks", tasks);
@@ -627,15 +1423,18 @@ async function processTaskQueue(env, maxSteps) {
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
   const memBlock = o.mode === "worker" ? "" : await relevantMemories(env, userText);
-  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : ""));
-  const hist = o.mode === "worker" ? [] : await getHistory(env);
+  const resolved = o.mode === "worker" ? null : await resolveThread(env, userText, o.threadId);
+  const threadBlock = resolved ? `\n\nسياق مساحة العمل الحالية:\n- الاسم: ${resolved.thread.title}\n- المعرف: ${resolved.thread.id}\n- سبب اختيارها: ${resolved.reason}\n- الملخص السابق: ${resolved.thread.summary || "أول رسالة"}\nالتزم بهذه المهمة فقط ولا تخلطها بمشروع آخر.` : "";
+  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : "") + threadBlock);
+  const hist = o.mode === "worker" ? [] : (resolved.thread.messages || []);
   const convo = [...hist, { role: "user", content: String(userText) }];
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
-    if (!out) return "لحظة — كل مزودي الذكاء مشغولين/نفدت حصصها هلقة (غالباً حد اليوم المجاني — يتجدد تلقائياً). جرب بعد شوي، أو أعطني مفتاح جديد.";
+    if (!out) return "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. حفظت رسالتك وسياقها؛ جرّب ابعتها مرة ثانية بعد لحظات. ما في داعي لأي مفتاح جديد.";
+    if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
     const call = parseToolCall(out);
     if (!call) {
-      if (o.mode !== "worker") await saveHistory(env, [...convo, { role: "assistant", content: out }]);
+      if (o.mode !== "worker") await saveThreadTurn(env, resolved, [...convo, { role: "assistant", content: out }]);
       return out;
     }
     const result = await runTool(call, env, o.ctx || null);
@@ -644,7 +1443,7 @@ async function agentLoop(userText, env, chatId, opts) {
   }
   const finalOut = await llmComplete([...convo, { role: "user", content: "أعطني الجواب النهائي الآن فقط بدون أدوات." }], system, env);
   const answer = finalOut || "اكتملت الخطوات — راجع النتائج أعلاه.";
-  if (o.mode !== "worker") await saveHistory(env, [...convo, { role: "assistant", content: answer }]);
+  if (o.mode !== "worker") await saveThreadTurn(env, resolved, [...convo, { role: "assistant", content: answer }]);
   return answer;
 }
 
@@ -1041,12 +1840,19 @@ const WELCOME = [
   "/lead <رقم> — تفاصيل عميل 1–12",
   "/audit <موقع> — تدقيق سريع لموقع",
   "/tasks — آخر المهام الخلفية مع عدد الخطوات",
+  "/chats — كل مساحات العمل القديمة والجديدة",
+  "/chat new <اسم> — افتح مشروعاً منفصلاً | /chat <رقم> — ارجع لشات قديم",
+  "/progress — تقدم وسياق مساحة العمل الحالية",
   "/cancel task_ID — إلغاء مهمة جارية",
   "/learn <نص> — احفظ حقائق (كل سطر = حقيقة، ابدأ بـ ! للتثبيت الدائم)",
   "/memories — كل اللي كنت تعلمته",
   "/forget <الرقم أو المعرف> — امسح حقيقة",
   "/export — حمّل نسخة كاملة من ذاكرتي (JSON)",
   "/report — ملخص الحالة",
+  "/arena — جسر LMArena: حالة/تشغيل/إيقاف/نماذج/تشخيص",
+  "/arena primary — Arena أساس كل الردود ↔ رجوع للترتيب العادي",
+  "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
+  "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
   "/files — شو الملفات والصور بقدر أقراها وأعدلها",
@@ -1085,6 +1891,64 @@ async function handleCommand(text, env, chatId) {
       t.status = "cancelled"; t.lockedAt = 0; t.updated = Date.now();
       await kvPut(env, "tasks", tasks);
       await sendMessage(env, chatId, `⛔ أُلغيت المهمة ${id}`); return true;
+    }
+    case "/chats": case "/contexts": case "/شاتات": {
+      const rows = await getThreads(env);
+      const active = await kvGet(env, ACTIVE_THREAD_KEY, "");
+      if (!rows.length) { await sendMessage(env, chatId, "ما في مساحات عمل بعد. ابعت أول طلب وأنا بفتحها تلقائياً."); return true; }
+      const tasks = await kvGet(env, "tasks", []);
+      const lines = rows.slice(0, 15).map((t, i) => {
+        const linked = tasks.filter((x) => x.threadId === t.id && ["queued", "running"].includes(x.status)).length;
+        const age = Math.max(0, Math.floor((Date.now() - (t.updated || Date.now())) / 3600000));
+        return `${t.id === active ? "🟢" : "⚪"} ${i + 1}. ${t.title}\n   ${t.id} · آخر نشاط ${age < 24 ? age + " ساعة" : Math.floor(age / 24) + " يوم"}${linked ? ` · ${linked} مهمة شغالة` : ""}`;
+      });
+      await sendMessage(env, chatId, `🗂 مساحات العمل:\n\n${lines.join("\n")}\n\n/chat <رقم أو ctx_...> للرجوع · /chat new <اسم> للجديد · /progress للتقدم`); return true;
+    }
+    case "/chat": case "/context": {
+      const rows = await getThreads(env);
+      if (/^(new|جديد|جديدة)(\s|$)/i.test(arg)) {
+        const title = threadLabel(arg.replace(/^(new|جديد|جديدة)\s*/i, "") || "محادثة جديدة");
+        const t = { id: "ctx_" + Date.now().toString(36), title, summary: "", keywords: threadWords(title), messages: [], created: Date.now(), updated: Date.now(), status: "active" };
+        rows.unshift(t); await putThreads(env, rows); await kvPut(env, ACTIVE_THREAD_KEY, t.id);
+        await sendMessage(env, chatId, `✅ فتحت مساحة جديدة: «${title}»\n${t.id}`); return true;
+      }
+      const n = Number(arg); const t = Number.isInteger(n) && n > 0 ? rows[n - 1] : rows.find((x) => x.id === arg || x.id.endsWith(arg));
+      if (!t) { await sendMessage(env, chatId, "ما لقيتها. استخدم /chats وشوف الرقم أو المعرف."); return true; }
+      await kvPut(env, ACTIVE_THREAD_KEY, t.id);
+      await sendMessage(env, chatId, `🟢 رجعت لمساحة «${t.title}»\nآخر سياق: ${t.summary || "فارغة"}\nهلق أي «كمل» رح ينفهم ضمنها.`); return true;
+    }
+    case "/progress": case "/تقدم": {
+      const rows = await getThreads(env); const active = await kvGet(env, ACTIVE_THREAD_KEY, "");
+      const t = rows.find((x) => x.id === active); if (!t) { await sendMessage(env, chatId, "ما في شات نشط بعد."); return true; }
+      const tasks = (await kvGet(env, "tasks", [])).filter((x) => x.threadId === t.id || (!x.threadId && String(x.goal || "").toLowerCase().includes(String(t.title).toLowerCase())));
+      const lines = tasks.slice(0, 8).map((x) => `${x.status === "done" ? "✅" : x.status === "running" ? "⏳" : "▫️"} ${x.goal.slice(0, 100)} — خطوة ${x.stepCount || 0}`);
+      await sendMessage(env, chatId, `📍 ${t.title}\nالمعرف: ${t.id}\nآخر سياق: ${t.summary || "—"}\n\nالمهام:\n${lines.join("\n") || "لا توجد مهمة خلفية مرتبطة بعد."}`); return true;
+    }
+    case "/agents": case "/ايجنتات": {
+      const rows = await getAgentRegistry(env);
+      if (!rows.length) { await sendMessage(env, chatId, "ما في Agents مسمّيين بعد. أضف واحد:\n/agent add أحمد | التداول | ضع الدستور والـskills أو رابط ملف GitHub هون"); return true; }
+      await sendMessage(env, chatId, "🧩 فريق Jarvis:\n\n" + rows.map((a, i) => `${i + 1}. ${a.name} — ${a.scope || "بدون نطاق ثابت"}\n   ${String(a.instructions || "").slice(0, 180)}`).join("\n\n")); return true;
+    }
+    case "/agent": {
+      if (/^add\s+/i.test(arg)) {
+        const parts = arg.replace(/^add\s+/i, "").split("|").map((x) => x.trim());
+        if (parts.length < 3 || !parts[0]) { await sendMessage(env, chatId, "الصيغة:\n/agent add أحمد | التداول | دستور أحمد والـskills أو رابطها"); return true; }
+        const rows = await getAgentRegistry(env); const name = parts[0].slice(0, 40);
+        const item = { id: "agt_" + Date.now().toString(36), name, scope: parts[1].slice(0, 120), instructions: parts.slice(2).join(" | ").slice(0, 6000), created: Date.now(), updated: Date.now() };
+        const old = rows.findIndex((x) => String(x.name).toLowerCase() === name.toLowerCase());
+        if (old >= 0) rows[old] = { ...rows[old], ...item, id: rows[old].id }; else rows.push(item);
+        await saveAgentRegistry(env, rows); await sendMessage(env, chatId, `✅ حفظت ${name}. لما تذكر اسمه، Jarvis يربط الطلب بدستوره وسياقه.`); return true;
+      }
+      if (/^(delete|حذف)\s+/i.test(arg)) {
+        const name = arg.replace(/^(delete|حذف)\s+/i, "").trim().toLowerCase(); let rows = await getAgentRegistry(env); const before = rows.length;
+        rows = rows.filter((x) => String(x.name).toLowerCase() !== name); await saveAgentRegistry(env, rows);
+        await sendMessage(env, chatId, before === rows.length ? "ما لقيت هالاسم." : "🗑️ حذفت Agent من السجل."); return true;
+      }
+      await sendMessage(env, chatId, "الأوامر:\n/agents\n/agent add الاسم | النطاق | الدستور والـskills\n/agent delete الاسم"); return true;
+    }
+    case "/route": {
+      const r = arenaRouteIntent(arg); const a = await findMentionedAgent(env, arg);
+      await sendMessage(env, chatId, `🧭 المسار: ${r.mode === "agent" ? "Agent Mode" : "Direct Chat"}\nالسبب: ${r.reason}${a ? `\nAgent: ${a.name} (${a.scope})` : ""}`); return true;
     }
     case "/report": {
       const merged = await mergedLeads(env);
@@ -1156,14 +2020,207 @@ async function handleCommand(text, env, chatId) {
         "",
         "⚠️ ما فيني أوصل ملفات على تلفونك مباشرة — بس كل ملف تطرشيلي بقراه وبتعامل معه وبرجعيلك الناتج.",
       ].join("\n")); return true;
-    case "/reset":
+    case "/reset": {
+      const rows = await getThreads(env); const active = await kvGet(env, ACTIVE_THREAD_KEY, "");
+      const t = rows.find((x) => x.id === active);
+      if (t) { t.messages = []; t.summary = ""; t.updated = Date.now(); await putThreads(env, rows); }
       await kvPut(env, "history", []);
-      await sendMessage(env, chatId, "تم مسح ذاكرة المحادثة."); return true;
+      await sendMessage(env, chatId, t ? `تم مسح رسائل «${t.title}» فقط. باقي الشاتات والمهام محفوظة.` : "تم مسح ذاكرة المحادثة."); return true;
+    }
+    case "/arena": {
+      const cfg = await arenaCfg(env);
+      const on = await arenaIsOn(env);
+      const cur = await arenaCurrentModel(env);
+      const sub = arg.trim();
+      const low = sub.toLowerCase();
+      const kvUrl = await kvGet(env, "arena_url", null);
+      const kvKey = await kvGet(env, "arena_key", null);
+
+      if (/^(connect|login|ربط|دخول)$/i.test(low)) {
+        const base = String(await kvGet(env, "public_worker_url", "")).replace(/\/+$/, "");
+        if (!base) { await sendMessage(env, chatId, "أرسل /health أولاً ثم أعد /arena connect حتى أعرف رابط Worker."); return true; }
+        const link = await arenaReconnectLink(env);
+        await sendMessage(env, chatId, [
+          "🔐 رابط نقل جلسة Arena من Safari (صالح 10 دقائق ولمرة واحدة):",
+          link,
+          "",
+          "افتحه في Safari واتبع 4 خطوات. لا يطلب كلمة مرور Google ولا يرسلها لجارفس.",
+        ].join("\n"));
+        return true;
+      }
+
+      /* ----- الإعداد الكامل من تيليجرام (بدون wrangler ولا لوحة) ----- */
+      if (/^setup|شرح|اعداد|إعداد/.test(low)) {
+        await sendMessage(env, chatId, [
+          "🧭 خلّي Arena يشتغل بجارفس — ٣ خطوات من الآيفون:",
+          "",
+          "1️⃣ جهّز الجسر (سيرفر بايثون): أسهل طريق بلا بطاقة = Render أو Hugging Face.",
+          "   الدليل خطوة-خطوة بالعربي: arena-bridge/README_IPHONE_AR.md",
+          "   بيطلعلك رابط مثل: https://jarvis-arena.onrender.com",
+          "",
+          "2️⃣ ابعتلي هون:",
+          "   /arena url https://jarvis-arena.onrender.com",
+          "   /arena key المفتاح-اللي-اخترته",
+          "",
+          "3️⃣ افحص: /arena test — إذا أخضر، صار Arena أساس كل ردودي.",
+          "",
+          "بعدها: /arena primary يقلب الأساسي/الاحتياطي · /arena off يوقفه فوراً.",
+        ].join("\n"));
+        return true;
+      }
+      if (/^url\b/i.test(sub)) {
+        const link = sub.replace(/^url\s+/i, "").trim().replace(/\/+$/, "");
+        if (!/^https?:\/\//i.test(link)) { await sendMessage(env, chatId, "لازم رابط كامل: /arena url https://xxx.onrender.com"); return true; }
+        await kvPut(env, "arena_url", link);
+        await sendMessage(env, chatId, `✅ حفظت عنوان الجسر:\n${link}\n\nهلق ابعت المفتاح: /arena key <المفتاح> ثم /arena test`);
+        return true;
+      }
+      if (/^key\b/i.test(sub)) {
+        const k = sub.replace(/^key\s+/i, "").trim();
+        if (!k) { await sendMessage(env, chatId, "اكتب المفتاح بعد الأمر: /arena key xxxx"); return true; }
+        await kvPut(env, "arena_key", k);
+        await sendMessage(env, chatId, "🔑 حفظت المفتاح. جاهز للفحص: /arena test");
+        return true;
+      }
+      if (/^(reset|مسح|حذف)$/i.test(low)) {
+        await kvPut(env, "arena_url", null);
+        await kvPut(env, "arena_key", null);
+        await kvPut(env, "arena_skip_until", 0);
+        await sendMessage(env, chatId, "🧹 مسحت عنوان الجسر ومفتاحه من الذاكرة (المتغيرات بالـ Worker ما تأثرت).");
+        return true;
+      }
+
+      if (!cfg.enabled) {
+        await sendMessage(env, chatId, [
+          "🌉 جسر LMArena مو مضبوط بعد.",
+          "",
+          "شغّل الخدمة من مجلد arena-bridge بمستودعنا (Python + gpt4free/Arena):",
+          "  cd arena-bridge && pip install -r requirements.txt && python bridge.py",
+          "",
+          "بعدها ضيف لجارفس:",
+          "  ARENA_BRIDGE_URL=https://عنوان-الجسر (بدون /v1)",
+          "  ARENA_BRIDGE_KEY=نفس BRIDGE_API_KEY (اختياري لكن مستحسن)",
+          "  ARENA_BRIDGE_MODEL=auto",
+          "",
+          "الأسهل: ابعتلي الرابط من هون مباشرة (بدون wrangler ولا لوحة):",
+          "  /arena url https://عنوان-الجسر",
+          "  /arena key المفتاح",
+          "أو بـ wrangler: npx wrangler secret put ARENA_BRIDGE_URL",
+          "",
+          "استضافة مجانية ٢٤/٧ من الموبايل فقط؟ شوف arena-bridge/README_DEPLOY_FREE_AR.md",
+        ].join("\n"));
+        return true;
+      }
+      if (/^(off|ايقاف|إيقاف|وقف|0)$/i.test(low)) {
+        await kvPut(env, "arena_enabled", false);
+        await sendMessage(env, chatId, "⏸️ الجسر موقوف — رح أرجع لباقي المزودين. للتفعيل: /arena on");
+        return true;
+      }
+      if (/^(on|تشغيل|1)$/i.test(low)) {
+        await kvPut(env, "arena_enabled", true);
+        const h = await arenaBridgeHealth(env);
+        await sendMessage(env, chatId, h.ok ? "▶️ جسر LMArena شغال — رح أدخلو بسلسلة الردود." : "▶️ فعّلت الجسر بس ما وصلت له: " + h.reason);
+        return true;
+      }
+      if (/^(primary|أساسي|اساسي|اساس)$/i.test(low)) {
+        const curPrimary = await arenaIsPrimary(env);
+        await kvPut(env, "arena_primary", !curPrimary);
+        await sendMessage(env, chatId, !curPrimary
+          ? "⭐ صار Arena هو المحرك الأساسي — كل رد ومهمة بتمرق عليه أولاً، وباقي المزودين احتياط."
+          : "↩️ رجّعت الترتيب العادي — Gemini أولاً وArena احتياط. (نفس الشي بـ /arena primary مرة تانية)");
+        return true;
+      }
+      if (/^(wake|ايقاظ|إيقاظ|صحّي|صحى)$/i.test(low)) {
+        const gap = Number(env.ARENA_BRIDGE_WAKE_GAP_MS || 5000);
+        const ok = await arenaWake(env, 6, gap);
+        await sendMessage(env, chatId, ok
+          ? "🟢 الجسر صحّي وشغال — جاهز يستقبل الأسئلة."
+          : "🔴 ما وصلت للجسر بعد 6 محاولات — تأكد إن الخدمة مشغّلة على المنصة، أو جرّب /arena test.");
+        return true;
+      }
+      if (/^(test|فحص|ping)$/i.test(low)) {
+        await sendMessage(env, chatId, "🔎 عمّال أفحص المحركات فعلياً (ياخد وقت — المتصفح بطيء)…");
+        const deepRes = await arenaSelftest(env, true);
+        if (deepRes) {
+          const icon = (e) => e.ok ? "🟢" : e.ready ? "🔴" : "⚪️";
+          const lines = deepRes.engines.map((e) => {
+            const extra = e.ok ? `${e.ms || 0}ms` : (e.error || "غير مهيّأ");
+            return `${icon(e)} ${e.name}: ${extra}${e.ok && e.sample ? `\n   «${String(e.sample).slice(0, 60)}»` : ""}`;
+          });
+          const anyOk = deepRes.engines.some((e) => e.ok);
+          await sendMessage(env, chatId, [
+            anyOk ? "✅ في محرك شغال — Arena جاهز" : "⚠️ ولا محرك رد الآن",
+            "", ...lines,
+            "",
+            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : "إذا كلهن أحمر: تأكد من الكوكيز/الجلسة أو شغّل LMArenaBridge وحدد LMArenaBridge_URL",
+          ].join("\n"));
+          return true;
+        }
+        const h = await arenaBridgeHealth(env);
+        await sendMessage(env, chatId, h.ok
+          ? "🟢 الجسر سليم:\n" + JSON.stringify(h.data).slice(0, 1200)
+          : "🔴 ما وصلت للجسر: " + h.reason);
+        return true;
+      }
+      if (/^(models|موديلات|نماذج)$/i.test(low) || !sub) {
+        let models = [];
+        if (on) models = await arenaBridgeModels(env);
+        const lines = [
+          cfg.browser && !cfg.base ? "🌐 Arena عبر Cloudflare Browser Rendering" : "🌉 جسر LMArena (gpt4free + LMArenaBridge)",
+          "الحالة: " + (on ? "🟢 شغال" : "⏸️ موقوف") + " | النموذج: " + cur,
+          cfg.browser && !cfg.base ? "التشغيل: Chromium داخل Cloudflare (بلا سيرفر خارجي)" : "العنوان: " + cfg.base + (kvUrl ? "  (محفوظ من تيليجرام)" : ""),
+          "الأولوية: " + (/^(1|true|yes|on)$/i.test(String(env.ARENA_BRIDGE_FIRST || "")) ? "قبل كل المزودين" : "بعد المزودين مع مفتاح"),
+          "المحرك: " + (await arenaIsPrimary(env) ? "⭐ أساسي (قبل كل المزودين)" : "احتياطي بعد المزودين"),
+          "Keep-alive: " + (arenaKeepAliveOn(env, cfg.base) ? "مفعّل (كل 10 دقائق)" : "موقوف"),
+          "قاطع الدائرة: " + (await arenaInCooldown(env) ? "مفتوح — الجسر فشل حديثاً، رح أنتظر شوية قبل ما أجرّبه" : "مغلق (طبيعي)"),
+        ];
+        if (models.length) lines.push("", "النماذج المتاحة (" + models.length + "):", ...models.slice(0, 25).map((m) => "• " + m));
+        else lines.push("", "ما قدرت أجيب قائمة النماذج — جرّب /arena test");
+        lines.push("", "الأوامر: /arena on · off · primary · wake · models · test · /arena <اسم-نموذج> · /arena_ask <سؤال>");
+        await sendMessage(env, chatId, lines.join("\n").slice(0, 3800));
+        return true;
+      }
+      await kvPut(env, "arena_model", sub);
+      await sendMessage(env, chatId, `✅ النموذج صار: ${sub}\nجرّب: /arena_ask اكتب لي قصيدة قصيرة عن دبي`);
+      return true;
+    }
+    case "/arena_ask": {
+      if (!arg) { await sendMessage(env, chatId, "اكتب سؤالك: /arena_ask <نص>"); return true; }
+      const cfg = await arenaCfg(env);
+      if (!cfg.enabled) { await sendMessage(env, chatId, "الجسر مو مضبوط — شوف /arena للتعليمات."); return true; }
+      const model = await arenaCurrentModel(env);
+      const answer = await callArenaBridge([{ role: "user", content: arg }], "أنت جارفس — مساعد عربي مختصر ومفيد. جوابك بالعربي.", env, model);
+      await sendMessage(env, chatId, answer ? `🌉 (${model})\n\n${answer}` : "⚠️ الجسر ما رد — شوف /arena test وتأكد إن الخدمة شغالة.");
+      return true;
+    }
     case "/health":
       await sendMessage(env, chatId, "🟢 جارفس Cloudflare شغال تمام."); return true;
     default:
       return false;
   }
+}
+
+async function queueDirectRetry(env, chatId, text, daily) {
+  const rows = await kvGet(env, "arena_pending_direct_v1", []);
+  const duplicate = rows.find((r) => r.chatId === chatId && r.text === text && Date.now() - r.created < 10 * 60000);
+  if (duplicate) return duplicate.id;
+  const nextUtc = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1, 0, 2);
+  const item = { id: "retry_" + Date.now().toString(36), chatId, text: String(text).slice(0, 6000), created: Date.now(), availableAt: daily ? nextUtc : Date.now() + 65000, attempts: 0 };
+  rows.push(item); await kvPut(env, "arena_pending_direct_v1", rows.slice(-20)); return item.id;
+}
+
+async function processDirectRetries(env) {
+  const rows = await kvGet(env, "arena_pending_direct_v1", []); if (!rows.length) return;
+  const now = Date.now(); const item = rows.find((r) => (r.availableAt || 0) <= now); if (!item) return;
+  item.attempts = (item.attempts || 0) + 1;
+  const answer = await agentLoop(item.text, env, item.chatId, { route: "direct", retry: true });
+  if (["__ARENA_RETRY_429__", "__ARENA_RETRY_DAILY__"].includes(answer) || /صار انقطاع مؤقت/.test(answer)) {
+    const d = new Date(); const nextUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 2);
+    item.availableAt = answer === "__ARENA_RETRY_DAILY__" ? nextUtc : now + Math.min(15 * 60000, 60000 * Math.pow(2, Math.min(item.attempts, 4)));
+    await kvPut(env, "arena_pending_direct_v1", rows); return;
+  }
+  await sendMessage(env, item.chatId, `✅ رجعت كملت طلبك تلقائياً:\n\n${answer}`);
+  await kvPut(env, "arena_pending_direct_v1", rows.filter((r) => r.id !== item.id));
 }
 
 async function handleUpdate(update, env, ctx) {
@@ -1229,7 +2286,32 @@ async function handleUpdate(update, env, ctx) {
   }
   if (!text) { await sendMessage(env, chatId, "أرسل نصاً، صوتاً، صورة أو ملف (txt/csv/xlsx/docx)."); return; }
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
-  const answer = await agentLoop(text, env, chatId, { ctx });
+  const route = arenaRouteIntent(text);
+  const namedAgent = await findMentionedAgent(env, text);
+  if (/شو\s*(صار|وصل)|وين\s*(وصلنا|صرت)|اعطيني\s*(تقدم|ابديت)|update|progress/i.test(text)) {
+    const tasks = await kvGet(env, "tasks", []); const activeThread = await kvGet(env, ACTIVE_THREAD_KEY, "");
+    const pool = tasks.filter((t) => !activeThread || t.threadId === activeThread);
+    const t = (namedAgent ? pool.find((x) => x.agentId === namedAgent.id || x.agentName === namedAgent.name) : null) || pool.find((x) => ["queued", "running"].includes(x.status)) || pool[0];
+    if (t) { const last = (t.trace || []).slice(-1)[0]; await sendMessage(env, chatId, `📍 ${t.agentName ? t.agentName + " · " : ""}${String(t.goal).slice(0, 140)}\nالحالة: ${t.status} · التقدم: ${t.progress || 0}%\nالمرحلة: ${t.phase || "queued"}\n${last ? "آخر نتيجة: " + String(last.result).slice(0, 700) : "لم تبدأ أول خطوة بعد."}`); return; }
+  }
+  if (route.mode === "agent") {
+    // أنشئ/اختر مساحة المشروع قبل ربط المهمة بها.
+    const taskThread = await resolveThread(env, text, null);
+    await putThreads(env, taskThread.rows);
+    const skill = namedAgent ? `\n\nAgent المكلّف: ${namedAgent.name}\nالنطاق: ${namedAgent.scope}\nالدستور والـSkills:\n${namedAgent.instructions}` : "";
+    const id = await queueApprovedTask(env, text + skill, ctx, { route: "agent", agentId: namedAgent?.id, agentName: namedAgent?.name });
+    await sendMessage(env, chatId, `🚀 بدأت المهمة ${id.slice(-6)}${namedAgent ? ` مع ${namedAgent.name}` : ""}\nرح أبعت Progress حقيقي أثناء التنفيذ. اسأل «شو صار؟» بأي وقت.`);
+    return;
+  }
+  const answer = await agentLoop(text, env, chatId, { ctx, route: "direct", namedAgent });
+  if (answer === "__ARENA_RETRY_429__" || answer === "__ARENA_RETRY_DAILY__") {
+    const daily = answer === "__ARENA_RETRY_DAILY__";
+    const retryId = await queueDirectRetry(env, chatId, text, daily);
+    await sendMessage(env, chatId, daily
+      ? `🕛 استُهلكت حصة Cloudflare المجانية الرسمية (10 دقائق Browser باليوم). حفظت طلبك (${retryId.slice(-6)}) ورح أنفذه تلقائياً بعد تجدد الحصة الساعة 00:00 UTC. إعادة الربط ما بتغيّر هالحد.`
+      : `⏳ Cloudflare وصل حد إنشاء المتصفح المؤقت، بس ما ضاع طلبك. حفظته (${retryId.slice(-6)}) ورح أعيده تلقائياً — ما تعيد الرسالة ولا تعمل /arena connect.`);
+    return;
+  }
   await sendMessage(env, chatId, answer);
   if (isVoice) {
     const voiceOn = await kvGet(env, "voice_replies", false);
