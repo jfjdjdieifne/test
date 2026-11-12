@@ -2442,6 +2442,18 @@ async function handleTts(request, env) {
 
 /* --------------------- /ask — جسر صفحة المكالمة --------------------- */
 
+async function callGeminiVoiceManager(text, env) {
+  const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({
+    id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "",
+    status: t.status || "", result: String(t.result || t.output || "").slice(0, 700),
+    updatedAt: t.updatedAt || t.updated || "",
+  }));
+  const memories = (await getMemories(env)).slice(-12).map((m) => String(m.text || "").slice(0, 300));
+  const hour = Number(new Intl.DateTimeFormat("en", { timeZone: "Europe/Paris", hour: "2-digit", hour12: false }).format(new Date()));
+  const system = `أنت جارفس، المدير الصوتي الشخصي للدكتور. احكِ باللهجة الشامية الطبيعية بجمل قصيرة جداً مناسبة لمكالمة سريعة، بنبرة دافئة وتفاعلية، ومن دون Markdown. الوقت المحلي ${hour}:00. لا تخترع حالة أي مهمة: استعمل الحالة والنتيجة المعطاتين فقط. إذا المعلومة غير موجودة، قل إنها غير جاهزة وأنك ستضعها للبحث بالخلفية، ولا تدّعي أن التنفيذ تم. اسأل سؤالاً واحداً فقط كل مرة. إذا ذكر أنه يقود اختصر بشدة واهتم بالسلامة.\nحالة المهام: ${JSON.stringify(tasks)}\nذاكرة مختصرة: ${JSON.stringify(memories)}`;
+  return await callGemini([{ role: "user", content: text }], system, env);
+}
+
 async function handleAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
   const provided = request.headers.get("x-jarvis-key") || "";
@@ -2451,7 +2463,7 @@ async function handleAsk(request, env, ctx) {
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const text = String(body?.text || "").trim().slice(0, 1500);
   if (!text) return send({ error: "text فارغ" }, 400);
-  const reply = await agentLoop(text, env, null, { ctx });
+  const reply = (await callGeminiVoiceManager(text, env)) || "ما قدرت أوصل لخدمة الصوت الذكية هلق. جرّب بعد لحظة.";
   return send({ reply });
 }
 
@@ -2476,7 +2488,7 @@ async function handleVoiceAsk(request, env, ctx) {
   const mime = String(audio.mimeType || "audio/webm").slice(0, 100);
   const text = await transcribeAudioBuffer(env, mime, buf);
   if (!text) return send({ error: "ما قدرت أفرّغ الصوت — Groq وWorkers AI وGemini كلهم مشغولين هلق. حاول مرة ثانية أو اكتب." }, 422);
-  const reply = await agentLoop(text, env, null, { ctx });
+  const reply = (await callGeminiVoiceManager(text, env)) || "سمعتك، بس خدمة الرد الصوتي ما جاوبت هلق. جرّب بعد لحظة.";
   return send({ reply, transcript: text });
 }
 
