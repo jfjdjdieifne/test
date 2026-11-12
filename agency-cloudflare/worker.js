@@ -723,6 +723,10 @@ async function callArenaBrowser(convo, system, env) {
       });
       console.log("arena browser diagnostic:", JSON.stringify(diag));
       await kvPut(env, "arena_browser_last_diagnostic", { at: Date.now(), ...diag });
+      if (!diag.authenticated && diag.dialogCount > 0 && diag.valueLength > 0) {
+        await kvPut(env, "arena_skip_until", 0);
+        return "🔐 جلسة Arena انتهت وفتحت نافذة تسجيل الدخول بدل إرسال الرسالة. اكتب /arena connect بتيليجرام، افتح الرابط من Safari وسوّي خطوات الربط مرة واحدة، وبعدها ابعت سؤالك مباشرة.";
+      }
       throw e;
     }
     const text = parseArenaDataStream(raw);

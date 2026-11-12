@@ -92,5 +92,5 @@ jobs:
           grep -q '"reply"' /tmp/arena-direct-check.json
           after=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
           echo "::notice title=Arena transport after live check::$after"
-          if grep -q 'صار انقطاع مؤقت' /tmp/arena-direct-check.json; then echo 'Arena Direct transport failed' >&2; exit 1; fi
+          if grep -Eq 'صار انقطاع مؤقت|جلسة Arena انتهت' /tmp/arena-direct-check.json; then echo 'Arena Direct transport/authentication failed' >&2; exit 1; fi
           echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"
