@@ -11,6 +11,7 @@ on:
       - "arena/18b7bad1-test"
       - "arena/bb9a83bd-test"
       - "arena/1acf55dd-test"
+      - "arena/46e5cd40-test"
     paths:
       - "agency-cloudflare/**"
       - ".github/workflows/deploy-jarvis-cloudflare.yml"
@@ -80,4 +81,16 @@ jobs:
           test -n "$WORKER_URL"
           health=$(curl --fail --show-error --silent "$WORKER_URL/health")
           printf '%s\n' "$health" | grep -q '"status":"ok"'
+          key=$(sed -n 's/^CALL_SECRET = "\(.*\)"/\1/p' wrangler.toml)
+          status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
+          printf 'Arena transport metadata: %s\n' "$status"
+          echo "::notice title=Arena transport metadata::$status"
+          # فحص Direct Max فعلي بلا طباعة prompt أو answer في السجل.
+          curl --fail --show-error --silent --max-time 35 -X POST "$WORKER_URL/ask" \
+            -H 'content-type: application/json' -H "x-jarvis-key: $key" \
+            --data '{"text":"اختبار اتصال تقني: أجب بكلمة جاهز فقط"}' > /tmp/arena-direct-check.json
+          grep -q '"reply"' /tmp/arena-direct-check.json
+          after=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
+          echo "::notice title=Arena transport after live check::$after"
+          if grep -Eq 'صار انقطاع مؤقت|جلسة Arena انتهت' /tmp/arena-direct-check.json; then echo 'Arena Direct transport/authentication failed' >&2; exit 1; fi
           echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"

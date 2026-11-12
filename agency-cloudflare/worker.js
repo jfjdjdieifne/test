@@ -96,6 +96,7 @@ export default {
       const cookie = typeof body?.cookie === "string" ? body.cookie.slice(0, 20000) : "";
       if (!Object.keys(safeStorage).length && !cookie) return jsonResponse({ error: "Arena browser storage is empty; reload Arena and try again" }, 422, CORS_HEADERS);
       await kvPut(env, "arena_imported_storage", safeStorage);
+      await kvPut(env, "arena_runtime_storage", safeStorage);
       await kvPut(env, "arena_imported_cookie", cookie);
       await kvPut(env, "arena_imported_at", Date.now());
       await kvPut(env, "arena_connect_token", null);
@@ -112,6 +113,14 @@ export default {
     }
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", ts: Date.now() }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
+    if (url.pathname === "/arena-status") {
+      if (!env.CALL_SECRET || url.searchParams.get("key") !== env.CALL_SECRET) return jsonResponse({ error: "unauthorized" }, 401);
+      const lastError = await kvGet(env, "arena_browser_last_error", null);
+      const lastOk = await kvGet(env, "arena_browser_last_ok", null);
+      const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
+      const skipUntil = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
+      return jsonResponse({ lastError, lastOk, diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
@@ -525,7 +534,7 @@ async function callArenaBrowser(convo, system, env) {
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
     // افتح Direct Chat صراحةً. لا نستخدم الصفحة الرئيسية لأنها تبدأ Battle Mode.
     await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
-    const imported = await kvGet(env, "arena_imported_storage", {});
+    const imported = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
     const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
     if ((imported && typeof imported === "object" && Object.keys(imported).length) || importedCookie) {
       if (imported && typeof imported === "object") await page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v); }, imported);
@@ -539,6 +548,11 @@ async function callArenaBrowser(convo, system, env) {
         try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, domain: "arena.ai", path: "/", secure: true }); } catch {}
       }
       await page.reload({ waitUntil: "domcontentloaded", timeout: 8000 });
+      // احتفظ بأي access/refresh session حدّثتها Arena؛ لا ترجع كل مرة للنسخة القديمة.
+      try {
+        const freshStorage = await page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; });
+        if (freshStorage && Object.keys(freshStorage).length) await kvPut(env, "arena_runtime_storage", freshStorage);
+      } catch {}
     }
     await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
     // Arena قد تعرض نافذة cookies فوق زر الإرسال.
@@ -637,7 +651,9 @@ async function callArenaBrowser(convo, system, env) {
     const responsePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
       page.on("response", async (response) => {
-        if (!/\/nextjs-api\/stream\/(create|post)-to-evaluation/.test(response.url())) return;
+        // Arena غيّرت اسم endpoint أكثر من مرة (evaluation/direct chat). التقط أي
+        // stream تابع لـnextjs-api؛ الصفحة نفسها هي origin الموثوق، ثم حلّل الداتا.
+        if (!/\/nextjs-api\/stream\//.test(response.url())) return;
         responseStarted = true;
         try { const body = await response.text(); clearTimeout(timer); resolve(body); }
         catch (e) { clearTimeout(timer); reject(e); }
@@ -706,6 +722,11 @@ async function callArenaBrowser(convo, system, env) {
         };
       });
       console.log("arena browser diagnostic:", JSON.stringify(diag));
+      await kvPut(env, "arena_browser_last_diagnostic", { at: Date.now(), ...diag });
+      if (!diag.authenticated && diag.dialogCount > 0 && diag.valueLength > 0) {
+        await kvPut(env, "arena_skip_until", 0);
+        return "🔐 جلسة Arena انتهت وفتحت نافذة تسجيل الدخول بدل إرسال الرسالة. اكتب /arena connect بتيليجرام، افتح الرابط من Safari وسوّي خطوات الربط مرة واحدة، وبعدها ابعت سؤالك مباشرة.";
+      }
       throw e;
     }
     const text = parseArenaDataStream(raw);
