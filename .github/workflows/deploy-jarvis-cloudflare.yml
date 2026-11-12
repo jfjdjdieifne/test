@@ -85,4 +85,10 @@ jobs:
           status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
           printf 'Arena transport metadata: %s\n' "$status"
           echo "::notice title=Arena transport metadata::$status"
+          # فحص Direct Max فعلي بلا طباعة prompt أو answer في السجل.
+          curl --fail --show-error --silent --max-time 35 -X POST "$WORKER_URL/ask" \
+            -H 'content-type: application/json' -H "x-jarvis-key: $key" \
+            --data '{"text":"اختبار اتصال تقني: أجب بكلمة جاهز فقط"}' > /tmp/arena-direct-check.json
+          grep -q '"reply"' /tmp/arena-direct-check.json
+          if grep -q 'صار انقطاع مؤقت' /tmp/arena-direct-check.json; then echo 'Arena Direct transport failed' >&2; exit 1; fi
           echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"

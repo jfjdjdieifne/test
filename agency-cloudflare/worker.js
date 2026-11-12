@@ -645,7 +645,9 @@ async function callArenaBrowser(convo, system, env) {
     const responsePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
       page.on("response", async (response) => {
-        if (!/\/nextjs-api\/stream\/(create|post)-to-evaluation/.test(response.url())) return;
+        // create endpoint اسمه create-evaluation (وليس create-to-evaluation).
+        // الخطأ القديم كان يتجاهل الرد الحقيقي ثم ينتظر 12 ثانية ويعلن timeout.
+        if (!/\/nextjs-api\/stream\/(?:create-evaluation|post-to-evaluation(?:\/|$))/.test(response.url())) return;
         responseStarted = true;
         try { const body = await response.text(); clearTimeout(timer); resolve(body); }
         catch (e) { clearTimeout(timer); reject(e); }
