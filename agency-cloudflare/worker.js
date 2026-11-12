@@ -550,23 +550,18 @@ function arenaSessionFromStorage(storage) {
 }
 
 async function acquireArenaBrowser(env) {
-  // أعد الاتصال بجلسة Cloudflare الحية بدل إنشاء Chromium جديد لكل رسالة.
-  // هذا يخفض launches وحدود 429 جذرياً أثناء المحادثة النشطة وسلاسل الأدوات.
+  // Workers Free يمنح 600 ثانية Browser يومياً. افحص قبل launch كي لا نهدر محاولة.
   try {
-    const sessions = await puppeteer.sessions(env.BROWSER);
-    const available = (sessions || []).filter((s) => !s.connectionId);
-    available.sort((a, b) => Number(b.startTime || 0) - Number(a.startTime || 0));
-    for (const s of available) {
-      try { return { browser: await puppeteer.connect(env.BROWSER, s.sessionId), reused: true }; } catch {}
-    }
-  } catch (e) { console.log("arena sessions lookup:", e?.message || e); }
-  return { browser: await puppeteer.launch(env.BROWSER, { keep_alive: 120000 }), reused: false };
+    const limits = await puppeteer.limits(env.BROWSER);
+    if (Number(limits?.usedBrowserTimeSeconds || 0) >= 598) throw new Error("DAILY_BROWSER_LIMIT");
+  } catch (e) { if (String(e?.message || e).includes("DAILY_BROWSER_LIMIT")) throw e; }
+  // keep_alive قصير، ثم close فوراً: الجلسة المنفصلة تظل تحسب من حصة 10 دقائق.
+  return { browser: await puppeteer.launch(env.BROWSER, { keep_alive: 60000 }), reused: false };
 }
 
 async function releaseArenaBrowser(browser) {
   if (!browser) return;
-  // disconnect يبقي الجلسة قابلة لإعادة الاستخدام لدقيقتين؛ close كان يهدر launch جديداً.
-  try { await browser.disconnect(); } catch { try { await browser.close(); } catch {} }
+  try { await browser.close(); } catch {}
 }
 
 async function arenaReconnectLink(env) {
@@ -839,6 +834,7 @@ async function callArenaBrowser(convo, system, env) {
     console.log("arena browser error:", message);
     await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: message.slice(0, 300) });
     await arenaMarkDown(env, 60000);
+    if (/DAILY_BROWSER_LIMIT|Browser time limit exceeded/i.test(message)) return "__ARENA_RETRY_DAILY__";
     if (/429|rate limit|Unable to create new browser/i.test(message)) return "__ARENA_RETRY_429__";
     return null;
   } finally { await releaseArenaBrowser(browser); }
@@ -1388,7 +1384,7 @@ async function processTaskQueue(env, maxSteps) {
   for (let i = 0; i < budget; i++) {
     const convo = [{ role: "user", content: buildTaskPrompt(task) }];
     const out = await llmComplete(convo, WORKER_PROMPT, env);
-    if (out === "__ARENA_RETRY_429__") {
+    if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") {
       task.lockedAt = 0; task.phase = "waiting_for_browser"; task.updated = Date.now();
       const idxR = tasks.findIndex((t) => t.id === task.id); if (idxR !== -1) tasks[idxR] = { ...task };
       await kvPut(env, "tasks", tasks); return;
@@ -1435,7 +1431,7 @@ async function agentLoop(userText, env, chatId, opts) {
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
     if (!out) return "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. حفظت رسالتك وسياقها؛ جرّب ابعتها مرة ثانية بعد لحظات. ما في داعي لأي مفتاح جديد.";
-    if (out === "__ARENA_RETRY_429__") return out;
+    if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
     const call = parseToolCall(out);
     if (!call) {
       if (o.mode !== "worker") await saveThreadTurn(env, resolved, [...convo, { role: "assistant", content: out }]);
@@ -2204,11 +2200,12 @@ async function handleCommand(text, env, chatId) {
   }
 }
 
-async function queueDirectRetry(env, chatId, text) {
+async function queueDirectRetry(env, chatId, text, daily) {
   const rows = await kvGet(env, "arena_pending_direct_v1", []);
   const duplicate = rows.find((r) => r.chatId === chatId && r.text === text && Date.now() - r.created < 10 * 60000);
   if (duplicate) return duplicate.id;
-  const item = { id: "retry_" + Date.now().toString(36), chatId, text: String(text).slice(0, 6000), created: Date.now(), availableAt: Date.now() + 65000, attempts: 0 };
+  const nextUtc = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1, 0, 2);
+  const item = { id: "retry_" + Date.now().toString(36), chatId, text: String(text).slice(0, 6000), created: Date.now(), availableAt: daily ? nextUtc : Date.now() + 65000, attempts: 0 };
   rows.push(item); await kvPut(env, "arena_pending_direct_v1", rows.slice(-20)); return item.id;
 }
 
@@ -2217,8 +2214,9 @@ async function processDirectRetries(env) {
   const now = Date.now(); const item = rows.find((r) => (r.availableAt || 0) <= now); if (!item) return;
   item.attempts = (item.attempts || 0) + 1;
   const answer = await agentLoop(item.text, env, item.chatId, { route: "direct", retry: true });
-  if (answer === "__ARENA_RETRY_429__" || /صار انقطاع مؤقت/.test(answer)) {
-    item.availableAt = now + Math.min(15 * 60000, 60000 * Math.pow(2, Math.min(item.attempts, 4)));
+  if (["__ARENA_RETRY_429__", "__ARENA_RETRY_DAILY__"].includes(answer) || /صار انقطاع مؤقت/.test(answer)) {
+    const d = new Date(); const nextUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 2);
+    item.availableAt = answer === "__ARENA_RETRY_DAILY__" ? nextUtc : now + Math.min(15 * 60000, 60000 * Math.pow(2, Math.min(item.attempts, 4)));
     await kvPut(env, "arena_pending_direct_v1", rows); return;
   }
   await sendMessage(env, item.chatId, `✅ رجعت كملت طلبك تلقائياً:\n\n${answer}`);
@@ -2306,9 +2304,12 @@ async function handleUpdate(update, env, ctx) {
     return;
   }
   const answer = await agentLoop(text, env, chatId, { ctx, route: "direct", namedAgent });
-  if (answer === "__ARENA_RETRY_429__") {
-    const retryId = await queueDirectRetry(env, chatId, text);
-    await sendMessage(env, chatId, `⏳ Cloudflare وصل حده المؤقت، بس ما ضاع طلبك. حفظته (${retryId.slice(-6)}) ورح أعيده تلقائياً بالخلفية وأبعتلك الجواب أول ما تفتح جلسة Arena — ما تعيد الرسالة ولا تعمل /arena connect.`);
+  if (answer === "__ARENA_RETRY_429__" || answer === "__ARENA_RETRY_DAILY__") {
+    const daily = answer === "__ARENA_RETRY_DAILY__";
+    const retryId = await queueDirectRetry(env, chatId, text, daily);
+    await sendMessage(env, chatId, daily
+      ? `🕛 استُهلكت حصة Cloudflare المجانية الرسمية (10 دقائق Browser باليوم). حفظت طلبك (${retryId.slice(-6)}) ورح أنفذه تلقائياً بعد تجدد الحصة الساعة 00:00 UTC. إعادة الربط ما بتغيّر هالحد.`
+      : `⏳ Cloudflare وصل حد إنشاء المتصفح المؤقت، بس ما ضاع طلبك. حفظته (${retryId.slice(-6)}) ورح أعيده تلقائياً — ما تعيد الرسالة ولا تعمل /arena connect.`);
     return;
   }
   await sendMessage(env, chatId, answer);
