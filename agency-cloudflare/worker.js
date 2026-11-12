@@ -542,7 +542,14 @@ async function callArenaBrowser(convo, system, env) {
             try { resolve(await window.grecaptcha.enterprise.execute("6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0", { action: "chat_submit" })); } catch { resolve(""); }
           }));
         }
-        const id = () => crypto.randomUUID();
+        const id = () => {
+          const b = crypto.getRandomValues(new Uint8Array(16));
+          let ts = BigInt(Date.now());
+          for (let i = 5; i >= 0; i--) { b[i] = Number(ts & 255n); ts >>= 8n; }
+          b[6] = (b[6] & 0x0f) | 0x70; b[8] = (b[8] & 0x3f) | 0x80;
+          const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+          return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        };
         const data = { id: id(), mode: "battle", userMessageId: id(), modelAMessageId: id(), modelBMessageId: id(), userMessage: { content: message, experimental_attachments: [], metadata: {} }, modality: "chat", recaptchaV3Token: token || "" };
         const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
         try {
