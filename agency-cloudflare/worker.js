@@ -720,17 +720,17 @@ async function refreshArenaSession(env) {
 async function callArenaBrowser(convo, system, env) {
   if (!env || !env.BROWSER) return null;
   if (!(await arenaIsOn(env)) || await arenaInCooldown(env)) return null;
-  let browser;
+  let browser, browserProvider;
   try {
-    browser = (await acquireArenaBrowser(env)).browser;
+    const acquired = await acquireArenaBrowser(env); browser = acquired.browser; browserProvider = acquired.provider;
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
-    const saved = await kvGet(env, "arena_browser_cookies", []);
+    const saved = browserProvider === "hyperbrowser" ? [] : await kvGet(env, "arena_browser_cookies", []);
     if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
     // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
-    const imported = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
-    const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
+    const imported = browserProvider === "hyperbrowser" ? {} : await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
+    const importedCookie = browserProvider === "hyperbrowser" ? "" : String(await kvGet(env, "arena_imported_cookie", "") || "");
     // لازم كوكي المصادقة تنحط قبل أول تحميل؛ وإلا Arena تفتح حوار الدخول وتبقيه
     // حتى بعد reload، وهذا كان يجعل النقل الناجح من Safari يبدو كأنه غير مصادق.
     if (importedCookie) {
@@ -1135,7 +1135,8 @@ async function arenaSelftest(env, deep) {
   if (!cfg.enabled) return null;
   if (!cfg.base && cfg.browser) {
     const answer = deep ? await callArenaBrowser([{ role: "user", content: "رد بكلمة OK فقط" }], "اختبار اتصال قصير", env) : null;
-    return { ok: deep ? !!answer : true, engines: [{ name: "cloudflare-browser-rendering", ready: true, ok: deep ? !!answer : true, ms: 0, sample: answer ? answer.slice(0, 80) : "Chromium binding ready", error: answer || !deep ? "" : "Arena لم يرجع جواباً" }] };
+    const transport = (await kvGet(env, "hyperbrowser_profile_v1", "")) ? "hyperbrowser-persistent-profile" : ((await kvGet(env, "browserless_token_v1", "")) ? "browserless" : "cloudflare-browser-rendering");
+    return { ok: deep ? !!answer : true, engines: [{ name: transport, ready: true, ok: deep ? !!answer : true, ms: 0, sample: answer ? answer.slice(0, 80) : "Chromium binding ready", error: answer || !deep ? "" : "Arena لم يرجع جواباً" }] };
   }
   try {
     const url = cfg.base + "/arena/selftest" + (deep ? "?deep=1" : "");
