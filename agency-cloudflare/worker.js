@@ -2442,6 +2442,7 @@ async function handleTts(request, env) {
 
 /* --------------------- /ask — جسر صفحة المكالمة --------------------- */
 
+// مدير المكالمة سريع ومستقل عن انتظار Arena؛ الحقائق تُقرأ من ذاكرة جارفس.
 async function callGeminiVoiceManager(text, env) {
   const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({
     id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "",
