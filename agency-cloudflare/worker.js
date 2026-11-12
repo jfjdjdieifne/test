@@ -64,6 +64,13 @@ ${TOOL_DOC}`;
 const MAX_HISTORY = 14;
 const MAX_TOOL_STEPS = 6;
 
+function arenaConnectPage(origin, token) {
+  const endpoint = `${origin}/arena-session-import`;
+  const js = `javascript:(async()=>{try{const s={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);s[k]=localStorage.getItem(k)}const r=await fetch(${JSON.stringify(endpoint)},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:${JSON.stringify(token)},storage:s,cookie:document.cookie||''})});const d=await r.json();alert(d.ok?'✅ تم ربط Arena مع Jarvis. ارجع لتيليجرام واكتب /arena test':'❌ '+(d.error||r.status))}catch(e){alert('❌ '+e.message)}})()`;
+  const escaped = js.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!doctype html><html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ربط Arena مع Jarvis</title><style>body{font-family:system-ui;background:#07111f;color:#eef;padding:24px;line-height:1.7;max-width:650px;margin:auto}.box{background:#11223b;padding:18px;border-radius:16px;margin:14px 0}button{font-size:18px;padding:14px;width:100%;border:0;border-radius:12px;background:#39d98a;color:#06140d;font-weight:700}code{word-break:break-all;color:#9ff}b{color:#6ef}</style><h1>🔐 ربط جلسة Arena</h1><p>لا تُنقل كلمة مرور Google. يُنقل رمز جلسة Arena فقط، والرابط صالح عشر دقائق ولمرة واحدة.</p><div class="box"><b>1.</b> اضغط الزر لنسخ كود الربط.<br><button onclick="navigator.clipboard.writeText(document.getElementById('code').textContent).then(()=>alert('تم النسخ ✅'))">انسخ كود الربط</button><code id="code" style="display:none">${escaped}</code></div><div class="box"><b>2.</b> في Safari اعمل Bookmark لأي صفحة، ثم Edit وبدّل عنوانه بالكود المنسوخ. سمّه «ربط جارفس».</div><div class="box"><b>3.</b> افتح <a style="color:#6ef" href="https://arena.ai">arena.ai</a> وأنت مسجّل دخول، ثم افتح Bookmark «ربط جارفس».</div><div class="box"><b>4.</b> بعد ظهور ✅ ارجع لتيليجرام واكتب <code>/arena test</code>.</div></html>`;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -74,6 +81,34 @@ export default {
       if (url.pathname === "/voice-ask") return handleVoiceAsk(request, env, ctx);
       if (url.pathname === "/call-end") return handleCallEnd(request, env, ctx);
       return handleAsk(request, env, ctx);
+    }
+    if (url.pathname === "/arena-session-import") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...CORS_HEADERS, "access-control-allow-headers": "content-type" } });
+      if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
+      let body; try { body = await request.json(); } catch { return jsonResponse({ error: "bad json" }, 400, CORS_HEADERS); }
+      const expected = await kvGet(env, "arena_connect_token", null);
+      const expires = Number(await kvGet(env, "arena_connect_expires", 0)) || 0;
+      if (!expected || body?.token !== expected || expires < Date.now()) return jsonResponse({ error: "expired or invalid link" }, 401, CORS_HEADERS);
+      const storage = body?.storage && typeof body.storage === "object" ? body.storage : {};
+      const safeStorage = {};
+      // Arena غيّرت أسماء مفاتيح الجلسة أكثر من مرة؛ المصدر محصور بـarena.ai عبر الـbookmarklet.
+      for (const [k, v] of Object.entries(storage)) if (typeof k === "string" && k.length < 200 && typeof v === "string" && v.length < 30000) safeStorage[k] = v;
+      const cookie = typeof body?.cookie === "string" ? body.cookie.slice(0, 20000) : "";
+      if (!Object.keys(safeStorage).length && !cookie) return jsonResponse({ error: "Arena browser storage is empty; reload Arena and try again" }, 422, CORS_HEADERS);
+      await kvPut(env, "arena_imported_storage", safeStorage);
+      await kvPut(env, "arena_imported_cookie", cookie);
+      await kvPut(env, "arena_imported_at", Date.now());
+      await kvPut(env, "arena_connect_token", null);
+      await kvPut(env, "arena_connect_expires", 0);
+      await kvPut(env, "arena_skip_until", 0);
+      return jsonResponse({ ok: true, imported: Object.keys(safeStorage).length }, 200, CORS_HEADERS);
+    }
+    if (url.pathname === "/arena-connect") {
+      const token = url.searchParams.get("token") || "";
+      const expected = await kvGet(env, "arena_connect_token", null);
+      const expires = Number(await kvGet(env, "arena_connect_expires", 0)) || 0;
+      if (!token || token !== expected || expires < Date.now()) return new Response("رابط الربط منتهي. اطلب /arena connect من جديد.", { status: 401, headers: { "content-type": "text/plain;charset=utf-8" } });
+      return new Response(arenaConnectPage(url.origin, token), { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", ts: Date.now() }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -96,6 +131,8 @@ export default {
       }
       let update;
       try { update = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
+      // نحتاج العنوان لبناء رابط /arena connect بدون متغير يدوي.
+      ctx.waitUntil(kvPut(env, "public_worker_url", url.origin));
       ctx.waitUntil(handleUpdate(update, env, ctx).catch((e) => console.log("handler error:", e && e.message ? e.message : e)));
       return new Response("ok", { status: 200 });
     }
@@ -434,6 +471,21 @@ function parseArenaDataStream(raw) {
   return chunks.join("").trim();
 }
 
+function arenaSessionFromStorage(storage) {
+  const seen = new Set();
+  function walk(v) {
+    if (!v || typeof v !== "object" || seen.has(v)) return null; seen.add(v);
+    if (typeof v.access_token === "string" && typeof v.refresh_token === "string") return v;
+    for (const x of Object.values(v)) { const found = walk(x); if (found) return found; }
+    return null;
+  }
+  for (const raw of Object.values(storage || {})) {
+    if (typeof raw !== "string") continue;
+    try { const found = walk(JSON.parse(raw)); if (found) return found; } catch {}
+  }
+  return null;
+}
+
 /** Arena بلا سيرفر: Chromium مُدار من Cloudflare Browser Rendering.
  * نستخدم واجهة Arena الحقيقية، لذلك الصفحة نفسها تنشئ reCAPTCHA والجلسة؛ ثم نحفظ
  * cookies في KV ليستمر تسجيل الدخول بين تشغيل وآخر. */
@@ -449,22 +501,143 @@ async function callArenaBrowser(convo, system, env) {
     if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
     // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
-    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
+    // الصفحة الرئيسية تبدأ Battle Mode المجهول؛ Direct/Max يفتح نافذة Login ولا يرسل.
+    await page.goto("https://arena.ai/", { waitUntil: "domcontentloaded", timeout: 8000 });
+    const imported = await kvGet(env, "arena_imported_storage", {});
+    const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
+    if ((imported && typeof imported === "object" && Object.keys(imported).length) || importedCookie) {
+      if (imported && typeof imported === "object") await page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v); }, imported);
+      if (importedCookie) {
+        const specs = importedCookie.split(";").map((part) => { const i = part.indexOf("="); return i > 0 ? { name: part.slice(0, i).trim(), value: part.slice(i + 1).trim(), domain: "arena.ai", path: "/", secure: true } : null; }).filter(Boolean);
+        if (specs.length) { try { await page.setCookie(...specs); } catch {} }
+      }
+      const session = arenaSessionFromStorage(imported);
+      if (session) {
+        const encoded = "base64-" + btoa(unescape(encodeURIComponent(JSON.stringify(session))));
+        try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, domain: "arena.ai", path: "/", secure: true }); } catch {}
+      }
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 8000 });
+    }
     await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
+    // Arena قد تعرض نافذة cookies فوق زر الإرسال.
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll("button")];
+      const consent = buttons.find((b) => /accept cookies|accept all|agree|موافق/i.test((b.textContent || "").trim()));
+      if (consent) consent.click();
+      // أغلق login/news/onboarding dialogs التي تمنع زر Send.
+      for (const b of buttons) if (/^(close|maybe later|not now|no,? please hide|إغلاق)$/i.test((b.textContent || "").trim()) || /dismiss/i.test(b.getAttribute("aria-label") || "")) b.click();
+    });
+    await new Promise((r) => setTimeout(r, 600));
     const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
+
+    // الطريق الثابت: نفّذ نفس endpoint الذي تستعمله واجهة Arena من داخل origin والجلسة.
+    // هذا يتجاوز زر React الذي قد يبقى disabled بسبب onboarding/modality state.
+    try {
+      const directRaw = await page.evaluate(async (message) => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        let token = "";
+        for (let i = 0; i < 20; i++) { if (window.grecaptcha?.enterprise) break; await sleep(200); }
+        if (window.grecaptcha?.enterprise) {
+          token = await new Promise((resolve) => window.grecaptcha.enterprise.ready(async () => {
+            try { resolve(await window.grecaptcha.enterprise.execute("6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0", { action: "chat_submit" })); } catch { resolve(""); }
+          }));
+        }
+        const id = () => {
+          const b = crypto.getRandomValues(new Uint8Array(16));
+          let ts = BigInt(Date.now());
+          for (let i = 5; i >= 0; i--) { b[i] = Number(ts & 255n); ts >>= 8n; }
+          b[6] = (b[6] & 0x0f) | 0x70; b[8] = (b[8] & 0x3f) | 0x80;
+          const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+          return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+        };
+        const data = { id: id(), mode: "battle", userMessageId: id(), modelAMessageId: id(), modelBMessageId: id(), userMessage: { content: message, experimental_attachments: [], metadata: {} }, modality: "chat", recaptchaV3Token: token || "" };
+        const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
+        try {
+          const res = await fetch("/nextjs-api/stream/create-evaluation", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data), signal: ctl.signal });
+          const text = await res.text();
+          return { status: res.status, text };
+        } finally { clearTimeout(timer); }
+      }, prompt);
+      const directText = directRaw && directRaw.status < 400 ? parseArenaDataStream(directRaw.text) : "";
+      if (directText) {
+        try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
+        await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "in-page-api" });
+        return directText;
+      }
+      console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, prefix: String(directRaw?.text || "").slice(0, 250) }));
+    } catch (e) { console.log("arena direct error:", e && e.message ? e.message : e); }
+
+    let responseStarted = false;
     const responsePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
       page.on("response", async (response) => {
         if (!/\/nextjs-api\/stream\/(create|post)-to-evaluation/.test(response.url())) return;
+        responseStarted = true;
         try { const body = await response.text(); clearTimeout(timer); resolve(body); }
         catch (e) { clearTimeout(timer); reject(e); }
       });
     });
     const box = await page.$('textarea[name="message"]');
     await box.click();
-    await box.type(prompt, { delay: 1 });
-    await page.keyboard.press("Enter");
-    const raw = await responsePromise;
+    // React controlled textarea: Puppeteer.type يغيّر DOM أحياناً دون state، فيبقى Send disabled.
+    await page.evaluate((text) => {
+      const ta = document.querySelector('textarea[name="message"]');
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      if (!ta || !setter) return;
+      setter.call(ta, text);
+      ta.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+      ta.dispatchEvent(new Event("change", { bubbles: true }));
+    }, prompt);
+    try { await page.waitForFunction(() => { const b = document.querySelector('button[aria-label="Send message"]'); return b && !b.disabled; }, { timeout: 3500 }); } catch {}
+    const clicked = await page.evaluate(() => {
+      const ta = document.querySelector('textarea[name="message"]');
+      const form = ta && ta.closest("form");
+      // ممنوع اختيار أي submit عام: نافذة التسجيل فيها Continue with Google من نفس النوع.
+      const exact = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
+      const candidates = form ? [...form.querySelectorAll("button")] : [];
+      const submit = exact || candidates.find((b) => !b.disabled && /send|إرسال/i.test(`${b.getAttribute("aria-label") || ""} ${b.textContent || ""}`));
+      if (!submit) return false;
+      submit.click(); return true;
+    });
+    if (!clicked) await page.keyboard.press("Enter");
+    // أحياناً Arena تفتح Login modal عند أول إرسال للزائر. أغلقها وأعد الإرسال مرة.
+    await new Promise((r) => setTimeout(r, 900));
+    if (!responseStarted) {
+      const dismissed = await page.evaluate(() => {
+        const action = [...document.querySelectorAll("button")].find((b) => /^(agree|close|maybe later|not now|موافق|إغلاق)$/i.test((b.textContent || "").trim()));
+        if (action) { action.click(); return true; }
+        return false;
+      });
+      if (dismissed) await new Promise((r) => setTimeout(r, 700));
+      let retryBox = await page.$('textarea[name="message"]');
+      if (retryBox) {
+        const current = await page.evaluate(() => document.querySelector('textarea[name="message"]')?.value || "");
+        if (!current.trim()) {
+          await retryBox.click();
+          await page.evaluate((text) => { const ta = document.querySelector('textarea[name="message"]'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set; if (ta && set) { set.call(ta, text); ta.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text })); } }, prompt);
+        }
+        const sent = await page.evaluate(() => {
+          const send = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
+          if (send && !send.disabled) { send.click(); return true; }
+          return false;
+        });
+        if (!sent) await page.keyboard.press("Enter");
+      }
+    }
+    let raw;
+    try { raw = await responsePromise; }
+    catch (e) {
+      const diag = await page.evaluate(() => ({
+        url: location.origin + location.pathname,
+        title: document.title,
+        textarea: !!document.querySelector('textarea[name="message"]'),
+        valueLength: (document.querySelector('textarea[name="message"]') || {}).value?.length || 0,
+        buttons: [...document.querySelectorAll("button")].slice(-12).map((b) => ({ text: (b.textContent || "").trim().slice(0, 50), aria: b.getAttribute("aria-label"), disabled: !!b.disabled, type: b.type })),
+        body: (document.body?.innerText || "").slice(0, 1000),
+      }));
+      console.log("arena browser diagnostic:", JSON.stringify(diag));
+      throw e;
+    }
     const text = parseArenaDataStream(raw);
     try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
     if (!text) throw new Error("Arena browser returned an empty stream");
@@ -1616,6 +1789,21 @@ async function handleCommand(text, env, chatId) {
       const low = sub.toLowerCase();
       const kvUrl = await kvGet(env, "arena_url", null);
       const kvKey = await kvGet(env, "arena_key", null);
+
+      if (/^(connect|login|ربط|دخول)$/i.test(low)) {
+        const base = String(await kvGet(env, "public_worker_url", "")).replace(/\/+$/, "");
+        if (!base) { await sendMessage(env, chatId, "أرسل /health أولاً ثم أعد /arena connect حتى أعرف رابط Worker."); return true; }
+        const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+        await kvPut(env, "arena_connect_token", token);
+        await kvPut(env, "arena_connect_expires", Date.now() + 10 * 60 * 1000);
+        await sendMessage(env, chatId, [
+          "🔐 رابط نقل جلسة Arena من Safari (صالح 10 دقائق ولمرة واحدة):",
+          `${base}/arena-connect?token=${token}`,
+          "",
+          "افتحه في Safari واتبع 4 خطوات. لا يطلب كلمة مرور Google ولا يرسلها لجارفس.",
+        ].join("\n"));
+        return true;
+      }
 
       /* ----- الإعداد الكامل من تيليجرام (بدون wrangler ولا لوحة) ----- */
       if (/^setup|شرح|اعداد|إعداد/.test(low)) {
