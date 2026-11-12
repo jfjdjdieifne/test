@@ -30,7 +30,7 @@ const LEADS = [
   { i: 12, pri: "دافئ", company: "One Perfect Stay", website: "https://oneperfectstay.com/", wa: "971565663842", phone: "+971 52 566 4648", deal: "15,000–80,000+ AED/سنة", sector: "إدارة وحدات فندقية Airbnb", issues: "صفحة المالك ترسل لزمن توقع عام بدل حاسبة عائد فوري على الصفحة", offer: "حاسبة عائد تأجير قصير/طويل تفاعلية + قمع مالك عربي", price: "$300–$600" },
 ];
 
-const TOOL_DOC = `الأدوات المتاحة:
+const TOOL_DOC = `الأدوات التالية واجهة Jarvis المحلية وليست حداً لقدرات Arena أو التطبيقات المربوطة بحسابها. لا تدّعِ أن Arena عاجزة عن شيء لمجرد أنه غير موجود بالقائمة:
 - search_web(query): بحث ويب حي
 - open_url(url): افتح أي رابط واقرأ نص الصفحة (مناسب للتحقق من صفحة، سعر، خبر، شروط…)
 - arena_chat(prompt, model?): اسأل نماذج LMArena مباشرة (رأي تاني أو نموذج محدد)
@@ -218,6 +218,24 @@ const saveHistory = (env, convo) => kvPut(env, "history", convo.slice(-MAX_HISTO
    ويُعاد حقنه لأي محرك (Arena أو fallback)، لذلك نقدر نرجع لشغل من مبارح أو أسبوع. */
 const THREADS_KEY = "context_threads_v1";
 const ACTIVE_THREAD_KEY = "active_context_thread_v1";
+const AGENTS_KEY = "arena_agent_registry_v1";
+
+/* Registry مفتوح: الاسم/الدستور/skills يحددها المالك، ولا نفترض حدود قدرات Arena. */
+async function getAgentRegistry(env) { return (await kvGet(env, AGENTS_KEY, [])) || []; }
+async function saveAgentRegistry(env, rows) { await kvPut(env, AGENTS_KEY, rows.slice(0, 100)); }
+async function findMentionedAgent(env, text) {
+  const rows = await getAgentRegistry(env); const hay = String(text || "").toLowerCase();
+  return rows.find((a) => hay.includes(String(a.name || "").toLowerCase())) || null;
+}
+function arenaRouteIntent(text) {
+  const s = String(text || "").trim();
+  const forcedDirect = /^(سؤال|اسأل|اشرح|فسر|شو يعني|ما هو|ما هي)\b/i.test(s);
+  const forcedAgent = /^(مهمة|نفّذ|نفذ|ابني|اصنع|صمم|صمّم|ابحث|حقق|حقّق)\b/i.test(s);
+  const complex = /(pdf|ملف|تقرير|دراسة|خطة كاملة|مشروع|github|git hub|drive|درايف|gmail|ايميل|إيميل|notion|نوشن|vercel|supabase|sheets|slides|docs|ارفع|نزّل|حلّل|حلل|قارن|افحص|صمّم|صمم|ابني|ابحث|راسل|نفّذ|نفذ)/i.test(s);
+  if (forcedDirect) return { mode: "direct", reason: "explicit-question" };
+  if (forcedAgent || complex) return { mode: "agent", reason: forcedAgent ? "explicit-task" : "complex-action" };
+  return { mode: "direct", reason: "conversation" };
+}
 function threadWords(s) {
   return [...new Set(String(s || "").toLowerCase().replace(/[^\p{L}\p{N}_-]+/gu, " ").split(/\s+/)
     .filter((w) => w.length > 2 && !/^(هذا|هاي|هاد|على|الى|إلى|فيها|عليه|في|من|شو|بدي|كمل|تمام|the|and|for|with)$/.test(w)))];
@@ -564,7 +582,7 @@ async function callArenaBrowser(convo, system, env) {
         await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "in-page-api" });
         return directText;
       }
-      console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, prefix: String(directRaw?.text || "").slice(0, 250) }));
+      console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, has_body: !!directRaw?.text }));
     } catch (e) { console.log("arena direct error:", e && e.message ? e.message : e); }
 
     let responseStarted = false;
@@ -627,14 +645,18 @@ async function callArenaBrowser(convo, system, env) {
     let raw;
     try { raw = await responsePromise; }
     catch (e) {
-      const diag = await page.evaluate(() => ({
-        url: location.origin + location.pathname,
-        title: document.title,
-        textarea: !!document.querySelector('textarea[name="message"]'),
-        valueLength: (document.querySelector('textarea[name="message"]') || {}).value?.length || 0,
-        buttons: [...document.querySelectorAll("button")].slice(-12).map((b) => ({ text: (b.textContent || "").trim().slice(0, 50), aria: b.getAttribute("aria-label"), disabled: !!b.disabled, type: b.type })),
-        body: (document.body?.innerText || "").slice(0, 1000),
-      }));
+      const diag = await page.evaluate(() => {
+        const send = document.querySelector('button[aria-label="Send message"]');
+        return {
+          path: location.pathname,
+          authenticated: !![...document.querySelectorAll("button")].find((b) => /@/.test((b.textContent || "").trim())),
+          textarea: !!document.querySelector('textarea[name="message"]'),
+          valueLength: (document.querySelector('textarea[name="message"]') || {}).value?.length || 0,
+          sendPresent: !!send,
+          sendDisabled: !!send?.disabled,
+          dialogCount: document.querySelectorAll('[role="dialog"]').length,
+        };
+      });
       console.log("arena browser diagnostic:", JSON.stringify(diag));
       throw e;
     }
@@ -854,6 +876,8 @@ async function llmComplete(convo, system, env) {
   if (await arenaIsPrimary(env)) {
     const arena = await callArenaBridge(convo, system, env);
     if (arena) return arena;
+    // وضع Arena-only يمنع تبديل العقل بصمت. خدمات الصوت/التفريغ أدوات مستقلة وليست عقل الرد.
+    if (/^(1|true|yes|on)$/i.test(String(env.ARENA_ONLY || ""))) return null;
   }
   return (
     (await callGemini(convo, system, env)) ||
@@ -1107,12 +1131,13 @@ async function getOwnerChatId(env) {
   return env.OWNER_CHAT_ID ? Number(env.OWNER_CHAT_ID) : null;
 }
 
-async function queueApprovedTask(env, goal, ctx) {
-  const g = String(goal || "").trim().slice(0, 500);
+async function queueApprovedTask(env, goal, ctx, meta) {
+  const g = String(goal || "").trim().slice(0, 6000);
   const tasks = await kvGet(env, "tasks", []);
   const id = "task_" + Date.now();
   const threadId = await kvGet(env, ACTIVE_THREAD_KEY, "");
-  tasks.unshift({ id, goal: g, threadId, status: "queued", trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0, consecutiveFailures: 0 });
+  const m = meta || {};
+  tasks.unshift({ id, goal: g, threadId, route: m.route || "agent", agentId: m.agentId || null, agentName: m.agentName || null, status: "queued", phase: "queued", progress: 0, trace: [], stepCount: 0, created: Date.now(), updated: Date.now(), lockedAt: 0, consecutiveFailures: 0 });
   await kvPut(env, "tasks", tasks.slice(0, 30));
   if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(processTaskQueue(env, STEPS_PER_TICK));
   return id;
@@ -1192,8 +1217,15 @@ async function processTaskQueue(env, maxSteps) {
     const call = parseToolCall(out);
     if (!call) { await finishTask(task, tasks, env, "done", out); return; }
     const result = await runTool(call, env, null);
-    task.trace = (task.trace || []).concat([{ step: task.stepCount, tool: call.tool, args: call.args, result: String(result).slice(0, 1200) }]).slice(-40);
+    task.trace = (task.trace || []).concat([{ step: task.stepCount, tool: call.tool, args: call.args, result: String(result).slice(0, 1200), at: Date.now() }]).slice(-40);
+    task.phase = call.tool || "working";
+    task.progress = Math.min(95, Math.max(task.progress || 0, 10 + task.stepCount * 7));
     task.updated = Date.now();
+    if (!task.lastProgressAt || Date.now() - task.lastProgressAt > 2 * 60000) {
+      task.lastProgressAt = Date.now();
+      const owner = await getOwnerChatId(env);
+      if (owner) await sendMessage(env, owner, `⏳ ${task.agentName ? task.agentName + " · " : ""}${String(task.goal).slice(0, 100)}\nالتقدم: ${task.progress}% · المرحلة: ${task.phase}\nآخر نتيجة: ${String(result).slice(0, 350)}`);
+    }
     const idx2 = tasks.findIndex((t) => t.id === task.id);
     if (idx2 !== -1) tasks[idx2] = { ...task };
     await kvPut(env, "tasks", tasks);
@@ -1704,6 +1736,32 @@ async function handleCommand(text, env, chatId) {
       const lines = tasks.slice(0, 8).map((x) => `${x.status === "done" ? "✅" : x.status === "running" ? "⏳" : "▫️"} ${x.goal.slice(0, 100)} — خطوة ${x.stepCount || 0}`);
       await sendMessage(env, chatId, `📍 ${t.title}\nالمعرف: ${t.id}\nآخر سياق: ${t.summary || "—"}\n\nالمهام:\n${lines.join("\n") || "لا توجد مهمة خلفية مرتبطة بعد."}`); return true;
     }
+    case "/agents": case "/ايجنتات": {
+      const rows = await getAgentRegistry(env);
+      if (!rows.length) { await sendMessage(env, chatId, "ما في Agents مسمّيين بعد. أضف واحد:\n/agent add أحمد | التداول | ضع الدستور والـskills أو رابط ملف GitHub هون"); return true; }
+      await sendMessage(env, chatId, "🧩 فريق Jarvis:\n\n" + rows.map((a, i) => `${i + 1}. ${a.name} — ${a.scope || "بدون نطاق ثابت"}\n   ${String(a.instructions || "").slice(0, 180)}`).join("\n\n")); return true;
+    }
+    case "/agent": {
+      if (/^add\s+/i.test(arg)) {
+        const parts = arg.replace(/^add\s+/i, "").split("|").map((x) => x.trim());
+        if (parts.length < 3 || !parts[0]) { await sendMessage(env, chatId, "الصيغة:\n/agent add أحمد | التداول | دستور أحمد والـskills أو رابطها"); return true; }
+        const rows = await getAgentRegistry(env); const name = parts[0].slice(0, 40);
+        const item = { id: "agt_" + Date.now().toString(36), name, scope: parts[1].slice(0, 120), instructions: parts.slice(2).join(" | ").slice(0, 6000), created: Date.now(), updated: Date.now() };
+        const old = rows.findIndex((x) => String(x.name).toLowerCase() === name.toLowerCase());
+        if (old >= 0) rows[old] = { ...rows[old], ...item, id: rows[old].id }; else rows.push(item);
+        await saveAgentRegistry(env, rows); await sendMessage(env, chatId, `✅ حفظت ${name}. لما تذكر اسمه، Jarvis يربط الطلب بدستوره وسياقه.`); return true;
+      }
+      if (/^(delete|حذف)\s+/i.test(arg)) {
+        const name = arg.replace(/^(delete|حذف)\s+/i, "").trim().toLowerCase(); let rows = await getAgentRegistry(env); const before = rows.length;
+        rows = rows.filter((x) => String(x.name).toLowerCase() !== name); await saveAgentRegistry(env, rows);
+        await sendMessage(env, chatId, before === rows.length ? "ما لقيت هالاسم." : "🗑️ حذفت Agent من السجل."); return true;
+      }
+      await sendMessage(env, chatId, "الأوامر:\n/agents\n/agent add الاسم | النطاق | الدستور والـskills\n/agent delete الاسم"); return true;
+    }
+    case "/route": {
+      const r = arenaRouteIntent(arg); const a = await findMentionedAgent(env, arg);
+      await sendMessage(env, chatId, `🧭 المسار: ${r.mode === "agent" ? "Agent Mode" : "Direct Chat"}\nالسبب: ${r.reason}${a ? `\nAgent: ${a.name} (${a.scope})` : ""}`); return true;
+    }
     case "/report": {
       const merged = await mergedLeads(env);
       const counts = {};
@@ -2019,7 +2077,24 @@ async function handleUpdate(update, env, ctx) {
   }
   if (!text) { await sendMessage(env, chatId, "أرسل نصاً، صوتاً، صورة أو ملف (txt/csv/xlsx/docx)."); return; }
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
-  const answer = await agentLoop(text, env, chatId, { ctx });
+  const route = arenaRouteIntent(text);
+  const namedAgent = await findMentionedAgent(env, text);
+  if (/شو\s*(صار|وصل)|وين\s*(وصلنا|صرت)|اعطيني\s*(تقدم|ابديت)|update|progress/i.test(text)) {
+    const tasks = await kvGet(env, "tasks", []); const activeThread = await kvGet(env, ACTIVE_THREAD_KEY, "");
+    const pool = tasks.filter((t) => !activeThread || t.threadId === activeThread);
+    const t = (namedAgent ? pool.find((x) => x.agentId === namedAgent.id || x.agentName === namedAgent.name) : null) || pool.find((x) => ["queued", "running"].includes(x.status)) || pool[0];
+    if (t) { const last = (t.trace || []).slice(-1)[0]; await sendMessage(env, chatId, `📍 ${t.agentName ? t.agentName + " · " : ""}${String(t.goal).slice(0, 140)}\nالحالة: ${t.status} · التقدم: ${t.progress || 0}%\nالمرحلة: ${t.phase || "queued"}\n${last ? "آخر نتيجة: " + String(last.result).slice(0, 700) : "لم تبدأ أول خطوة بعد."}`); return; }
+  }
+  if (route.mode === "agent") {
+    // أنشئ/اختر مساحة المشروع قبل ربط المهمة بها.
+    const taskThread = await resolveThread(env, text, null);
+    await putThreads(env, taskThread.rows);
+    const skill = namedAgent ? `\n\nAgent المكلّف: ${namedAgent.name}\nالنطاق: ${namedAgent.scope}\nالدستور والـSkills:\n${namedAgent.instructions}` : "";
+    const id = await queueApprovedTask(env, text + skill, ctx, { route: "agent", agentId: namedAgent?.id, agentName: namedAgent?.name });
+    await sendMessage(env, chatId, `🚀 بدأت المهمة ${id.slice(-6)}${namedAgent ? ` مع ${namedAgent.name}` : ""}\nرح أبعت Progress حقيقي أثناء التنفيذ. اسأل «شو صار؟» بأي وقت.`);
+    return;
+  }
+  const answer = await agentLoop(text, env, chatId, { ctx, route: "direct", namedAgent });
   await sendMessage(env, chatId, answer);
   if (isVoice) {
     const voiceOn = await kvGet(env, "voice_replies", false);

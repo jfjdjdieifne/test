@@ -586,5 +586,32 @@ await t("41) Browser Rendering يفعّل Arena بلا رابط جسر", async (
   assert.ok(out.includes("Chromium داخل Cloudflare"), "ما ظهر التشغيل بلا سيرفر");
 });
 
-console.log(`\n${passed}/41 اختبارات ناجحة`);
+await t("42) Arena Router يفرّق Direct عن Agent", async () => {
+  const env = makeEnv();
+  await runWebhook(env, makeCtx(), tgUpdate("/route اشرحلي شو يعني هامش الربح"));
+  assert.ok(sentTexts().join("\n").includes("Direct Chat"));
+  await runWebhook(env, makeCtx(), tgUpdate("/route ابحث واعمل تقرير PDF كامل"));
+  assert.ok(sentTexts().join("\n").includes("Agent Mode"));
+});
+
+await t("43) Registry يحفظ Agent مسمّى مع دستوره", async () => {
+  const env = makeEnv();
+  await runWebhook(env, makeCtx(), tgUpdate("/agent add أحمد | التداول | راقب EURUSD واتبع ملف skills/trading.md"));
+  const rows = JSON.parse(state.kv.get("arena_agent_registry_v1"));
+  assert.equal(rows[0].name, "أحمد");
+  await runWebhook(env, makeCtx(), tgUpdate("/agents"));
+  assert.ok(sentTexts().join("\n").includes("أحمد"));
+});
+
+await t("44) الطلب المعقد يدخل طابور Agent ويرتبط بالاسم", async () => {
+  const env = makeEnv();
+  state.kv.set("arena_agent_registry_v1", JSON.stringify([{ id: "agt_a", name: "أحمد", scope: "التداول", instructions: "دستور التداول" }]));
+  await runWebhook(env, makeCtx(), tgUpdate("أحمد ابحث وحلل السوق واعمل تقرير"));
+  const tasks = JSON.parse(state.kv.get("tasks"));
+  assert.equal(tasks[0].route, "agent");
+  assert.equal(tasks[0].agentName, "أحمد");
+  assert.ok(sentTexts().join("\n").includes("بدأت المهمة"));
+});
+
+console.log(`\n${passed}/44 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

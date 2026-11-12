@@ -1,5 +1,5 @@
 name: Deploy Jarvis to Cloudflare
-# Live diagnostic rerun after importing the authenticated Arena session.
+# Privacy-safe deployment: never tails Arena pages or records Telegram payloads.
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - "arena/38691ede-test"
       - "arena/46b2f7b6-test"
       - "arena/8b9f58ef-test"
+      - "arena/22fb9ec3-test"
     paths:
       - "agency-cloudflare/**"
       - ".github/workflows/deploy-jarvis-cloudflare.yml"
@@ -39,7 +40,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Test (41 checks)
+      - name: Test (44 checks)
         run: npm test
 
       - name: Deploy Worker + Browser Rendering
@@ -68,40 +69,12 @@ jobs:
           fi
           exit "$code"
 
-      - name: Live health check + Arena test in Telegram
+      - name: Privacy-safe live health check
         env:
           WORKER_URL: ${{ steps.deploy.outputs.worker_url }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         shell: bash
         run: |
           test -n "$WORKER_URL"
-          curl --fail --show-error --silent "$WORKER_URL/health" | tee /tmp/health.json
-          grep -q '"status":"ok"' /tmp/health.json
-          SECRET=$(sed -n 's/^WEBHOOK_SECRET = "\(.*\)"/\1/p' wrangler.toml)
-          OWNER=$(sed -n 's/^ALLOWED_TELEGRAM_ID = "\(.*\)"/\1/p' wrangler.toml)
-          NOW=$(date +%s)
-          # التقط سجلات المتصفح أثناء الفحص نفسه حتى نرى سبب Arena الحقيقي.
-          timeout 38s npx wrangler tail jarvis-24-7 --format pretty > /tmp/worker-tail.log 2>&1 &
-          TAIL_PID=$!
-          sleep 4
-          curl --fail --show-error --silent -X POST "$WORKER_URL/webhook" \
-            -H 'content-type: application/json' \
-            -H "X-Telegram-Bot-Api-Secret-Token: $SECRET" \
-            --data "{\"update_id\":$NOW,\"message\":{\"message_id\":$NOW,\"date\":$NOW,\"chat\":{\"id\":$OWNER,\"type\":\"private\"},\"from\":{\"id\":$OWNER,\"is_bot\":false,\"first_name\":\"Owner\"},\"text\":\"/arena test\"}}"
-          sleep 28
-          kill "$TAIL_PID" 2>/dev/null || true
-          wait "$TAIL_PID" 2>/dev/null || true
-          tail -c 10000 /tmp/worker-tail.log || true
-          {
-            echo '### سجل Browser Rendering الحي'
-            echo '```text'
-            tail -c 10000 /tmp/worker-tail.log
-            echo '```'
-            echo '✅ Worker health passed; /arena test was sent to Telegram.'
-          } >> "$GITHUB_STEP_SUMMARY"
-          err=$(grep -E 'arena browser (error|diagnostic):|Error:|error' /tmp/worker-tail.log | tail -8 | tr '\n' ' ' | tail -c 3500 || true)
-          if [ -n "$err" ]; then
-            safe=$(printf '%s' "$err" | sed 's/%/%25/g; s/\r/%0D/g')
-            echo "::warning title=Arena live browser log::$safe"
-          fi
+          health=$(curl --fail --show-error --silent "$WORKER_URL/health")
+          printf '%s\n' "$health" | grep -q '"status":"ok"'
+          echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"
