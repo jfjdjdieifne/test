@@ -2483,18 +2483,32 @@ async function handleGeminiLiveSocket(request, env) {
 
   const pair = new WebSocketPair();
   const client = pair[0], server = pair[1]; server.accept();
-  const model = String(env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-preview-09-2025");
+  let model = String(env.GEMINI_LIVE_MODEL || "");
+  if (!model) {
+    try {
+      const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(10000) });
+      if (!modelsRes.ok) { server.send(JSON.stringify({ type: "error", message: `مفتاح Gemini مرفوض أو بلا صلاحية (HTTP ${modelsRes.status})` })); server.close(1008, "Gemini key rejected"); return new Response(null, { status: 101, webSocket: client }); }
+      const models = (await modelsRes.json()).models || [];
+      const live = models.filter((m) => (m.supportedGenerationMethods || []).some((x) => /bidiGenerateContent/i.test(x)));
+      model = (live.find((m) => /native.audio/i.test(m.name)) || live.find((m) => /live/i.test(m.name)) || live[0])?.name || "";
+      if (!model) { server.send(JSON.stringify({ type: "error", message: "حساب Gemini الحالي لا يعرض أي نموذج Live Audio" })); server.close(1008, "No Live model"); return new Response(null, { status: 101, webSocket: client }); }
+    } catch { server.send(JSON.stringify({ type: "error", message: "تعذر فحص نماذج Gemini المتاحة" })); server.close(1011, "Model discovery failed"); return new Response(null, { status: 101, webSocket: client }); }
+  }
   const upstream = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(apiKey)}`);
-  const pending = [];
-  const sendUpstream = (data) => upstream.readyState === 1 ? upstream.send(data) : pending.push(data);
+  const pending = []; let configured = false;
+  const sendUpstream = (data) => (upstream.readyState === 1 && configured) ? upstream.send(data) : pending.push(data);
   upstream.addEventListener("open", async () => {
     const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({ id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "", status: t.status || "", result: String(t.result || t.output || "").slice(0, 600) }));
-    sendUpstream(JSON.stringify({ setup: { model, generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } } }, systemInstruction: { parts: [{ text: `أنت جارفس، مدير شخصي صوتي للدكتور قصي. احكِ بالشامية الطبيعية بسرعة ودفء، بجمل قصيرة، واسأل سؤالاً واحداً كل مرة. لا تخترع حالة المهام. إذا لم تكن النتيجة موجودة قل إنها غير جاهزة. اسمح بالمقاطعة واختصر أثناء القيادة. حالة المهام الحالية: ${JSON.stringify(tasks)}` }] } } }));
-    while (pending.length) upstream.send(pending.shift());
-    try { server.send(JSON.stringify({ type: "ready" })); } catch {}
+    upstream.send(JSON.stringify({ setup: { model, generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } } }, systemInstruction: { parts: [{ text: `أنت جارفس، مدير شخصي صوتي للدكتور قصي. احكِ بالشامية الطبيعية بسرعة ودفء، بجمل قصيرة، واسأل سؤالاً واحداً كل مرة. لا تخترع حالة المهام. إذا لم تكن النتيجة موجودة قل إنها غير جاهزة. اسمح بالمقاطعة واختصر أثناء القيادة. حالة المهام الحالية: ${JSON.stringify(tasks)}` }] } } }));
   });
   server.addEventListener("message", (e) => sendUpstream(e.data));
-  upstream.addEventListener("message", (e) => { try { server.send(e.data); } catch {} });
+  upstream.addEventListener("message", (e) => {
+    try {
+      const parsed = JSON.parse(typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data));
+      if (parsed.setupComplete || parsed.setup_complete) { configured = true; while (pending.length) upstream.send(pending.shift()); server.send(JSON.stringify({ type: "ready", model })); return; }
+      server.send(e.data);
+    } catch { try { server.send(e.data); } catch {} }
+  });
   upstream.addEventListener("error", () => { try { server.send(JSON.stringify({ type: "error", message: "تعذر فتح Gemini Live" })); } catch {} });
   upstream.addEventListener("close", (e) => { try { server.close(e.code || 1011, String(e.reason || "Gemini Live closed").slice(0, 120)); } catch {} });
   server.addEventListener("close", () => { try { upstream.close(); } catch {} });
