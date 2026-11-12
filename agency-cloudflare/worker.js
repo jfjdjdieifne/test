@@ -105,6 +105,7 @@ export default {
       await kvPut(env, "arena_skip_until", 0);
       await kvPut(env, "arena_session_alerted_at", 0);
       await kvPut(env, "arena_direct_session_v3", null);
+      try { await syncBrowserlessArenaProfile(env, true); } catch {}
       return jsonResponse({ ok: true, imported: Object.keys(safeStorage).length }, 200, CORS_HEADERS);
     }
     if (url.pathname === "/arena-connect") {
@@ -122,7 +123,8 @@ export default {
       const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
       if (!token) return jsonResponse({ ok: false, reason: "not_configured" }, 200);
       let b; try {
-        b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
+        await syncBrowserlessArenaProfile(env, true);
+        b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000&profile=jarvis-arena`);
         const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
         await kvPut(env, "browserless_last_error_v1", null);
         const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
@@ -565,6 +567,23 @@ function arenaSessionFromStorage(storage) {
   return null;
 }
 
+async function syncBrowserlessArenaProfile(env, force) {
+  const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
+  if (!token) return false;
+  const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
+  const syncedAt = Number(await kvGet(env, "browserless_profile_synced_at", 0)) || 0;
+  if (!force && syncedAt >= importedAt && Date.now() - syncedAt < 6 * 60 * 60000) return true;
+  const storage = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
+  const cookies = await kvGet(env, "arena_browser_cookies", []);
+  const cleanCookies = (Array.isArray(cookies) ? cookies : []).filter((c) => c?.name && c?.value && c?.domain).map((c) => ({ name: String(c.name), value: String(c.value), domain: String(c.domain), path: c.path || "/", expires: Number.isFinite(c.expires) ? c.expires : -1, httpOnly: !!c.httpOnly, secure: c.secure !== false, session: !c.expires || c.expires < 0, sameSite: ["Strict", "Lax", "None"].includes(c.sameSite) ? c.sameSite : "Lax" }));
+  const state = { cookies: cleanCookies, origins: [{ origin: "https://arena.ai", localStorage: Object.fromEntries(Object.entries(storage || {}).filter(([k, v]) => typeof k === "string" && typeof v === "string")) }] };
+  const base = `https://production-ams.browserless.io`;
+  let res = await fetch(`${base}/profile/refresh?token=${encodeURIComponent(token)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "jarvis-arena", state }) });
+  if (!res.ok) res = await fetch(`${base}/profile/upload?token=${encodeURIComponent(token)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "jarvis-arena", state }) });
+  if (!res.ok) { await kvPut(env, "browserless_last_error_v1", { at: Date.now(), error: `profile sync HTTP ${res.status}` }); return false; }
+  await kvPut(env, "browserless_profile_synced_at", Date.now()); return true;
+}
+
 async function connectBrowserlessNative(endpoint) {
   // puppeteer-core يحاول استعمال حزمة ws الخاصة بـNode، وهي غير متاحة داخل Workers.
   // هذا Transport يربطه مباشرةً بـWebSocket الأصلي في Cloudflare Workers.
@@ -590,7 +609,8 @@ async function acquireArenaBrowser(env) {
   const browserlessToken = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
   if (browserlessToken) {
     try {
-      const endpoint = `wss://production-ams.browserless.io?token=${encodeURIComponent(browserlessToken)}&timeout=60000`;
+      await syncBrowserlessArenaProfile(env, false);
+      const endpoint = `wss://production-ams.browserless.io?token=${encodeURIComponent(browserlessToken)}&timeout=60000&profile=jarvis-arena`;
       return { browser: await connectBrowserlessNative(endpoint), provider: "browserless" };
     } catch (e) {
       const message = String(e?.message || e);
@@ -2084,7 +2104,8 @@ async function handleCommand(text, env, chatId) {
         const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
         if (!token) { await sendMessage(env, chatId, "اربط التوكن أولاً: /browserless TOKEN"); return true; }
         let b; try {
-          b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
+          await syncBrowserlessArenaProfile(env, true);
+          b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000&profile=jarvis-arena`);
           const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
           await kvPut(env, "browserless_last_error_v1", null);
           await sendMessage(env, chatId, "✅ Browserless اتصل فعلياً وفتح صفحة اختبار. صار جاهز لـArena.");
