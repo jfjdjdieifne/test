@@ -52,6 +52,7 @@ TOOL_CALL: {"tool":"اسم_الأداة","args":{...}}
 
 const BASE_PROMPT = `أنت "جارفس"، ذكاء اصطناعي عربي خاص بصاحب العمل (المالك الوحيد). أسلوبك: واثق، مهني، موجز، وباللهجة الشامية السورية دائماً (مثال: "شلونك يا ريس؟ شو بدك اليوم؟"، "تمام، خليني اشيك لك"، "موشكلة، هسع بتدبرلك ياه"). ممنوع الفصحى الجامدة — رد طبيعي كسوري حقيقي.
 - لا تخترع معلومات؛ إن احتجت بيانات استخدم الأداة.
+- إذا سُئلت عن هويتك أو الموديل: أنت جارفس عبر Arena. لا تدّعي GPT-4o أو أي موديل تقني؛ Arena Max قد يختار النموذج ولا توجد هوية مؤكدة إلا إن ظهرت صراحةً في بيانات الجلسة.
 - إجابات قصيرة ومنظّمة بنقاط عند الحاجة (السطرز الموازي بالفصحى بس داخل الكود).
 - إذا كانت الرسالة صوتية: ردك جملتين أو ثلاث قصيرة فقط (عشان تتحول لصوت بسرعة)، وكلام طبيعي بدون نقاط أو رموز تنسيق — كإنك صديق ذكي يحكي وياه.
 - جميع الأرقام بالإنجليزية (واتساب، أسعار، روابط).
@@ -1169,7 +1170,10 @@ async function callGroqSmart(convo, system, env, key) {
 
 async function llmComplete(convo, system, env) {
   const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
-  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "groq" && groqKey) {
+  const hyperbrowserReady = !!(await kvGet(env, "hyperbrowser_profile_v1", ""));
+  // وجود Profile Hyperbrowser مصادق يعني أن اختيار المالك هو Arena حصراً؛ لا تسمح
+  // لإعداد Groq قديم أن يسبقها أو ينتحل هوية موديل آخر.
+  if (!hyperbrowserReady && (await kvGet(env, "primary_intelligence_v1", "arena")) === "groq" && groqKey) {
     const fast = await callGroqSmart(convo, system, env, groqKey);
     if (fast) return fast;
   }
@@ -2135,7 +2139,13 @@ async function handleCommand(text, env, chatId) {
         const s = await kvGet(env, "hyperbrowser_login_session_v1", null); const key = String(await kvGet(env, "hyperbrowser_api_key_v1", "") || "");
         if (!s?.id || !key) { await sendMessage(env, chatId, "ما في جلسة ربط مفتوحة. اكتب /hyperbrowser connect"); return true; }
         const r = await fetch(`https://api.hyperbrowser.ai/api/session/${encodeURIComponent(s.id)}/stop`, { method: "PUT", headers: { "x-api-key": key } });
-        if (r.ok) { await kvPut(env, "hyperbrowser_login_session_v1", null); await sendMessage(env, chatId, "✅ انحفظ Profile كامل. جرّب /arena test بعد لحظات."); }
+        if (r.ok) {
+          await kvPut(env, "hyperbrowser_login_session_v1", null);
+          await kvPut(env, "primary_intelligence_v1", "arena");
+          await kvPut(env, "arena_skip_until", 0);
+          const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
+          await sendMessage(env, chatId, "✅ انحفظ Profile كامل وصارت Arena المحرك الأساسي حصراً. هلق شغّل /arena test قبل أي سؤال عادي.");
+        }
         else await sendMessage(env, chatId, `❌ تعذر حفظ الجلسة (HTTP ${r.status})`);
         return true;
       }
