@@ -616,8 +616,19 @@ async function createHyperbrowserSession(env, interactive) {
     profileId = String((await pr.json()).id || ""); if (!profileId) throw new Error("Hyperbrowser profile id missing");
     await kvPut(env, "hyperbrowser_profile_v1", profileId);
   }
-  const sr = await fetch("https://api.hyperbrowser.ai/api/session", { method: "POST", headers, body: JSON.stringify({ acceptCookies: true, useStealth: true, timeoutMinutes: interactive ? 30 : 20, profile: { id: profileId, persistChanges: true } }), signal: AbortSignal.timeout(20000) });
-  if (!sr.ok) throw new Error(`Hyperbrowser session HTTP ${sr.status}`);
+  const payload = JSON.stringify({ acceptCookies: true, useStealth: true, timeoutMinutes: interactive ? 30 : 20, profile: { id: profileId, persistChanges: true } });
+  let sr = await fetch("https://api.hyperbrowser.ai/api/session", { method: "POST", headers, body: payload, signal: AbortSignal.timeout(20000) });
+  // Free يسمح بجلسة واحدة. بعد انقطاع Worker قد تبقى جلسة orphan نشطة وتسبب 429؛
+  // أغلقها بأمان ثم أعد المحاولة مرة واحدة، بدل مطالبة المالك بمفتاح جديد.
+  if (sr.status === 429) {
+    try {
+      const lr = await fetch("https://api.hyperbrowser.ai/api/sessions?status=active&page=1", { headers: { "x-api-key": key }, signal: AbortSignal.timeout(10000) });
+      const active = lr.ok ? ((await lr.json()).sessions || []) : [];
+      for (const old of active) if (old?.id) await fetch(`https://api.hyperbrowser.ai/api/session/${encodeURIComponent(old.id)}/stop`, { method: "PUT", headers: { "x-api-key": key }, signal: AbortSignal.timeout(10000) });
+      if (active.length) { await new Promise((r) => setTimeout(r, 1200)); sr = await fetch("https://api.hyperbrowser.ai/api/session", { method: "POST", headers, body: payload, signal: AbortSignal.timeout(20000) }); }
+    } catch {}
+  }
+  if (!sr.ok) { const detail = String(await sr.text().catch(() => "")).replace(/[A-Za-z0-9_-]{24,}/g, "[redacted]").slice(0, 240); throw new Error(`Hyperbrowser session HTTP ${sr.status}${detail ? ` — ${detail}` : ""}`); }
   const session = await sr.json(); if (!session.wsEndpoint) throw new Error("Hyperbrowser wsEndpoint missing");
   return { ...session, key };
 }
