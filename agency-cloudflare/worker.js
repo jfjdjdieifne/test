@@ -529,6 +529,37 @@ async function callArenaBrowser(convo, system, env) {
     });
     await new Promise((r) => setTimeout(r, 600));
     const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
+
+    // الطريق الثابت: نفّذ نفس endpoint الذي تستعمله واجهة Arena من داخل origin والجلسة.
+    // هذا يتجاوز زر React الذي قد يبقى disabled بسبب onboarding/modality state.
+    try {
+      const directRaw = await page.evaluate(async (message) => {
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+        let token = "";
+        for (let i = 0; i < 20; i++) { if (window.grecaptcha?.enterprise) break; await sleep(200); }
+        if (window.grecaptcha?.enterprise) {
+          token = await new Promise((resolve) => window.grecaptcha.enterprise.ready(async () => {
+            try { resolve(await window.grecaptcha.enterprise.execute("6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0", { action: "chat_submit" })); } catch { resolve(""); }
+          }));
+        }
+        const id = () => crypto.randomUUID();
+        const data = { id: id(), mode: "battle", userMessageId: id(), modelAMessageId: id(), modelBMessageId: id(), userMessage: { content: message, experimental_attachments: [], metadata: {} }, modality: "chat", recaptchaV3Token: token || "" };
+        const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
+        try {
+          const res = await fetch("/nextjs-api/stream/create-evaluation", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data), signal: ctl.signal });
+          const text = await res.text();
+          return { status: res.status, text };
+        } finally { clearTimeout(timer); }
+      }, prompt);
+      const directText = directRaw && directRaw.status < 400 ? parseArenaDataStream(directRaw.text) : "";
+      if (directText) {
+        try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
+        await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "in-page-api" });
+        return directText;
+      }
+      console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, prefix: String(directRaw?.text || "").slice(0, 250) }));
+    } catch (e) { console.log("arena direct error:", e && e.message ? e.message : e); }
+
     let responseStarted = false;
     const responsePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
