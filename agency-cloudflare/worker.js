@@ -64,6 +64,13 @@ ${TOOL_DOC}`;
 const MAX_HISTORY = 14;
 const MAX_TOOL_STEPS = 6;
 
+function arenaConnectPage(origin, token) {
+  const endpoint = `${origin}/arena-session-import`;
+  const js = `javascript:(async()=>{try{const s={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/auth|sb-|supabase|session/i.test(k))s[k]=localStorage.getItem(k)}const r=await fetch(${JSON.stringify(endpoint)},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:${JSON.stringify(token)},storage:s})});const d=await r.json();alert(d.ok?'✅ تم ربط Arena مع Jarvis. ارجع لتيليجرام واكتب /arena test':'❌ '+(d.error||r.status))}catch(e){alert('❌ '+e.message)}})()`;
+  const escaped = js.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!doctype html><html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ربط Arena مع Jarvis</title><style>body{font-family:system-ui;background:#07111f;color:#eef;padding:24px;line-height:1.7;max-width:650px;margin:auto}.box{background:#11223b;padding:18px;border-radius:16px;margin:14px 0}button{font-size:18px;padding:14px;width:100%;border:0;border-radius:12px;background:#39d98a;color:#06140d;font-weight:700}code{word-break:break-all;color:#9ff}b{color:#6ef}</style><h1>🔐 ربط جلسة Arena</h1><p>لا تُنقل كلمة مرور Google. يُنقل رمز جلسة Arena فقط، والرابط صالح عشر دقائق ولمرة واحدة.</p><div class="box"><b>1.</b> اضغط الزر لنسخ كود الربط.<br><button onclick="navigator.clipboard.writeText(document.getElementById('code').textContent).then(()=>alert('تم النسخ ✅'))">انسخ كود الربط</button><code id="code" style="display:none">${escaped}</code></div><div class="box"><b>2.</b> في Safari اعمل Bookmark لأي صفحة، ثم Edit وبدّل عنوانه بالكود المنسوخ. سمّه «ربط جارفس».</div><div class="box"><b>3.</b> افتح <a style="color:#6ef" href="https://arena.ai">arena.ai</a> وأنت مسجّل دخول، ثم افتح Bookmark «ربط جارفس».</div><div class="box"><b>4.</b> بعد ظهور ✅ ارجع لتيليجرام واكتب <code>/arena test</code>.</div></html>`;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -74,6 +81,31 @@ export default {
       if (url.pathname === "/voice-ask") return handleVoiceAsk(request, env, ctx);
       if (url.pathname === "/call-end") return handleCallEnd(request, env, ctx);
       return handleAsk(request, env, ctx);
+    }
+    if (url.pathname === "/arena-session-import") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { ...CORS_HEADERS, "access-control-allow-headers": "content-type" } });
+      if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
+      let body; try { body = await request.json(); } catch { return jsonResponse({ error: "bad json" }, 400, CORS_HEADERS); }
+      const expected = await kvGet(env, "arena_connect_token", null);
+      const expires = Number(await kvGet(env, "arena_connect_expires", 0)) || 0;
+      if (!expected || body?.token !== expected || expires < Date.now()) return jsonResponse({ error: "expired or invalid link" }, 401, CORS_HEADERS);
+      const storage = body?.storage && typeof body.storage === "object" ? body.storage : {};
+      const safeStorage = {};
+      for (const [k, v] of Object.entries(storage)) if (/auth|sb-|supabase|session/i.test(k) && typeof v === "string" && v.length < 20000) safeStorage[k] = v;
+      if (!Object.keys(safeStorage).length) return jsonResponse({ error: "Arena session not found; confirm you are logged in" }, 422, CORS_HEADERS);
+      await kvPut(env, "arena_imported_storage", safeStorage);
+      await kvPut(env, "arena_imported_at", Date.now());
+      await kvPut(env, "arena_connect_token", null);
+      await kvPut(env, "arena_connect_expires", 0);
+      await kvPut(env, "arena_skip_until", 0);
+      return jsonResponse({ ok: true, imported: Object.keys(safeStorage).length }, 200, CORS_HEADERS);
+    }
+    if (url.pathname === "/arena-connect") {
+      const token = url.searchParams.get("token") || "";
+      const expected = await kvGet(env, "arena_connect_token", null);
+      const expires = Number(await kvGet(env, "arena_connect_expires", 0)) || 0;
+      if (!token || token !== expected || expires < Date.now()) return new Response("رابط الربط منتهي. اطلب /arena connect من جديد.", { status: 401, headers: { "content-type": "text/plain;charset=utf-8" } });
+      return new Response(arenaConnectPage(url.origin, token), { headers: { "content-type": "text/html;charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", ts: Date.now() }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -96,6 +128,8 @@ export default {
       }
       let update;
       try { update = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
+      // نحتاج العنوان لبناء رابط /arena connect بدون متغير يدوي.
+      ctx.waitUntil(kvPut(env, "public_worker_url", url.origin));
       ctx.waitUntil(handleUpdate(update, env, ctx).catch((e) => console.log("handler error:", e && e.message ? e.message : e)));
       return new Response("ok", { status: 200 });
     }
@@ -434,6 +468,21 @@ function parseArenaDataStream(raw) {
   return chunks.join("").trim();
 }
 
+function arenaSessionFromStorage(storage) {
+  const seen = new Set();
+  function walk(v) {
+    if (!v || typeof v !== "object" || seen.has(v)) return null; seen.add(v);
+    if (typeof v.access_token === "string" && typeof v.refresh_token === "string") return v;
+    for (const x of Object.values(v)) { const found = walk(x); if (found) return found; }
+    return null;
+  }
+  for (const raw of Object.values(storage || {})) {
+    if (typeof raw !== "string") continue;
+    try { const found = walk(JSON.parse(raw)); if (found) return found; } catch {}
+  }
+  return null;
+}
+
 /** Arena بلا سيرفر: Chromium مُدار من Cloudflare Browser Rendering.
  * نستخدم واجهة Arena الحقيقية، لذلك الصفحة نفسها تنشئ reCAPTCHA والجلسة؛ ثم نحفظ
  * cookies في KV ليستمر تسجيل الدخول بين تشغيل وآخر. */
@@ -451,6 +500,16 @@ async function callArenaBrowser(convo, system, env) {
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
     // الصفحة الرئيسية تبدأ Battle Mode المجهول؛ Direct/Max يفتح نافذة Login ولا يرسل.
     await page.goto("https://arena.ai/", { waitUntil: "domcontentloaded", timeout: 8000 });
+    const imported = await kvGet(env, "arena_imported_storage", {});
+    if (imported && typeof imported === "object" && Object.keys(imported).length) {
+      await page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v); }, imported);
+      const session = arenaSessionFromStorage(imported);
+      if (session) {
+        const encoded = "base64-" + btoa(unescape(encodeURIComponent(JSON.stringify(session))));
+        try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, domain: "arena.ai", path: "/", secure: true }); } catch {}
+      }
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 8000 });
+    }
     await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
     // Arena قد تعرض نافذة cookies فوق زر الإرسال.
     await page.evaluate(() => {
@@ -1672,6 +1731,21 @@ async function handleCommand(text, env, chatId) {
       const low = sub.toLowerCase();
       const kvUrl = await kvGet(env, "arena_url", null);
       const kvKey = await kvGet(env, "arena_key", null);
+
+      if (/^(connect|login|ربط|دخول)$/i.test(low)) {
+        const base = String(await kvGet(env, "public_worker_url", "")).replace(/\/+$/, "");
+        if (!base) { await sendMessage(env, chatId, "أرسل /health أولاً ثم أعد /arena connect حتى أعرف رابط Worker."); return true; }
+        const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+        await kvPut(env, "arena_connect_token", token);
+        await kvPut(env, "arena_connect_expires", Date.now() + 10 * 60 * 1000);
+        await sendMessage(env, chatId, [
+          "🔐 رابط نقل جلسة Arena من Safari (صالح 10 دقائق ولمرة واحدة):",
+          `${base}/arena-connect?token=${token}`,
+          "",
+          "افتحه في Safari واتبع 4 خطوات. لا يطلب كلمة مرور Google ولا يرسلها لجارفس.",
+        ].join("\n"));
+        return true;
+      }
 
       /* ----- الإعداد الكامل من تيليجرام (بدون wrangler ولا لوحة) ----- */
       if (/^setup|شرح|اعداد|إعداد/.test(low)) {
