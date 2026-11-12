@@ -524,8 +524,8 @@ async function callArenaBrowser(convo, system, env) {
       const buttons = [...document.querySelectorAll("button")];
       const consent = buttons.find((b) => /accept cookies|accept all|agree|موافق/i.test((b.textContent || "").trim()));
       if (consent) consent.click();
-      // أغلق login/news dialogs؛ Battle المجهول لا يحتاج حساباً.
-      for (const b of buttons) if (/^(close|maybe later|not now|إغلاق)$/i.test((b.textContent || "").trim())) b.click();
+      // أغلق login/news/onboarding dialogs التي تمنع زر Send.
+      for (const b of buttons) if (/^(close|maybe later|not now|no,? please hide|إغلاق)$/i.test((b.textContent || "").trim()) || /dismiss/i.test(b.getAttribute("aria-label") || "")) b.click();
     });
     await new Promise((r) => setTimeout(r, 600));
     const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
@@ -542,6 +542,7 @@ async function callArenaBrowser(convo, system, env) {
     const box = await page.$('textarea[name="message"]');
     await box.click();
     await box.type(prompt, { delay: 1 });
+    try { await page.waitForFunction(() => { const b = document.querySelector('button[aria-label="Send message"]'); return b && !b.disabled; }, { timeout: 3500 }); } catch {}
     const clicked = await page.evaluate(() => {
       const ta = document.querySelector('textarea[name="message"]');
       const form = ta && ta.closest("form");
