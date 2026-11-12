@@ -14,6 +14,7 @@ on:
       - "arena/46e5cd40-test"
       - "arena/cc2eb589-test"
       - "arena/b9af6851-test"
+      - "arena/e25b99b0-test"
     paths:
       - "agency-cloudflare/**"
       - ".github/workflows/deploy-jarvis-cloudflare.yml"
