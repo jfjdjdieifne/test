@@ -1,5 +1,6 @@
 import CALL_PAGE from "./callpage.mjs";
 import puppeteer from "@cloudflare/puppeteer";
+import remotePuppeteer from "puppeteer-core";
 /**
  * J.A.R.V.I.S — Telegram Agent on Cloudflare Workers
  * ----------------------------------------------------
@@ -123,7 +124,7 @@ export default {
       const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
       const skipUntil = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
       let browserLimits = null; try { browserLimits = env.BROWSER ? await puppeteer.limits(env.BROWSER) : null; } catch {}
-      return jsonResponse({ lastError, lastOk, browserLimits, pendingDirect: (await kvGet(env, "arena_pending_direct_v1", [])).length, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
+      return jsonResponse({ lastError, lastOk, browserlessConfigured: !!String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || ""), browserLimits, pendingDirect: (await kvGet(env, "arena_pending_direct_v1", [])).length, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
@@ -550,13 +551,21 @@ function arenaSessionFromStorage(storage) {
 }
 
 async function acquireArenaBrowser(env) {
-  // Workers Free يمنح 600 ثانية Browser يومياً. افحص قبل launch كي لا نهدر محاولة.
+  // Browserless المجاني: 1000 وحدة/شهر، بلا بطاقة، ويدعم Puppeteer وCAPTCHA.
+  // هو المسار الأول؛ Cloudflare (10 دقائق/يوم) يبقى احتياطياً تلقائياً.
+  const browserlessToken = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
+  if (browserlessToken) {
+    try {
+      const endpoint = `wss://production-ams.browserless.io?token=${encodeURIComponent(browserlessToken)}&timeout=60000`;
+      return { browser: await remotePuppeteer.connect({ browserWSEndpoint: endpoint }), provider: "browserless" };
+    } catch (e) { console.log("browserless connect error:", e?.message || e); }
+  }
+  // احتياط Cloudflare الرسمي: 600 ثانية Browser يومياً.
   try {
     const limits = await puppeteer.limits(env.BROWSER);
-    if (Number(limits?.usedBrowserTimeSeconds || 0) >= 598) throw new Error("DAILY_BROWSER_LIMIT");
-  } catch (e) { if (String(e?.message || e).includes("DAILY_BROWSER_LIMIT")) throw e; }
-  // keep_alive قصير، ثم close فوراً: الجلسة المنفصلة تظل تحسب من حصة 10 دقائق.
-  return { browser: await puppeteer.launch(env.BROWSER, { keep_alive: 60000 }), reused: false };
+    if (Number(limits?.usedBrowserTimeSeconds || 0) >= 598) throw new Error(browserlessToken ? "ALL_BROWSER_FREE_TIERS_EXHAUSTED" : "DAILY_BROWSER_LIMIT");
+  } catch (e) { if (/DAILY_BROWSER_LIMIT|ALL_BROWSER/.test(String(e?.message || e))) throw e; }
+  return { browser: await puppeteer.launch(env.BROWSER, { keep_alive: 60000 }), provider: "cloudflare" };
 }
 
 async function releaseArenaBrowser(browser) {
@@ -834,7 +843,7 @@ async function callArenaBrowser(convo, system, env) {
     console.log("arena browser error:", message);
     await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: message.slice(0, 300) });
     await arenaMarkDown(env, 60000);
-    if (/DAILY_BROWSER_LIMIT|Browser time limit exceeded/i.test(message)) return "__ARENA_RETRY_DAILY__";
+    if (/DAILY_BROWSER_LIMIT|ALL_BROWSER_FREE_TIERS_EXHAUSTED|Browser time limit exceeded/i.test(message)) return "__ARENA_RETRY_DAILY__";
     if (/429|rate limit|Unable to create new browser/i.test(message)) return "__ARENA_RETRY_429__";
     return null;
   } finally { await releaseArenaBrowser(browser); }
@@ -1850,6 +1859,7 @@ const WELCOME = [
   "/export — حمّل نسخة كاملة من ذاكرتي (JSON)",
   "/report — ملخص الحالة",
   "/arena — جسر LMArena: حالة/تشغيل/إيقاف/نماذج/تشخيص",
+  "/browserless — ربط 1000 وحدة Browser مجانية/شهر كمسار أساسي (Cloudflare احتياط)",
   "/arena primary — Arena أساس كل الردود ↔ رجوع للترتيب العادي",
   "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
   "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
@@ -2026,6 +2036,22 @@ async function handleCommand(text, env, chatId) {
       if (t) { t.messages = []; t.summary = ""; t.updated = Date.now(); await putThreads(env, rows); }
       await kvPut(env, "history", []);
       await sendMessage(env, chatId, t ? `تم مسح رسائل «${t.title}» فقط. باقي الشاتات والمهام محفوظة.` : "تم مسح ذاكرة المحادثة."); return true;
+    }
+    case "/browserless": {
+      const sub = arg.trim();
+      if (/^(off|delete|حذف|وقف)$/i.test(sub)) { await kvPut(env, "browserless_token_v1", null); await sendMessage(env, chatId, "تم حذف Browserless. رجعنا لـCloudflare فقط."); return true; }
+      if (!sub) {
+        const configured = !!String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "");
+        await sendMessage(env, chatId, configured
+          ? "🟢 Browserless المجاني مربوط كمتصفح أساسي، وCloudflare احتياط. للحذف: /browserless off"
+          : "🟡 لتوسيع الحصة مجاناً: افتح https://www.browserless.io وسجّل بلا بطاقة، انسخ API Token، وبعت هون بتيليجرام الخاص: /browserless TOKEN\nJarvis يخزنه في KV ولا يطبعه بالتشخيص.");
+        return true;
+      }
+      if (sub.length < 20 || /\s/.test(sub)) { await sendMessage(env, chatId, "التوكن شكله غير صالح. انسخه وحده بعد /browserless"); return true; }
+      await kvPut(env, "browserless_token_v1", sub.slice(0, 500));
+      await kvPut(env, "arena_skip_until", 0);
+      await sendMessage(env, chatId, "✅ تم ربط Browserless كمسار أول: 1000 وحدة مجانية بالشهر، متصفحين متزامنين، وCloudflare صار احتياط تلقائي. ما رح أعرض التوكن بأي سجل.");
+      return true;
     }
     case "/arena": {
       const cfg = await arenaCfg(env);
