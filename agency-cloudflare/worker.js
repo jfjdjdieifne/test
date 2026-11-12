@@ -76,6 +76,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/live-call") return handleGeminiLiveSocket(request, env);
     if (url.pathname === "/ask" || url.pathname === "/voice-ask" || url.pathname === "/call-end") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
       if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
@@ -2033,6 +2034,14 @@ async function handleCommand(text, env, chatId) {
       lines.push("", "للتفاصيل: /leads و /lead <رقم>");
       await sendMessage(env, chatId, lines.join("\n")); return true;
     }
+    case "/gemini": {
+      const km = arg.match(/^key\s+(.+)$/i);
+      if (!km) { await sendMessage(env, chatId, "لربط المكالمة الحية: /gemini key YOUR_NEW_KEY\nلن أطبع المفتاح أو أضعه في Git."); return true; }
+      const key = km[1].trim();
+      if (key.length < 20) { await sendMessage(env, chatId, "المفتاح قصير أو غير صالح."); return true; }
+      await kvPut(env, "gemini_api_key_v1", key);
+      await sendMessage(env, chatId, "✅ حفظت مفتاح Gemini بشكل خاص داخل Cloudflare KV. احذف رسالتك من تيليجرام الآن، ثم اكتب /voicecall."); return true;
+    }
     case "/voicecall": {
       const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
       await kvPut(env, "voice_call_token", token);
@@ -2461,6 +2470,35 @@ async function callGeminiVoiceManager(text, env) {
   const hour = Number(new Intl.DateTimeFormat("en", { timeZone: "Europe/Paris", hour: "2-digit", hour12: false }).format(new Date()));
   const system = `أنت جارفس، المدير الصوتي الشخصي للدكتور. احكِ باللهجة الشامية الطبيعية بجمل قصيرة جداً مناسبة لمكالمة سريعة، بنبرة دافئة وتفاعلية، ومن دون Markdown. الوقت المحلي ${hour}:00. لا تخترع حالة أي مهمة: استعمل الحالة والنتيجة المعطاتين فقط. إذا المعلومة غير موجودة، قل إنها غير جاهزة وأنك ستضعها للبحث بالخلفية، ولا تدّعي أن التنفيذ تم. اسأل سؤالاً واحداً فقط كل مرة. إذا ذكر أنه يقود اختصر بشدة واهتم بالسلامة.\nحالة المهام: ${JSON.stringify(tasks)}\nذاكرة مختصرة: ${JSON.stringify(memories)}`;
   return await callGemini([{ role: "user", content: text }], system, env);
+}
+
+async function handleGeminiLiveSocket(request, env) {
+  if ((request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") return new Response("WebSocket required", { status: 426 });
+  const token = new URL(request.url).searchParams.get("token") || "";
+  const expected = await kvGet(env, "voice_call_token", "");
+  const expires = Number(await kvGet(env, "voice_call_token_expires", 0)) || 0;
+  if (!token || token !== expected || expires < Date.now()) return new Response("Call link expired", { status: 401 });
+  const apiKey = String(await kvGet(env, "gemini_api_key_v1", env.GEMINI_API_KEY || "") || "").trim();
+  if (!apiKey) return new Response("Gemini key not configured", { status: 503 });
+
+  const pair = new WebSocketPair();
+  const client = pair[0], server = pair[1]; server.accept();
+  const model = String(env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-preview-09-2025");
+  const upstream = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(apiKey)}`);
+  const pending = [];
+  const sendUpstream = (data) => upstream.readyState === 1 ? upstream.send(data) : pending.push(data);
+  upstream.addEventListener("open", async () => {
+    const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({ id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "", status: t.status || "", result: String(t.result || t.output || "").slice(0, 600) }));
+    sendUpstream(JSON.stringify({ setup: { model, generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } } }, systemInstruction: { parts: [{ text: `أنت جارفس، مدير شخصي صوتي للدكتور قصي. احكِ بالشامية الطبيعية بسرعة ودفء، بجمل قصيرة، واسأل سؤالاً واحداً كل مرة. لا تخترع حالة المهام. إذا لم تكن النتيجة موجودة قل إنها غير جاهزة. اسمح بالمقاطعة واختصر أثناء القيادة. حالة المهام الحالية: ${JSON.stringify(tasks)}` }] } } }));
+    while (pending.length) upstream.send(pending.shift());
+    try { server.send(JSON.stringify({ type: "ready" })); } catch {}
+  });
+  server.addEventListener("message", (e) => sendUpstream(e.data));
+  upstream.addEventListener("message", (e) => { try { server.send(e.data); } catch {} });
+  upstream.addEventListener("error", () => { try { server.send(JSON.stringify({ type: "error", message: "تعذر فتح Gemini Live" })); } catch {} });
+  upstream.addEventListener("close", (e) => { try { server.close(e.code || 1011, String(e.reason || "Gemini Live closed").slice(0, 120)); } catch {} });
+  server.addEventListener("close", () => { try { upstream.close(); } catch {} });
+  return new Response(null, { status: 101, webSocket: client });
 }
 
 async function authorizedCallRequest(request, env) {
