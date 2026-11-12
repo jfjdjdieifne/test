@@ -541,7 +541,15 @@ async function callArenaBrowser(convo, system, env) {
     });
     const box = await page.$('textarea[name="message"]');
     await box.click();
-    await box.type(prompt, { delay: 1 });
+    // React controlled textarea: Puppeteer.type يغيّر DOM أحياناً دون state، فيبقى Send disabled.
+    await page.evaluate((text) => {
+      const ta = document.querySelector('textarea[name="message"]');
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      if (!ta || !setter) return;
+      setter.call(ta, text);
+      ta.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+      ta.dispatchEvent(new Event("change", { bubbles: true }));
+    }, prompt);
     try { await page.waitForFunction(() => { const b = document.querySelector('button[aria-label="Send message"]'); return b && !b.disabled; }, { timeout: 3500 }); } catch {}
     const clicked = await page.evaluate(() => {
       const ta = document.querySelector('textarea[name="message"]');
@@ -566,7 +574,10 @@ async function callArenaBrowser(convo, system, env) {
       let retryBox = await page.$('textarea[name="message"]');
       if (retryBox) {
         const current = await page.evaluate(() => document.querySelector('textarea[name="message"]')?.value || "");
-        if (!current.trim()) { await retryBox.click(); await retryBox.type(prompt, { delay: 1 }); }
+        if (!current.trim()) {
+          await retryBox.click();
+          await page.evaluate((text) => { const ta = document.querySelector('textarea[name="message"]'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set; if (ta && set) { set.call(ta, text); ta.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text })); } }, prompt);
+        }
         const sent = await page.evaluate(() => {
           const send = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
           if (send && !send.disabled) { send.click(); return true; }
