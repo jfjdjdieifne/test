@@ -1520,7 +1520,16 @@ async function agentLoop(userText, env, chatId, opts) {
   const memBlock = o.mode === "worker" ? "" : await relevantMemories(env, userText);
   const resolved = o.mode === "worker" ? null : await resolveThread(env, userText, o.threadId);
   const threadBlock = resolved ? `\n\nسياق مساحة العمل الحالية:\n- الاسم: ${resolved.thread.title}\n- المعرف: ${resolved.thread.id}\n- سبب اختيارها: ${resolved.reason}\n- الملخص السابق: ${resolved.thread.summary || "أول رسالة"}\nالتزم بهذه المهمة فقط ولا تخلطها بمشروع آخر.` : "";
-  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : "") + threadBlock);
+  let taskBlock = "";
+  if (o.mode !== "worker") {
+    const tasks = (await kvGet(env, "tasks", []) || []).slice().sort((a, b) => Number(b.updated || b.created || 0) - Number(a.updated || a.created || 0));
+    const current = tasks.find((t) => ["running", "queued", "waiting_for_browser", "waiting"].includes(t.status)) || tasks[0];
+    if (current) {
+      const trace = (current.trace || []).slice(-3).map((x) => `${x.tool || x.step}: ${String(x.result || "").slice(0, 550)}`).join("\n");
+      taskBlock = `\n\nالمهمة الحالية التي يقصدها المالك في أسئلة المتابعة مثل «شو بتنصحني/شو صار/كمل»:\n- المعرف: ${current.id}\n- الطلب: ${String(current.goal || current.title || "").slice(0, 900)}\n- الحالة: ${current.status || "غير معروفة"}\n- التقدم: ${current.progress || 0}%\n- المرحلة: ${current.phase || ""}\n- النتيجة النهائية إن وجدت: ${String(current.result || current.output || "").slice(0, 1800)}\n- آخر أدلة التنفيذ:\n${trace || "لا يوجد"}\nيجب أن تجيب عن هذه المهمة تحديداً، لا تقدّم نصائح عامة عن Upwork أو موضوع قديم. إذا الأدلة غير كافية قل ذلك بوضوح.`;
+    }
+  }
+  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : "") + threadBlock + taskBlock);
   const hist = o.mode === "worker" ? [] : (resolved.thread.messages || []);
   const convo = [...hist, { role: "user", content: String(userText) }];
   // إذا المالك طلب البحث صراحةً، نفّذ الأداة أولاً ولا تترك النموذج يجيب من ذاكرته.
