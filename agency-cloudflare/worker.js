@@ -1926,6 +1926,7 @@ const WELCOME = [
   "/arena primary — Arena أساس كل الردود ↔ رجوع للترتيب العادي",
   "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
   "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
+  "/voicecall — رابط آمن لمكالمة جارفس الصوتية",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
   "/files — شو الملفات والصور بقدر أقراها وأعدلها",
@@ -2031,6 +2032,13 @@ async function handleCommand(text, env, chatId) {
       for (const [k, v] of Object.entries(counts)) lines.push(`• ${k}: ${v}`);
       lines.push("", "للتفاصيل: /leads و /lead <رقم>");
       await sendMessage(env, chatId, lines.join("\n")); return true;
+    }
+    case "/voicecall": {
+      const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+      await kvPut(env, "voice_call_token", token);
+      await kvPut(env, "voice_call_token_expires", Date.now() + 30 * 60 * 1000);
+      const base = String(env.PUBLIC_WORKER_URL || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
+      await sendMessage(env, chatId, `📞 رابط مكالمتك الآمن (صالح 30 دقيقة):\n${base}/call?token=${token}\n\nافتحه واضغط اتصل — ما بدك تحط أي مفتاح.`); return true;
     }
     case "/call":
       await sendMessage(env, chatId, await callMeNow(env, arg || "جارفس يحتاج قرارك")); return true;
@@ -2455,11 +2463,18 @@ async function callGeminiVoiceManager(text, env) {
   return await callGemini([{ role: "user", content: text }], system, env);
 }
 
+async function authorizedCallRequest(request, env) {
+  const provided = request.headers.get("x-jarvis-key") || "";
+  if (provided && provided === env.CALL_SECRET) return true;
+  const token = request.headers.get("x-jarvis-call-token") || "";
+  const expected = await kvGet(env, "voice_call_token", "");
+  const expires = Number(await kvGet(env, "voice_call_token_expires", 0)) || 0;
+  return !!token && token === expected && expires > Date.now();
+}
+
 async function handleAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  const provided = request.headers.get("x-jarvis-key") || "";
-  if (!env.CALL_SECRET) return send({ error: "CALL_SECRET غير مفعّل على السيرفر — أضفه: npx wrangler secret put CALL_SECRET" }, 501);
-  if (!provided || provided !== env.CALL_SECRET) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
+  if (!(await authorizedCallRequest(request, env))) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const text = String(body?.text || "").trim().slice(0, 1500);
@@ -2478,9 +2493,7 @@ function b64ToArrayBuffer(b64) {
 
 async function handleVoiceAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  const provided = request.headers.get("x-jarvis-key") || "";
-  if (!env.CALL_SECRET) return send({ error: "CALL_SECRET غير مفعّل" }, 501);
-  if (!provided || provided !== env.CALL_SECRET) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
+  if (!(await authorizedCallRequest(request, env))) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const audio = body?.audio || {};
@@ -2494,9 +2507,7 @@ async function handleVoiceAsk(request, env, ctx) {
 }
 
 async function handleCallEnd(request, env, ctx) {
-  const provided = request.headers.get("x-jarvis-key") || "";
-  if (!env.CALL_SECRET) return jsonResponse({ error: "CALL_SECRET غير مفعّل" }, 501, CORS_HEADERS);
-  if (!provided || provided !== env.CALL_SECRET) return jsonResponse({ error: "غير مصرّح" }, 401, CORS_HEADERS);
+  if (!(await authorizedCallRequest(request, env))) return jsonResponse({ error: "رابط المكالمة منتهي" }, 401, CORS_HEADERS);
   let body;
   try { body = await request.json(); } catch { return jsonResponse({ error: "JSON غير صالح" }, 400, CORS_HEADERS); }
   const transcript = Array.isArray(body?.transcript) ? body.transcript.slice(-40) : [];
