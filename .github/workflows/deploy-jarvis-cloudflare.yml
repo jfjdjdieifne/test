@@ -90,8 +90,6 @@ jobs:
           health=$(curl --fail --show-error --silent "$WORKER_URL/health")
           printf '%s\n' "$health" | grep -q '"status":"ok"'
           key=$(sed -n 's/^CALL_SECRET = "\(.*\)"/\1/p' wrangler.toml)
-          # فحص مؤقت لمرة التشخيص الحالية؛ لا نطبع prompt أو answer.
-          curl --fail --show-error --silent --max-time 35 -X POST "$WORKER_URL/ask" -H 'content-type: application/json' -H "x-jarvis-key: $key" --data '{"text":"اختبار اتصال: أجب جاهز"}' > /tmp/direct-check.json || true
           status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
           printf 'Arena transport metadata: %s\n' "$status"
           echo "::notice title=Arena transport metadata::$status"
