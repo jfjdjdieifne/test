@@ -1,0 +1,106 @@
+name: Deploy Jarvis to Cloudflare
+
+on:
+  push:
+    branches:
+      - "arena/38691ede-test"
+      - "arena/46b2f7b6-test"
+      - "arena/8b9f58ef-test"
+    paths:
+      - "agency-cloudflare/**"
+      - ".github/workflows/deploy-jarvis-cloudflare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-jarvis-cloudflare
+  cancel-in-progress: true
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agency-cloudflare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: agency-cloudflare/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test (41 checks)
+        run: npm test
+
+      - name: Deploy Worker + Browser Rendering
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set +e
+          output=$(npx wrangler deploy 2>&1)
+          code=$?
+          set -e
+          printf '%s\n' "$output"
+          worker_url=$(printf '%s\n' "$output" | grep -Eo 'https://[A-Za-z0-9._-]+\.workers\.dev' | tail -1 || true)
+          echo "worker_url=$worker_url" >> "$GITHUB_OUTPUT"
+          {
+            echo '## نشر Jarvis إلى Cloudflare'
+            echo '```text'
+            printf '%s\n' "$output" | tail -c 12000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            one_line=$(printf '%s' "$output" | tail -c 4000 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=Cloudflare deployment failed::$one_line"
+          fi
+          exit "$code"
+
+      - name: Live health check + Arena test in Telegram
+        env:
+          WORKER_URL: ${{ steps.deploy.outputs.worker_url }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          test -n "$WORKER_URL"
+          curl --fail --show-error --silent "$WORKER_URL/health" | tee /tmp/health.json
+          grep -q '"status":"ok"' /tmp/health.json
+          SECRET=$(sed -n 's/^WEBHOOK_SECRET = "\(.*\)"/\1/p' wrangler.toml)
+          OWNER=$(sed -n 's/^ALLOWED_TELEGRAM_ID = "\(.*\)"/\1/p' wrangler.toml)
+          NOW=$(date +%s)
+          # التقط سجلات المتصفح أثناء الفحص نفسه حتى نرى سبب Arena الحقيقي.
+          timeout 38s npx wrangler tail jarvis-24-7 --format pretty > /tmp/worker-tail.log 2>&1 &
+          TAIL_PID=$!
+          sleep 4
+          curl --fail --show-error --silent -X POST "$WORKER_URL/webhook" \
+            -H 'content-type: application/json' \
+            -H "X-Telegram-Bot-Api-Secret-Token: $SECRET" \
+            --data "{\"update_id\":$NOW,\"message\":{\"message_id\":$NOW,\"date\":$NOW,\"chat\":{\"id\":$OWNER,\"type\":\"private\"},\"from\":{\"id\":$OWNER,\"is_bot\":false,\"first_name\":\"Owner\"},\"text\":\"/arena test\"}}"
+          sleep 28
+          kill "$TAIL_PID" 2>/dev/null || true
+          wait "$TAIL_PID" 2>/dev/null || true
+          tail -c 10000 /tmp/worker-tail.log || true
+          {
+            echo '### سجل Browser Rendering الحي'
+            echo '```text'
+            tail -c 10000 /tmp/worker-tail.log
+            echo '```'
+            echo '✅ Worker health passed; /arena test was sent to Telegram.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          err=$(grep -E 'arena browser error:|Error:|error' /tmp/worker-tail.log | tail -5 | tr '\n' ' ' | tail -c 3500 || true)
+          if [ -n "$err" ]; then
+            safe=$(printf '%s' "$err" | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::warning title=Arena live browser log::$safe"
+          fi

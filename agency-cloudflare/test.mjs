@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0 };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0 };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0;
 }
 
 const mockKV = () => ({
@@ -29,6 +29,7 @@ global.fetch = async (input, init = {}) => {
     return j({ ok: true, result: {} });
   }
   if (url.startsWith("https://generativelanguage.googleapis.com/")) {
+    state.geminiCalls++;
     const next = state.geminiQueue.shift() || { text: "الجواب النهائي الافتراضي" };
     return j({ candidates: [{ content: { parts: [{ text: next.text }] } }] });
   }
@@ -46,6 +47,22 @@ global.fetch = async (input, init = {}) => {
   if (url.startsWith("https://api.callmebot.com/")) { state.callmebot++; return new Response("OK", { status: 200 }); }
   if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
   if (url.startsWith("https://script.google.com/")) { state.appsScript++; return j({ ok: true }); }
+  /* جسر LMArena الوهمي */
+  if (url.startsWith("https://arena.test/")) {
+    state.arenaCalls++;
+    if (url.endsWith("/v1/models")) return j({ object: "list", data: [{ id: "auto" }, { id: "stealth-model" }] });
+    if (url.includes("/arena/selftest")) return j({ service: "jarvis-arena-bridge", checked: "deep", engines: [
+      { name: "LMArenaBridge", ready: true, ok: false, error: "غير مهيّأ" },
+      { name: "gpt4free:Arena", ready: true, ok: true, ms: 1200, sample: "تم" },
+      { name: "OpenAI-compatible", ready: false, ok: false, error: "غير مهيّأ" },
+    ] });
+    if (url.endsWith("/health")) {
+      if (state.arenaHealthFails > 0) { state.arenaHealthFails--; return j({ error: "starting" }, 503); }
+      return j({ status: "ok", service: "jarvis-arena-bridge", has_gpt4free: true });
+    }
+    if (state.arenaDown) return j({ error: "cold" }, 503);
+    return j({ choices: [{ index: 0, message: { role: "assistant", content: "رد من Arena" }, finish_reason: "stop" }] });
+  }
   throw new Error("unmocked URL: " + url);
 };
 
@@ -323,5 +340,251 @@ await t("19) ضغط زر ❌ يلغي بدون إرسال لأي جهة", async 
   assert.equal(state.appsScript, 0);
   assert.equal(JSON.parse(state.kv.get("approvals")).length, 0);
 });
-console.log(`\n${passed}/19 اختبارات ناجحة`);
+await t("20) /arena بدون ARENA_BRIDGE_URL يعطي تعليمات وبدون أي نداء شبكة", async () => {
+  const env = makeEnv();
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("جسر LMArena مو مضبوط"), "ما وصلت رسالة التعليمات");
+  assert.ok(all.includes("ARENA_BRIDGE_URL"), "التعليمات ما فيها اسم المتغير");
+  assert.equal(state.arenaCalls, 0, "اننادى الجسر وهو مو مضبوط!");
+  assert.equal(state.fetches.filter((f) => f.url.includes("arena.test")).length, 0);
+});
+
+await t("21) /arena مع جسر مضبوط يعرض الصحة والنماذج", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_KEY: "ak" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("شغال"), "الحالة ما ظهرت");
+  assert.ok(all.includes("stealth-model"), "قائمة النماذج ما وصلت");
+  assert.ok(state.arenaCalls >= 1, "ما انادى /v1/models");
+});
+
+await t("22) /arena_ask يمرّر السؤال للجسر ويحفظ النموذج المختار", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test/" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena stealth-model"));
+  assert.ok(sentTexts().join("\n").includes("stealth-model"), "النموذج ما انحفظ");
+  assert.equal(state.kv.get("arena_model"), JSON.stringify("stealth-model"), "KV ما تخزّن النموذج");
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena_ask شو أخبار دبي؟"));
+  const reply = sentTexts().join("\n");
+  assert.ok(reply.includes("رد من Arena"), "رد الجسر ما وصل");
+  assert.ok(reply.includes("stealth-model"), "اسم النموذج ما ظهر بالرد");
+});
+
+await t("23) بدون مفاتيح مزودين — جارفس يستعمل جسر Arena تلقائياً", async () => {
+  const env = makeEnv({ GEMINI_API_KEY: "", OPENROUTER_API_KEY: "", ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("احكي لي عن دبي"));
+  assert.ok(state.arenaCalls >= 1, "الجسر ما اننادى");
+  assert.ok(sentTexts().join("\n").includes("رد من Arena"), "رد Arena ما وصل للمستخدم");
+});
+
+await t("24) /arena off يوقف الجسر بالكامل", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", GEMINI_API_KEY: "" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena off"));
+  assert.ok(sentTexts().join("\n").includes("موقوف"), "ما وصل تأكيد الإيقاف");
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena_ask سؤال"));
+  assert.equal(state.arenaCalls, 0, "الجسر اننادى وهو موقوف!");
+  assert.ok(sentTexts().join("\n").includes("ما رد"), "المستخدم ما انطاه تنبيه");
+});
+
+await t("25) /arena wake يصحّي خدمة نايمة (503 ثم 200)", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_WAKE_GAP_MS: "1" });
+  state.arenaHealthFails = 2;
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena wake"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("صحّي وشغال"), "ما وصل تأكيد الإفاقة: " + all.slice(0, 200));
+  assert.ok(state.arenaCalls >= 3, "عدد محاولات /health غير كافٍ");
+});
+
+await t("26) طلب فاشل يصحّي الجسر ويعيد المحاولة تلقائياً", async () => {
+  const env = makeEnv({ GEMINI_API_KEY: "", OPENROUTER_API_KEY: "", ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_WAKE_GAP_MS: "1" });
+  state.arenaDown = true;
+  // نجعل أول محاولة تفشل فقط ثم ترجع الخدمة
+  const originalFetch = global.fetch;
+  let posts = 0;
+  global.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (url.startsWith("https://arena.test/v1/chat/completions")) {
+      posts++;
+      state.arenaCalls++;
+      if (posts === 1) return new Response(JSON.stringify({ error: "cold" }), { status: 503 });
+      return new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "رد بعد الإفاقة" } }] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  };
+  try {
+    const ctx = makeCtx();
+    await runWebhook(env, ctx, tgUpdate("احكي لي عن دبي"));
+  } finally {
+    global.fetch = originalFetch;
+  }
+  assert.equal(posts, 2, "ما صار إعادة محاولة بعد الإفاقة");
+  assert.ok(sentTexts().join("\n").includes("رد بعد الإفاقة"), "رد ما وصل بعد الإفاقة");
+});
+
+await t("27) Keep-alive عبر cron يضرب /health كل 10 دقائق فقط", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_KEEPALIVE: "true" });
+  const ctx = makeCtx();
+  const at = (min) => new Date(Date.UTC(2026, 0, 1, 12, min, 0)).getTime();
+  await worker.scheduled({ scheduledTime: at(30) }, env, ctx);
+  await ctx.drain();
+  const hits30 = state.arenaCalls;
+  assert.ok(hits30 >= 1, "Keep-alive ما ضرب على الدقيقة 30");
+  reset();
+  const ctx2 = makeCtx();
+  await worker.scheduled({ scheduledTime: at(3) }, makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_KEEPALIVE: "true" }), ctx2);
+  await ctx2.drain();
+  assert.equal(state.arenaCalls, 0, "ضرب /health بدقيقة مو مضاعفة للعشرة");
+});
+
+await t("28) Keep-alive معطّل افتراضياً (بدون المتغير)", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await worker.scheduled({ scheduledTime: new Date(Date.UTC(2026, 0, 1, 12, 30, 0)).getTime() }, env, ctx);
+  await ctx.drain();
+  assert.equal(state.arenaCalls, 0, "Keep-alive شغال بدون ما نطلبه");
+});
+
+await t("29) /arena test يعرض نتيجة تشخيص المحركات", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena test"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("gpt4free:Arena"), "أسماء المحركات ما ظهرت");
+  assert.ok(all.includes("1200ms"), "زمن الاستجابة ما ظهر");
+  assert.ok(all.includes("في محرك شغال"), "ملخص الحالة ما ظهر");
+});
+
+await t("30) Arena أساسي افتراضياً: Gemini ما ينادى إطلاقاً", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", GEMINI_API_KEY: "gem" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("شو أخبار دبي اليوم؟"));
+  assert.ok(sentTexts().join("\n").includes("رد من Arena"), "رد Arena ما وصل");
+  assert.equal(state.geminiCalls, 0, "Gemini اننادى رغم أن Arena أساسي");
+});
+
+await t("31) ARENA_BRIDGE_FIRST=false يرجّع Gemini للأول", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_FIRST: "false" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("شو أخبار دبي اليوم؟"));
+  assert.equal(state.geminiCalls, 1, "Gemini ما اننادى رغم إطفاء أولوية Arena");
+});
+
+await t("32) /arena primary يقلب الأولوية ويحفظها بالـ KV", async () => {
+  const env = makeEnv({ ARENA_BRIDGE_URL: "https://arena.test" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena primary"));
+  assert.equal(state.kv.get("arena_primary"), JSON.stringify(false), "القيمة ما انحفظت");
+  assert.ok(sentTexts().join("\n").includes("الترتيب العادي"), "ما وصل تأكيد التبديل");
+});
+
+await t("33) قاطع الدائرة: فشل متكرر يوقف محاولات Arena مؤقتاً", async () => {
+  const env = makeEnv({ GEMINI_API_KEY: "gem", ARENA_BRIDGE_URL: "https://arena.test", ARENA_BRIDGE_WAKE: "false" });
+  state.arenaDown = true;
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("سؤال أول"));
+  assert.ok(Number(state.kv.get("arena_skip_until")) > Date.now(), "القاطع ما انفتح");
+  const before = state.arenaCalls;
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("سؤال تاني"));
+  assert.equal(state.arenaCalls, before, "جرّب Arena رغم أن القاطع مفتوح");
+  assert.ok(sentTexts().join("\n").includes("الجواب النهائي الافتراضي"), "ما رجع للاحتياط");
+});
+
+await t("34) إعداد الجسر بالكامل من تيليجرام (/arena url + key) بدون wrangler", async () => {
+  const env = makeEnv(); // لا ARENA_BRIDGE_URL بالبيئة
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena"));
+  assert.ok(sentTexts().join("\n").includes("مو مضبوط"), "المفروض يبدأ غير مضبوط");
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena url https://arena.test/"));
+  assert.equal(state.kv.get("arena_url"), JSON.stringify("https://arena.test"), "الرابط ما انحفظ");
+  const ctx3 = makeCtx();
+  await runWebhook(env, ctx3, tgUpdate("/arena key ak-123"));
+  assert.equal(state.kv.get("arena_key"), JSON.stringify("ak-123"), "المفتاح ما انحفظ");
+  const ctx4 = makeCtx();
+  await runWebhook(env, ctx4, tgUpdate("/arena_ask شو الأخبار؟"));
+  assert.ok(sentTexts().join("\n").includes("رد من Arena"), "الجسر ما اننادى بعد الإعداد");
+});
+
+await t("35) /arena setup يشرح الخطوات بالعربي", async () => {
+  const env = makeEnv();
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena setup"));
+  const all = sentTexts().join("\n");
+  assert.ok(all.includes("٣ خطوات"), "ما وصل الشرح");
+  assert.ok(all.includes("/arena url"), "الشرح ما فيه أمر الرابط");
+  assert.ok(all.includes("README_IPHONE_AR.md"), "ما دل على دليل الآيفون");
+});
+
+await t("36) /arena reset يمسح الإعداد من KV", async () => {
+  const env = makeEnv();
+  state.kv.set("arena_url", JSON.stringify("https://arena.test"));
+  state.kv.set("arena_key", JSON.stringify("ak"));
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena reset"));
+  assert.equal(JSON.parse(state.kv.get("arena_url")), null, "الرابط ما انمسح");
+  assert.ok(sentTexts().join("\n").includes("مسحت"), "ما وصل تأكيد المسح");
+});
+
+await t("37) /arena يعرض أن العنوان محفوظ من تيليجرام", async () => {
+  const env = makeEnv();
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/arena url https://arena.test"));
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("/arena"));
+  assert.ok(sentTexts().join("\n").includes("محفوظ من تيليجرام"), "المصدر ما ظهر");
+});
+
+await t("38) مدير السياق يفتح مساحة ويربط كمل بنفسها", async () => {
+  const env = makeEnv();
+  state.geminiQueue.push({ text: "بدأت المشروع" }, { text: "كملت بنفس السياق" });
+  await runWebhook(env, makeCtx(), tgUpdate("ابني متجر الزهور الجديد"));
+  let rows = JSON.parse(state.kv.get("context_threads_v1"));
+  assert.equal(rows.length, 1, "ما فتح مساحة");
+  const id = rows[0].id;
+  await runWebhook(env, makeCtx(), tgUpdate("كمل واضف الدفع"));
+  rows = JSON.parse(state.kv.get("context_threads_v1"));
+  assert.equal(rows.length, 1, "فتح شات جديد بدل الاستمرار");
+  assert.equal(JSON.parse(state.kv.get("active_context_thread_v1")), id);
+});
+
+await t("39) موضوع جديد ينفصل ويمكن الرجوع للقديم", async () => {
+  const env = makeEnv();
+  state.geminiQueue.push({ text: "أ" }, { text: "ب" });
+  await runWebhook(env, makeCtx(), tgUpdate("مشروع جديد حملة مطعم دمشق"));
+  await runWebhook(env, makeCtx(), tgUpdate("مشروع جديد تطبيق العقارات"));
+  let rows = JSON.parse(state.kv.get("context_threads_v1"));
+  assert.equal(rows.length, 2, "المشروعين اختلطوا");
+  await runWebhook(env, makeCtx(), tgUpdate("/chat 2"));
+  assert.equal(JSON.parse(state.kv.get("active_context_thread_v1")), rows[1].id, "ما رجع للشات القديم");
+});
+
+await t("40) /chats و/progress يعرضان المساحات والتقدم", async () => {
+  const env = makeEnv();
+  state.geminiQueue.push({ text: "جاهز" });
+  await runWebhook(env, makeCtx(), tgUpdate("جهز خطة إطلاق المنتج"));
+  await runWebhook(env, makeCtx(), tgUpdate("/chats"));
+  await runWebhook(env, makeCtx(), tgUpdate("/progress"));
+  const out = sentTexts().join("\n");
+  assert.ok(out.includes("مساحات العمل"));
+  assert.ok(out.includes("آخر سياق"));
+});
+
+await t("41) Browser Rendering يفعّل Arena بلا رابط جسر", async () => {
+  const env = { ...makeEnv(), BROWSER: { binding: "mock" } };
+  await runWebhook(env, makeCtx(), tgUpdate("/arena"));
+  const out = sentTexts().join("\n");
+  assert.ok(out.includes("Cloudflare Browser Rendering"), "ما ظهر محرك المتصفح");
+  assert.ok(out.includes("Chromium داخل Cloudflare"), "ما ظهر التشغيل بلا سيرفر");
+});
+
+console.log(`\n${passed}/41 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);
