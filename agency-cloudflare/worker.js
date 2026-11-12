@@ -475,8 +475,10 @@ async function callArenaBrowser(convo, system, env) {
     const clicked = await page.evaluate(() => {
       const ta = document.querySelector('textarea[name="message"]');
       const form = ta && ta.closest("form");
-      const candidates = [...(form || document).querySelectorAll('button[type="submit"], button')];
-      const submit = candidates.find((b) => !b.disabled && (b.type === "submit" || /send|submit|إرسال/i.test(`${b.getAttribute("aria-label") || ""} ${b.textContent || ""}`)));
+      // ممنوع اختيار أي submit عام: نافذة التسجيل فيها Continue with Google من نفس النوع.
+      const exact = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
+      const candidates = form ? [...form.querySelectorAll("button")] : [];
+      const submit = exact || candidates.find((b) => !b.disabled && /send|إرسال/i.test(`${b.getAttribute("aria-label") || ""} ${b.textContent || ""}`));
       if (!submit) return false;
       submit.click(); return true;
     });
@@ -485,7 +487,7 @@ async function callArenaBrowser(convo, system, env) {
     try { raw = await responsePromise; }
     catch (e) {
       const diag = await page.evaluate(() => ({
-        url: location.href,
+        url: location.origin + location.pathname,
         title: document.title,
         textarea: !!document.querySelector('textarea[name="message"]'),
         valueLength: (document.querySelector('textarea[name="message"]') || {}).value?.length || 0,
