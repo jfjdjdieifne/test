@@ -144,6 +144,7 @@ export default {
       try { update = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
       // نحتاج العنوان لبناء رابط /arena connect بدون متغير يدوي.
       ctx.waitUntil(kvPut(env, "public_worker_url", url.origin));
+      ctx.waitUntil(kvPut(env, "last_user_activity_at", Date.now()));
       ctx.waitUntil(handleUpdate(update, env, ctx).catch((e) => console.log("handler error:", e && e.message ? e.message : e)));
       return new Response("ok", { status: 200 });
     }
@@ -161,11 +162,14 @@ export default {
           const alive = await arenaWake(env, 1, 0);
           if (!alive) console.log("arena keepalive: لا استجابة من الجسر");
         }
-        // افتح Arena دورياً قبل انتهاء access token، ودع الموقع يجدّد الجلسة عبر
-        // refresh token، ثم خزّن النسخة الجديدة. هذا أفضل وأأمن من تكديس توكنات.
-        if (now.getUTCMinutes() % 20 === 0) await refreshArenaSession(env);
+        // لا تفتح Browser لمجرد keep-alive: حصة Cloudflare المجانية محدودة،
+        // والتجديد يتم عند أول استخدام حقيقي مع حفظ refresh token المحدث.
       } catch (e) { console.log("brief error:", e && e.message ? e.message : e); }
-      try { await processTaskQueue(env, STEPS_PER_TICK); } catch (e) { console.log("queue error:", e && e.message ? e.message : e); }
+      try {
+        const lastUser = Number(await kvGet(env, "last_user_activity_at", 0)) || 0;
+        // أعطِ رسائل المستخدم أولوية على المهام الخلفية حتى لا تتنافس على Browser.
+        if (Date.now() - lastUser > 2 * 60000) await processTaskQueue(env, STEPS_PER_TICK);
+      } catch (e) { console.log("queue error:", e && e.message ? e.message : e); }
       try { await proactiveTaskReview(env); } catch (e) { console.log("proactive review error:", e && e.message ? e.message : e); }
     })());
   },
@@ -809,9 +813,11 @@ async function callArenaBrowser(convo, system, env) {
     await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: text.length });
     return text;
   } catch (e) {
-    console.log("arena browser error:", e && e.message ? e.message : e);
-    await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: String(e && e.message ? e.message : e).slice(0, 300) });
+    const message = String(e && e.message ? e.message : e);
+    console.log("arena browser error:", message);
+    await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: message.slice(0, 300) });
     await arenaMarkDown(env, 60000);
+    if (/429|rate limit|Unable to create new browser/i.test(message)) return "⏳ Arena جاهزة، بس Cloudflare منع فتح متصفح جديد مؤقتاً بسبب حد النسخة المجانية. ما بدك تعيد الربط. استنى دقيقة وابعت رسالتك نفسها؛ وما تستخدم /arena test إلا للتشخيص لأنه يستهلك جلسة متصفح لحاله.";
     return null;
   } finally { if (browser) { try { await browser.close(); } catch {} } }
 }
