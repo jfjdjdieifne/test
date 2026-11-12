@@ -2403,7 +2403,7 @@ async function handleCommand(text, env, chatId) {
             anyOk ? "✅ في محرك شغال — Arena جاهز" : "⚠️ ولا محرك رد الآن",
             "", ...lines,
             "",
-            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : "جلسة Safari وصلت، لكن Arena لم تقبل المصادقة بعد. الطلب محفوظ وسيُعاد تلقائياً — لا تعِد الربط الآن.",
+            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : ((await kvGet(env, "hyperbrowser_profile_v1", "")) ? "Hyperbrowser Profile محفوظ، لكن Arena رفضت الإرسال من شبكة الخطة المجانية. Proxy وCAPTCHA solving مدفوعان رسمياً لدى Hyperbrowser؛ أوقفت الإعادات التي تحرق الرصيد." : "جلسة Arena غير مصادقة. الطلب محفوظ ولن يضيع."),
           ].join("\n"));
           return true;
         }
@@ -2465,7 +2465,7 @@ async function processDirectRetries(env) {
   const now = Date.now(); const item = rows.find((r) => (r.availableAt || 0) <= now); if (!item) return;
   item.attempts = (item.attempts || 0) + 1;
   const answer = await agentLoop(item.text, env, item.chatId, { route: "direct", retry: true });
-  if (["__ARENA_RETRY_429__", "__ARENA_RETRY_DAILY__"].includes(answer) || /صار انقطاع مؤقت/.test(answer)) {
+  if (["__ARENA_RETRY_429__", "__ARENA_RETRY_DAILY__"].includes(answer) || /صار انقطاع مؤقت|Arena رفضت طلب المتصفح|Groq ما قبل الطلب/.test(answer)) {
     const d = new Date(); const nextUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 2);
     item.availableAt = answer === "__ARENA_RETRY_DAILY__" ? nextUtc : now + Math.min(15 * 60000, 60000 * Math.pow(2, Math.min(item.attempts, 4)));
     await kvPut(env, "arena_pending_direct_v1", rows); return;
