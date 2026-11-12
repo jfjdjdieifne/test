@@ -1109,10 +1109,27 @@ async function arenaSelftest(env, deep) {
   } catch (e) { console.log("arena selftest error:", e && e.message ? e.message : e); return null; }
 }
 
+async function callGroqSmart(convo, system, env, key) {
+  let model = String(await kvGet(env, "groq_model_v1", env.GROQ_MODEL || "") || "").trim();
+  if (!model) {
+    try {
+      const mr = await fetch("https://api.groq.com/openai/v1/models", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) });
+      if (!mr.ok) { await kvPut(env, "groq_last_error_v1", { at: Date.now(), status: mr.status, stage: "models" }); return null; }
+      const ids = ((await mr.json()).data || []).map((x) => x.id).filter((x) => !/whisper|guard|tts|speech/i.test(x));
+      model = ids.find((x) => /llama-3\.3-70b/i.test(x)) || ids.find((x) => /70b.*versatile/i.test(x)) || ids.find((x) => /llama.*instant/i.test(x)) || ids[0] || "";
+      if (model) await kvPut(env, "groq_model_v1", model);
+    } catch { await kvPut(env, "groq_last_error_v1", { at: Date.now(), status: 0, stage: "models" }); return null; }
+  }
+  if (!model) return null;
+  const out = await callOpenAICompatible("https://api.groq.com/openai/v1", key, model, convo, system);
+  await kvPut(env, "groq_last_error_v1", out ? null : { at: Date.now(), status: 0, stage: "chat", model });
+  return out;
+}
+
 async function llmComplete(convo, system, env) {
   const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
   if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "groq" && groqKey) {
-    const fast = await callOpenAICompatible("https://api.groq.com/openai/v1", groqKey, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system);
+    const fast = await callGroqSmart(convo, system, env, groqKey);
     if (fast) return fast;
   }
   // Arena هو الأساس افتراضياً (بمجرد ضبط ARENA_BRIDGE_URL). باقي المزودين احتياط،
@@ -1126,7 +1143,7 @@ async function llmComplete(convo, system, env) {
   return (
     (await callGemini(convo, system, env)) ||
     (await callOpenAICompatible("https://api.mistral.ai/v1", env.MISTRAL_API_KEY, (env.MISTRAL_MODEL || "mistral-large-latest").trim(), convo, system)) ||
-    (await callOpenAICompatible("https://api.groq.com/openai/v1", groqKey, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
+    (groqKey ? await callGroqSmart(convo, system, env, groqKey) : null) ||
     (await callOpenAICompatible("https://integrate.api.nvidia.com/v1", env.NVIDIA_API_KEY, (env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct").trim(), convo, system)) ||
     (await callOpenRouterWithFallback(convo, system, env)) ||
     (await callArenaBridge(convo, system, env)) ||
@@ -1508,7 +1525,10 @@ async function agentLoop(userText, env, chatId, opts) {
   const convo = [...hist, { role: "user", content: String(userText) }];
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
-    if (!out) return "Arena رفضت طلب المتصفح الآلي مؤقتاً. حفظت رسالتك وسياقها بالطابور وسأعيدها تلقائياً؛ لا تعيد إرسالها ولا تعمل ربطاً جديداً.";
+    if (!out) {
+      const primary = await kvGet(env, "primary_intelligence_v1", "arena");
+      return primary === "groq" ? "Groq ما قبل الطلب حالياً. حفظت رسالتك؛ عم أفحص المفتاح والنموذج تلقائياً، وما في داعي تعيد ربط Arena." : "Arena رفضت طلب المتصفح الآلي مؤقتاً. حفظت رسالتك وسياقها بالطابور وسأعيدها تلقائياً؛ لا تعيد إرسالها ولا تعمل ربطاً جديداً.";
+    }
     if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
     const call = parseToolCall(out);
     if (!call) {
