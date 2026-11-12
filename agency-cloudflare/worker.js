@@ -117,6 +117,19 @@ export default {
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", ts: Date.now() }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     }
+    if (url.pathname === "/browserless-health") {
+      if (!env.CALL_SECRET || url.searchParams.get("key") !== env.CALL_SECRET) return jsonResponse({ error: "unauthorized" }, 401);
+      const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
+      if (!token) return jsonResponse({ ok: false, reason: "not_configured" }, 200);
+      let b; try {
+        b = await remotePuppeteer.connect({ browserWSEndpoint: `wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000` });
+        const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
+        await kvPut(env, "browserless_last_error_v1", null); return jsonResponse({ ok: true }, 200);
+      } catch (e) {
+        const message = String(e?.message || e); await kvPut(env, "browserless_last_error_v1", { at: Date.now(), error: message.slice(0, 300) });
+        return jsonResponse({ ok: false, reason: message.slice(0, 300) }, 200);
+      } finally { if (b) try { await b.close(); } catch {} }
+    }
     if (url.pathname === "/arena-status") {
       if (!env.CALL_SECRET || url.searchParams.get("key") !== env.CALL_SECRET) return jsonResponse({ error: "unauthorized" }, 401);
       const lastError = await kvGet(env, "arena_browser_last_error", null);
