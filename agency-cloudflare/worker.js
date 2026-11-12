@@ -117,6 +117,21 @@ export default {
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ status: "ok", service: "jarvis-cf", ts: Date.now() }), { status: 200, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
     }
+    if (url.pathname === "/browserless-health") {
+      if (!env.CALL_SECRET || url.searchParams.get("key") !== env.CALL_SECRET) return jsonResponse({ error: "unauthorized" }, 401);
+      const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
+      if (!token) return jsonResponse({ ok: false, reason: "not_configured" }, 200);
+      let b; try {
+        b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
+        const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
+        await kvPut(env, "browserless_last_error_v1", null);
+        const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
+        return jsonResponse({ ok: true }, 200);
+      } catch (e) {
+        const message = String(e?.message || e); await kvPut(env, "browserless_last_error_v1", { at: Date.now(), error: message.slice(0, 300) });
+        return jsonResponse({ ok: false, reason: message.slice(0, 300) }, 200);
+      } finally { if (b) try { await b.close(); } catch {} }
+    }
     if (url.pathname === "/arena-status") {
       if (!env.CALL_SECRET || url.searchParams.get("key") !== env.CALL_SECRET) return jsonResponse({ error: "unauthorized" }, 401);
       const lastError = await kvGet(env, "arena_browser_last_error", null);
@@ -124,7 +139,7 @@ export default {
       const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
       const skipUntil = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
       let browserLimits = null; try { browserLimits = env.BROWSER ? await puppeteer.limits(env.BROWSER) : null; } catch {}
-      return jsonResponse({ lastError, lastOk, browserlessConfigured: !!String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || ""), browserLimits, pendingDirect: (await kvGet(env, "arena_pending_direct_v1", [])).length, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
+      return jsonResponse({ lastError, lastOk, browserlessConfigured: !!String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || ""), browserlessLastError: await kvGet(env, "browserless_last_error_v1", null), browserLimits, pendingDirect: (await kvGet(env, "arena_pending_direct_v1", [])).length, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
@@ -550,6 +565,25 @@ function arenaSessionFromStorage(storage) {
   return null;
 }
 
+async function connectBrowserlessNative(endpoint) {
+  // puppeteer-core يحاول استعمال حزمة ws الخاصة بـNode، وهي غير متاحة داخل Workers.
+  // هذا Transport يربطه مباشرةً بـWebSocket الأصلي في Cloudflare Workers.
+  const socket = new WebSocket(endpoint);
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Browserless WebSocket open timeout")), 15000);
+    socket.addEventListener("open", () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener("error", () => { clearTimeout(timer); reject(new Error("Browserless WebSocket handshake failed")); }, { once: true });
+  });
+  const transport = {
+    onmessage: null, onclose: null,
+    send(message) { socket.send(message); },
+    close() { try { socket.close(); } catch {} },
+  };
+  socket.addEventListener("message", (event) => transport.onmessage?.(typeof event.data === "string" ? event.data : new TextDecoder().decode(event.data)));
+  socket.addEventListener("close", () => transport.onclose?.());
+  return await remotePuppeteer.connect({ transport });
+}
+
 async function acquireArenaBrowser(env) {
   // Browserless المجاني: 1000 وحدة/شهر، بلا بطاقة، ويدعم Puppeteer وCAPTCHA.
   // هو المسار الأول؛ Cloudflare (10 دقائق/يوم) يبقى احتياطياً تلقائياً.
@@ -557,8 +591,12 @@ async function acquireArenaBrowser(env) {
   if (browserlessToken) {
     try {
       const endpoint = `wss://production-ams.browserless.io?token=${encodeURIComponent(browserlessToken)}&timeout=60000`;
-      return { browser: await remotePuppeteer.connect({ browserWSEndpoint: endpoint }), provider: "browserless" };
-    } catch (e) { console.log("browserless connect error:", e?.message || e); }
+      return { browser: await connectBrowserlessNative(endpoint), provider: "browserless" };
+    } catch (e) {
+      const message = String(e?.message || e);
+      console.log("browserless connect error:", message);
+      await kvPut(env, "browserless_last_error_v1", { at: Date.now(), error: message.slice(0, 300) });
+    }
   }
   // احتياط Cloudflare الرسمي: 600 ثانية Browser يومياً.
   try {
@@ -2039,6 +2077,20 @@ async function handleCommand(text, env, chatId) {
     }
     case "/browserless": {
       const sub = arg.trim();
+      if (/^(test|فحص)$/i.test(sub)) {
+        const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
+        if (!token) { await sendMessage(env, chatId, "اربط التوكن أولاً: /browserless TOKEN"); return true; }
+        let b; try {
+          b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
+          const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
+          await kvPut(env, "browserless_last_error_v1", null);
+          await sendMessage(env, chatId, "✅ Browserless اتصل فعلياً وفتح صفحة اختبار. صار جاهز لـArena.");
+        } catch (e) {
+          const message = String(e?.message || e); await kvPut(env, "browserless_last_error_v1", { at: Date.now(), error: message.slice(0, 300) });
+          await sendMessage(env, chatId, `❌ Browserless مربوط بالتخزين لكن الاتصال فشل: ${message.slice(0, 500)}`);
+        } finally { if (b) try { await b.close(); } catch {} }
+        return true;
+      }
       if (/^(off|delete|حذف|وقف)$/i.test(sub)) { await kvPut(env, "browserless_token_v1", null); await sendMessage(env, chatId, "تم حذف Browserless. رجعنا لـCloudflare فقط."); return true; }
       if (!sub) {
         const configured = !!String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "");
@@ -2050,6 +2102,7 @@ async function handleCommand(text, env, chatId) {
       if (sub.length < 20 || /\s/.test(sub)) { await sendMessage(env, chatId, "التوكن شكله غير صالح. انسخه وحده بعد /browserless"); return true; }
       await kvPut(env, "browserless_token_v1", sub.slice(0, 500));
       await kvPut(env, "arena_skip_until", 0);
+      const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
       await sendMessage(env, chatId, "✅ تم ربط Browserless كمسار أول: 1000 وحدة مجانية بالشهر، متصفحين متزامنين، وCloudflare صار احتياط تلقائي. ما رح أعرض التوكن بأي سجل.");
       return true;
     }

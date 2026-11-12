@@ -18,6 +18,7 @@ on:
       - "arena/0eb7da80-test"
       - "arena/554373c6-test"
       - "arena/73430b19-test"
+      - "arena/701fad7b-test"
     paths:
       - "agency-cloudflare/**"
       - ".github/workflows/deploy-jarvis-cloudflare.yml"
@@ -88,6 +89,7 @@ jobs:
           health=$(curl --fail --show-error --silent "$WORKER_URL/health")
           printf '%s\n' "$health" | grep -q '"status":"ok"'
           key=$(sed -n 's/^CALL_SECRET = "\(.*\)"/\1/p' wrangler.toml)
+          # لا نستهلك وحدة Browserless بكل deploy؛ الفحص اليدوي: /browserless test
           status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
           printf 'Arena transport metadata: %s\n' "$status"
           echo "::notice title=Arena transport metadata::$status"
