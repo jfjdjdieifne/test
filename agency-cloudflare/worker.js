@@ -796,7 +796,7 @@ async function callArenaBrowser(convo, system, env) {
         // stream تابع لـnextjs-api؛ الصفحة نفسها هي origin الموثوق، ثم حلّل الداتا.
         if (!/\/nextjs-api\/stream\//.test(response.url())) return;
         responseStarted = true;
-        try { const body = await response.text(); clearTimeout(timer); resolve(body); }
+        try { const body = await response.text(); clearTimeout(timer); resolve({ body, status: response.status(), path: new URL(response.url()).pathname }); }
         catch (e) { clearTimeout(timer); reject(e); }
       });
     });
@@ -847,8 +847,8 @@ async function callArenaBrowser(convo, system, env) {
         if (!sent) await page.keyboard.press("Enter");
       }
     }
-    let raw;
-    try { raw = await responsePromise; }
+    let captured;
+    try { captured = await responsePromise; }
     catch (e) {
       const diag = await page.evaluate(() => {
         const send = document.querySelector('button[aria-label="Send message"]');
@@ -870,6 +870,9 @@ async function callArenaBrowser(convo, system, env) {
       }
       throw e;
     }
+    const raw = captured?.body || "";
+    const shape = arenaStreamShape(raw);
+    await kvPut(env, "arena_stream_shape", { at: Date.now(), status: captured?.status || 0, path: captured?.path || "", streamShape: shape });
     const text = parseArenaDataStream(raw);
     try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
     if (!text) throw new Error("Arena browser returned an empty stream");
