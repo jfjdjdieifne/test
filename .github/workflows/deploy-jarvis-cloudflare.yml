@@ -84,4 +84,5 @@ jobs:
           key=$(sed -n 's/^CALL_SECRET = "\(.*\)"/\1/p' wrangler.toml)
           status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
           printf 'Arena transport metadata: %s\n' "$status"
+          echo "::notice title=Arena transport metadata::$status"
           echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"
