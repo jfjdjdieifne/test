@@ -565,10 +565,13 @@ async function callArenaBrowser(convo, system, env) {
     // الطريق الثابت: نفّذ نفس endpoint الذي تستعمله واجهة Arena من داخل origin والجلسة.
     // هذا يتجاوز زر React الذي قد يبقى disabled بسبب onboarding/modality state.
     try {
-      const savedDirect = await kvGet(env, "arena_direct_session_v2", null);
-      // handoff تلقائي قبل تضخم الشات. الـprompt يحمل التعليمات وآخر السياق، ومدير
-      // السياق الدائم يحفظ الملخص/الحقائق للمحادثة التالية.
-      const previousDirect = savedDirect && (savedDirect.turns || 0) < 35 ? savedDirect : null;
+      // v3 يتجاهل أي session قديمة/مسمومة من نسخة post السابقة.
+      const savedDirect = await kvGet(env, "arena_direct_session_v3", null);
+      // نتيجة الأداة تحتاج round-trip جديد موثوق: نفتح Direct Max جديداً ونرسل كامل
+      // السياق، بدل تعليق المستخدم على post-to-evaluation منتهي. الرسائل الطبيعية
+      // تبقى في شات واحد حتى handoff الوقائي.
+      const isToolContinuation = convo.some((m) => m.role === "user" && /^TOOL_RESULT:/i.test(String(m.content || "")));
+      const previousDirect = !isToolContinuation && savedDirect && (savedDirect.turns || 0) < 35 ? savedDirect : null;
       const directRaw = await page.evaluate(async ({ message, previous }) => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         let token = "";
@@ -612,7 +615,7 @@ async function callArenaBrowser(convo, system, env) {
       const directText = directRaw && directRaw.status < 400 ? parseArenaDataStream(directRaw.text) : "";
       if (directText) {
         try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
-        await kvPut(env, "arena_direct_session_v2", { id: directRaw.evaluationId, modelId: directRaw.modelAId, turns: (previousDirect?.turns || 0) + 1, updated: Date.now() });
+        await kvPut(env, "arena_direct_session_v3", { id: directRaw.evaluationId, modelId: directRaw.modelAId, turns: (previousDirect?.turns || 0) + 1, updated: Date.now() });
         await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "direct-max" });
         return directText;
       }
@@ -620,14 +623,14 @@ async function callArenaBrowser(convo, system, env) {
       // قد تنتهي جلسة Direct أو يرفض Arena إضافة turn جديد. لا نرمي جواب المستخدم:
       // افتح handoff جديد فوراً مع كامل السياق المرسل وحاول مرة واحدة تلقائياً.
       if (previousDirect) {
-        await kvPut(env, "arena_direct_session_v2", null);
+        await kvPut(env, "arena_direct_session_v3", null);
         try { await browser.close(); } catch {}
         return await callArenaBrowser(convo, system, env);
       }
     } catch (e) {
       console.log("arena direct error:", e && e.message ? e.message : e);
-      const stale = await kvGet(env, "arena_direct_session_v2", null);
-      if (stale) { await kvPut(env, "arena_direct_session_v2", null); try { await browser.close(); } catch {} return await callArenaBrowser(convo, system, env); }
+      const stale = await kvGet(env, "arena_direct_session_v3", null);
+      if (stale) { await kvPut(env, "arena_direct_session_v3", null); try { await browser.close(); } catch {} return await callArenaBrowser(convo, system, env); }
     }
 
     let responseStarted = false;
