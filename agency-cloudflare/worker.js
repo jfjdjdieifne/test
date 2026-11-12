@@ -96,6 +96,7 @@ export default {
       const cookie = typeof body?.cookie === "string" ? body.cookie.slice(0, 20000) : "";
       if (!Object.keys(safeStorage).length && !cookie) return jsonResponse({ error: "Arena browser storage is empty; reload Arena and try again" }, 422, CORS_HEADERS);
       await kvPut(env, "arena_imported_storage", safeStorage);
+      await kvPut(env, "arena_runtime_storage", safeStorage);
       await kvPut(env, "arena_imported_cookie", cookie);
       await kvPut(env, "arena_imported_at", Date.now());
       await kvPut(env, "arena_connect_token", null);
@@ -533,7 +534,7 @@ async function callArenaBrowser(convo, system, env) {
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
     // افتح Direct Chat صراحةً. لا نستخدم الصفحة الرئيسية لأنها تبدأ Battle Mode.
     await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
-    const imported = await kvGet(env, "arena_imported_storage", {});
+    const imported = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
     const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
     if ((imported && typeof imported === "object" && Object.keys(imported).length) || importedCookie) {
       if (imported && typeof imported === "object") await page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v); }, imported);
@@ -547,6 +548,11 @@ async function callArenaBrowser(convo, system, env) {
         try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, domain: "arena.ai", path: "/", secure: true }); } catch {}
       }
       await page.reload({ waitUntil: "domcontentloaded", timeout: 8000 });
+      // احتفظ بأي access/refresh session حدّثتها Arena؛ لا ترجع كل مرة للنسخة القديمة.
+      try {
+        const freshStorage = await page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; });
+        if (freshStorage && Object.keys(freshStorage).length) await kvPut(env, "arena_runtime_storage", freshStorage);
+      } catch {}
     }
     await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
     // Arena قد تعرض نافذة cookies فوق زر الإرسال.
@@ -645,9 +651,9 @@ async function callArenaBrowser(convo, system, env) {
     const responsePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
       page.on("response", async (response) => {
-        // create endpoint اسمه create-evaluation (وليس create-to-evaluation).
-        // الخطأ القديم كان يتجاهل الرد الحقيقي ثم ينتظر 12 ثانية ويعلن timeout.
-        if (!/\/nextjs-api\/stream\/(?:create-evaluation|post-to-evaluation(?:\/|$))/.test(response.url())) return;
+        // Arena غيّرت اسم endpoint أكثر من مرة (evaluation/direct chat). التقط أي
+        // stream تابع لـnextjs-api؛ الصفحة نفسها هي origin الموثوق، ثم حلّل الداتا.
+        if (!/\/nextjs-api\/stream\//.test(response.url())) return;
         responseStarted = true;
         try { const body = await response.text(); clearTimeout(timer); resolve(body); }
         catch (e) { clearTimeout(timer); reject(e); }
