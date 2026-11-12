@@ -604,7 +604,31 @@ async function connectBrowserlessNative(endpoint) {
   return await remotePuppeteer.connect({ transport });
 }
 
+const managedBrowserSessions = new WeakMap();
+async function createHyperbrowserSession(env, interactive) {
+  const key = String(await kvGet(env, "hyperbrowser_api_key_v1", "") || "").trim();
+  if (!key) return null;
+  const headers = { "x-api-key": key, "content-type": "application/json" };
+  let profileId = String(await kvGet(env, "hyperbrowser_profile_v1", "") || "");
+  if (!profileId) {
+    const pr = await fetch("https://api.hyperbrowser.ai/api/profile", { method: "POST", headers, body: JSON.stringify({ name: "jarvis-arena" }), signal: AbortSignal.timeout(15000) });
+    if (!pr.ok) throw new Error(`Hyperbrowser profile HTTP ${pr.status}`);
+    profileId = String((await pr.json()).id || ""); if (!profileId) throw new Error("Hyperbrowser profile id missing");
+    await kvPut(env, "hyperbrowser_profile_v1", profileId);
+  }
+  const sr = await fetch("https://api.hyperbrowser.ai/api/session", { method: "POST", headers, body: JSON.stringify({ acceptCookies: true, useStealth: true, timeoutMinutes: interactive ? 30 : 20, profile: { id: profileId, persistChanges: true } }), signal: AbortSignal.timeout(20000) });
+  if (!sr.ok) throw new Error(`Hyperbrowser session HTTP ${sr.status}`);
+  const session = await sr.json(); if (!session.wsEndpoint) throw new Error("Hyperbrowser wsEndpoint missing");
+  return { ...session, key };
+}
+
 async function acquireArenaBrowser(env) {
+  // Hyperbrowser أولاً عند ربطه: ملف متصفح كامل دائم وCDP. الخطة المجانية
+  // ليست Residential حسب صفحة الأسعار؛ لذلك نتحقق عملياً ولا ندّعي أنها حل قبل نجاح Arena.
+  try {
+    const hs = await createHyperbrowserSession(env, false);
+    if (hs) { const browser = await connectBrowserlessNative(hs.wsEndpoint); managedBrowserSessions.set(browser, { provider: "hyperbrowser", id: hs.id, key: hs.key }); return { browser, provider: "hyperbrowser" }; }
+  } catch (e) { await kvPut(env, "hyperbrowser_last_error_v1", { at: Date.now(), error: String(e?.message || e).slice(0, 300) }); }
   // Browserless المجاني: 1000 وحدة/شهر، بلا بطاقة، ويدعم Puppeteer وCAPTCHA.
   // هو المسار الأول؛ Cloudflare (10 دقائق/يوم) يبقى احتياطياً تلقائياً.
   const browserlessToken = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
@@ -629,6 +653,12 @@ async function acquireArenaBrowser(env) {
 
 async function releaseArenaBrowser(browser) {
   if (!browser) return;
+  const managed = managedBrowserSessions.get(browser);
+  if (managed?.provider === "hyperbrowser") {
+    try { await browser.disconnect(); } catch {}
+    try { await fetch(`https://api.hyperbrowser.ai/api/session/${encodeURIComponent(managed.id)}/stop`, { method: "PUT", headers: { "x-api-key": managed.key }, signal: AbortSignal.timeout(10000) }); } catch {}
+    managedBrowserSessions.delete(browser); return;
+  }
   try { await browser.close(); } catch {}
 }
 
@@ -2075,6 +2105,30 @@ async function handleCommand(text, env, chatId) {
       for (const [k, v] of Object.entries(counts)) lines.push(`• ${k}: ${v}`);
       lines.push("", "للتفاصيل: /leads و /lead <رقم>");
       await sendMessage(env, chatId, lines.join("\n")); return true;
+    }
+    case "/hyperbrowser": {
+      const hm = arg.match(/^key\s+(.+)$/i);
+      if (hm) {
+        const key = hm[1].trim(); if (!key.startsWith("hb_") || key.length < 20) { await sendMessage(env, chatId, "مفتاح Hyperbrowser غير صالح."); return true; }
+        await kvPut(env, "hyperbrowser_api_key_v1", key); await kvPut(env, "hyperbrowser_profile_v1", null);
+        await sendMessage(env, chatId, "✅ حفظت مفتاح Hyperbrowser بخصوصية. احذف رسالة المفتاح، ثم اكتب /hyperbrowser connect."); return true;
+      }
+      if (/^connect$/i.test(arg)) {
+        try {
+          const s = await createHyperbrowserSession(env, true); await kvPut(env, "hyperbrowser_login_session_v1", { id: s.id, at: Date.now() });
+          await sendMessage(env, chatId, `🔐 افتح المتصفح الحي وسجّل دخول Arena فقط:\n${s.liveUrl}\n\nبعد ما تتأكد أنك داخل Arena اكتب /hyperbrowser save`);
+        } catch (e) { await sendMessage(env, chatId, `❌ Hyperbrowser: ${String(e?.message || e).slice(0, 250)}`); }
+        return true;
+      }
+      if (/^save$/i.test(arg)) {
+        const s = await kvGet(env, "hyperbrowser_login_session_v1", null); const key = String(await kvGet(env, "hyperbrowser_api_key_v1", "") || "");
+        if (!s?.id || !key) { await sendMessage(env, chatId, "ما في جلسة ربط مفتوحة. اكتب /hyperbrowser connect"); return true; }
+        const r = await fetch(`https://api.hyperbrowser.ai/api/session/${encodeURIComponent(s.id)}/stop`, { method: "PUT", headers: { "x-api-key": key } });
+        if (r.ok) { await kvPut(env, "hyperbrowser_login_session_v1", null); await sendMessage(env, chatId, "✅ انحفظ Profile كامل. جرّب /arena test بعد لحظات."); }
+        else await sendMessage(env, chatId, `❌ تعذر حفظ الجلسة (HTTP ${r.status})`);
+        return true;
+      }
+      await sendMessage(env, chatId, "الأوامر: /hyperbrowser key NEW_KEY ثم /hyperbrowser connect ثم /hyperbrowser save"); return true;
     }
     case "/groq": {
       const gm = arg.match(/^key\s+(.+)$/i);
