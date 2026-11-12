@@ -9,6 +9,7 @@ on:
       - "arena/8b9f58ef-test"
       - "arena/22fb9ec3-test"
       - "arena/18b7bad1-test"
+      - "arena/bb9a83bd-test"
     paths:
       - "agency-cloudflare/**"
       - ".github/workflows/deploy-jarvis-cloudflare.yml"
