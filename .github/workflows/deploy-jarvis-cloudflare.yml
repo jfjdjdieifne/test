@@ -99,7 +99,7 @@ jobs:
             echo '```'
             echo '✅ Worker health passed; /arena test was sent to Telegram.'
           } >> "$GITHUB_STEP_SUMMARY"
-          err=$(grep -E 'arena browser error:|Error:|error' /tmp/worker-tail.log | tail -5 | tr '\n' ' ' | tail -c 3500 || true)
+          err=$(grep -E 'arena browser (error|diagnostic):|Error:|error' /tmp/worker-tail.log | tail -8 | tr '\n' ' ' | tail -c 3500 || true)
           if [ -n "$err" ]; then
             safe=$(printf '%s' "$err" | sed 's/%/%25/g; s/\r/%0D/g')
             echo "::warning title=Arena live browser log::$safe"
