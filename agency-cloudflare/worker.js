@@ -119,7 +119,7 @@ export default {
       const lastOk = await kvGet(env, "arena_browser_last_ok", null);
       const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
       const skipUntil = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
-      return jsonResponse({ lastError, lastOk, importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
+      return jsonResponse({ lastError, lastOk, diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
@@ -716,6 +716,7 @@ async function callArenaBrowser(convo, system, env) {
         };
       });
       console.log("arena browser diagnostic:", JSON.stringify(diag));
+      await kvPut(env, "arena_browser_last_diagnostic", { at: Date.now(), ...diag });
       throw e;
     }
     const text = parseArenaDataStream(raw);
