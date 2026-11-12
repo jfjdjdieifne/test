@@ -460,11 +460,14 @@ async function callArenaBrowser(convo, system, env) {
       // أغلق login/news dialogs؛ Battle المجهول لا يحتاج حساباً.
       for (const b of buttons) if (/^(close|maybe later|not now|إغلاق)$/i.test((b.textContent || "").trim())) b.click();
     });
+    await new Promise((r) => setTimeout(r, 600));
     const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
+    let responseStarted = false;
     const responsePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
       page.on("response", async (response) => {
         if (!/\/nextjs-api\/stream\/(create|post)-to-evaluation/.test(response.url())) return;
+        responseStarted = true;
         try { const body = await response.text(); clearTimeout(timer); resolve(body); }
         catch (e) { clearTimeout(timer); reject(e); }
       });
@@ -483,6 +486,18 @@ async function callArenaBrowser(convo, system, env) {
       submit.click(); return true;
     });
     if (!clicked) await page.keyboard.press("Enter");
+    // أحياناً Arena تفتح Login modal عند أول إرسال للزائر. أغلقها وأعد الإرسال مرة.
+    await new Promise((r) => setTimeout(r, 900));
+    if (!responseStarted) {
+      const retry = await page.evaluate(() => {
+        const close = [...document.querySelectorAll("button")].find((b) => /^(close|maybe later|not now|إغلاق)$/i.test((b.textContent || "").trim()));
+        if (close) close.click();
+        const send = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
+        if (send && !send.disabled) { setTimeout(() => send.click(), 250); return true; }
+        return false;
+      });
+      if (!retry) await page.keyboard.press("Enter");
+    }
     let raw;
     try { raw = await responsePromise; }
     catch (e) {
