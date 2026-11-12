@@ -1,0 +1,9 @@
+# JARVIS Arena Bridge — الاعتماديات
+# المحرك: gpt4free (مزود Arena) + خادم FastAPI متوافق مع OpenAI
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+gpt4free>=0.3.0
+httpx>=0.24.0
+python-multipart>=0.0.6
+# ملاحظة: gpt4free قد يثبّت تلقائياً nodriver/curl-cffi لمحاكاة المتصفح وتجاوز Cloudflare.
+# إن أردت upstream الأثقل (Camoufox + Playwright) شغّل LMArenaBridge منفصلاً واضبط LMArenaBridge_URL.
