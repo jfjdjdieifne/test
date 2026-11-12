@@ -66,7 +66,7 @@ const MAX_TOOL_STEPS = 6;
 
 function arenaConnectPage(origin, token) {
   const endpoint = `${origin}/arena-session-import`;
-  const js = `javascript:(async()=>{try{const s={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);s[k]=localStorage.getItem(k)}const r=await fetch(${JSON.stringify(endpoint)},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:${JSON.stringify(token)},storage:s,cookie:document.cookie||''})});const d=await r.json();alert(d.ok?'✅ تم ربط Arena مع Jarvis. ارجع لتيليجرام واكتب /arena test':'❌ '+(d.error||r.status))}catch(e){alert('❌ '+e.message)}})()`;
+  const js = `javascript:(async()=>{try{const s={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);s[k]=localStorage.getItem(k)}const r=await fetch(${JSON.stringify(endpoint)},{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:${JSON.stringify(token)},storage:s,cookie:document.cookie||''})});const d=await r.json();alert(d.ok?'✅ تم نقل جلسة Arena إلى Jarvis. ارجع لتيليجرام واكتب /arena test للتأكد من صلاحيتها':'❌ '+(d.error||r.status))}catch(e){alert('❌ '+e.message)}})()`;
   const escaped = js.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<!doctype html><html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ربط Arena مع Jarvis</title><style>body{font-family:system-ui;background:#07111f;color:#eef;padding:24px;line-height:1.7;max-width:650px;margin:auto}.box{background:#11223b;padding:18px;border-radius:16px;margin:14px 0}button{font-size:18px;padding:14px;width:100%;border:0;border-radius:12px;background:#39d98a;color:#06140d;font-weight:700}code{word-break:break-all;color:#9ff}b{color:#6ef}</style><h1>🔐 ربط جلسة Arena</h1><p>لا تُنقل كلمة مرور Google. يُنقل رمز جلسة Arena فقط، والرابط صالح عشر دقائق ولمرة واحدة.</p><div class="box"><b>1.</b> اضغط الزر لنسخ كود الربط.<br><button onclick="navigator.clipboard.writeText(document.getElementById('code').textContent).then(()=>alert('تم النسخ ✅'))">انسخ كود الربط</button><code id="code" style="display:none">${escaped}</code></div><div class="box"><b>2.</b> في Safari اعمل Bookmark لأي صفحة، ثم Edit وبدّل عنوانه بالكود المنسوخ. سمّه «ربط جارفس».</div><div class="box"><b>3.</b> افتح <a style="color:#6ef" href="https://arena.ai">arena.ai</a> وأنت مسجّل دخول، ثم افتح Bookmark «ربط جارفس».</div><div class="box"><b>4.</b> بعد ظهور ✅ ارجع لتيليجرام واكتب <code>/arena test</code>.</div></html>`;
 }
@@ -122,7 +122,7 @@ export default {
       const lastOk = await kvGet(env, "arena_browser_last_ok", null);
       const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
       const skipUntil = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
-      return jsonResponse({ lastError, lastOk, diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
+      return jsonResponse({ lastError, lastOk, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
@@ -500,11 +500,32 @@ async function arenaCfg(env) {
 
 function parseArenaDataStream(raw) {
   const chunks = [];
-  for (const line of String(raw || "").split(/\r?\n/)) {
-    if (!line.startsWith("a0:")) continue;
-    try { const value = JSON.parse(line.slice(3)); if (typeof value === "string" && value !== "hasArenaError") chunks.push(value); } catch {}
+  const add = (value) => { if (typeof value === "string" && value !== "hasArenaError") chunks.push(value); };
+  for (let line of String(raw || "").split(/\r?\n/)) {
+    line = line.trim(); if (!line) continue;
+    try {
+      // Arena استعمل a0 سابقاً، وVercel AI Data Stream يستعمل 0 حالياً.
+      if (/^(?:a0|0):/.test(line)) { add(JSON.parse(line.slice(line.indexOf(":") + 1))); continue; }
+      // بعض إصدارات Direct ترسل SSE حديثاً.
+      if (line.startsWith("data:")) {
+        const payload = line.slice(5).trim(); if (!payload || payload === "[DONE]") continue;
+        const v = JSON.parse(payload);
+        if (v?.type === "text-delta") add(v.delta ?? v.textDelta ?? v.text);
+        else if (typeof v?.delta === "string") add(v.delta);
+        else if (typeof v?.content === "string" && /assistant|text/i.test(String(v.type || v.role || "text"))) add(v.content);
+      }
+    } catch {}
   }
   return chunks.join("").trim();
+}
+
+function arenaStreamShape(raw) {
+  const counts = {};
+  for (const line of String(raw || "").split(/\r?\n/)) {
+    const m = line.trim().match(/^([a-zA-Z0-9_-]{1,20})(?=:)/); const k = m?.[1] || (line.trim().startsWith("data:") ? "data" : "other");
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  return counts;
 }
 
 function arenaSessionFromStorage(storage) {
@@ -678,7 +699,14 @@ async function callArenaBrowser(convo, system, env) {
         await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "direct-max" });
         return directText;
       }
-      console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, has_body: !!directRaw?.text }));
+      const streamShape = arenaStreamShape(directRaw?.text || "");
+      console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, has_body: !!directRaw?.text, streamShape }));
+      await kvPut(env, "arena_stream_shape", { at: Date.now(), status: directRaw?.status || 0, streamShape });
+      // إذا Arena قبلت الطلب وأنشأت الشات، ممنوع إعادة إرساله عبر UI وخلق نسخة ثانية.
+      if (directRaw?.status > 0 && directRaw.status < 400 && directRaw.text) {
+        await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: "Arena stream format not recognized" });
+        return null;
+      }
       // قد تنتهي جلسة Direct أو يرفض Arena إضافة turn جديد. لا نرمي جواب المستخدم:
       // افتح handoff جديد فوراً مع كامل السياق المرسل وحاول مرة واحدة تلقائياً.
       if (previousDirect) {

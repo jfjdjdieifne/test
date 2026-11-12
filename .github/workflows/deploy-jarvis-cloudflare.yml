@@ -13,6 +13,7 @@ on:
       - "arena/1acf55dd-test"
       - "arena/46e5cd40-test"
       - "arena/cc2eb589-test"
+      - "arena/b9af6851-test"
     paths:
       - "agency-cloudflare/**"
       - ".github/workflows/deploy-jarvis-cloudflare.yml"
@@ -86,12 +87,6 @@ jobs:
           status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
           printf 'Arena transport metadata: %s\n' "$status"
           echo "::notice title=Arena transport metadata::$status"
-          # فحص Direct Max فعلي بلا طباعة prompt أو answer في السجل.
-          curl --fail --show-error --silent --max-time 35 -X POST "$WORKER_URL/ask" \
-            -H 'content-type: application/json' -H "x-jarvis-key: $key" \
-            --data '{"text":"اختبار اتصال تقني: أجب بكلمة جاهز فقط"}' > /tmp/arena-direct-check.json
-          grep -q '"reply"' /tmp/arena-direct-check.json
-          after=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
-          echo "::notice title=Arena transport after live check::$after"
-          if grep -Eq 'صار انقطاع مؤقت|جلسة Arena انتهت' /tmp/arena-direct-check.json; then echo 'Arena Direct transport/authentication failed' >&2; exit 1; fi
+          # لا نرسل prompt آلياً بكل deploy: Cloudflare Browser المجاني يحدّ إنشاء
+          # الجلسات، والفحص المتكرر كان ينافس رسائل المستخدم ويسبب HTTP 429.
           echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"
