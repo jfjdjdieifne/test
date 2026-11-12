@@ -102,6 +102,8 @@ export default {
       await kvPut(env, "arena_connect_token", null);
       await kvPut(env, "arena_connect_expires", 0);
       await kvPut(env, "arena_skip_until", 0);
+      await kvPut(env, "arena_session_alerted_at", 0);
+      await kvPut(env, "arena_direct_session_v3", null);
       return jsonResponse({ ok: true, imported: Object.keys(safeStorage).length }, 200, CORS_HEADERS);
     }
     if (url.pathname === "/arena-connect") {
@@ -159,6 +161,9 @@ export default {
           const alive = await arenaWake(env, 1, 0);
           if (!alive) console.log("arena keepalive: لا استجابة من الجسر");
         }
+        // افتح Arena دورياً قبل انتهاء access token، ودع الموقع يجدّد الجلسة عبر
+        // refresh token، ثم خزّن النسخة الجديدة. هذا أفضل وأأمن من تكديس توكنات.
+        if (now.getUTCMinutes() % 20 === 0) await refreshArenaSession(env);
       } catch (e) { console.log("brief error:", e && e.message ? e.message : e); }
       try { await processTaskQueue(env, STEPS_PER_TICK); } catch (e) { console.log("queue error:", e && e.message ? e.message : e); }
       try { await proactiveTaskReview(env); } catch (e) { console.log("proactive review error:", e && e.message ? e.message : e); }
@@ -515,6 +520,46 @@ function arenaSessionFromStorage(storage) {
     try { const found = walk(JSON.parse(raw)); if (found) return found; } catch {}
   }
   return null;
+}
+
+async function arenaReconnectLink(env) {
+  const base = String(await kvGet(env, "public_worker_url", "")).replace(/\/+$/, "");
+  if (!base) return "";
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  await kvPut(env, "arena_connect_token", token);
+  await kvPut(env, "arena_connect_expires", Date.now() + 10 * 60 * 1000);
+  return `${base}/arena-connect?token=${token}`;
+}
+
+async function refreshArenaSession(env) {
+  if (!env?.BROWSER || !(await arenaIsOn(env))) return false;
+  let browser;
+  try {
+    const storage = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
+    if (!storage || !Object.keys(storage).length) return false;
+    browser = await puppeteer.launch(env.BROWSER, { keep_alive: 30000 });
+    const page = await browser.newPage();
+    const cookies = await kvGet(env, "arena_browser_cookies", []);
+    if (Array.isArray(cookies) && cookies.length) try { await page.setCookie(...cookies); } catch {}
+    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 10000 });
+    await page.evaluate((items) => { for (const [k, v] of Object.entries(items || {})) localStorage.setItem(k, v); }, storage);
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 10000 });
+    await new Promise((r) => setTimeout(r, 3500));
+    const fresh = await page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; });
+    if (fresh && Object.keys(fresh).length) await kvPut(env, "arena_runtime_storage", fresh);
+    await kvPut(env, "arena_browser_cookies", await page.cookies());
+    const session = arenaSessionFromStorage(fresh || {});
+    const healthy = !!session && (!session.expires_at || Number(session.expires_at) * 1000 > Date.now() + 2 * 60000);
+    if (healthy) { await kvPut(env, "arena_session_alerted_at", 0); return true; }
+    const last = Number(await kvGet(env, "arena_session_alerted_at", 0)) || 0;
+    if (Date.now() - last > 6 * 60 * 60000) {
+      await kvPut(env, "arena_session_alerted_at", Date.now());
+      const owner = await getOwnerChatId(env); const link = await arenaReconnectLink(env);
+      if (owner) await sendMessage(env, owner, `🔐 جلسة Arena بحاجة لتجديد. حضرتلك رابط آمن صالح 10 دقائق:\n${link || "اكتب /arena connect"}\n\nما تخزّن كلمات مرور، وما في داعي تبعتلي أي توكن.`);
+    }
+    return false;
+  } catch (e) { console.log("arena session refresh error:", e?.message || e); return false; }
+  finally { if (browser) try { await browser.close(); } catch {} }
 }
 
 /** Arena بلا سيرفر: Chromium مُدار من Cloudflare Browser Rendering.
@@ -1936,12 +1981,10 @@ async function handleCommand(text, env, chatId) {
       if (/^(connect|login|ربط|دخول)$/i.test(low)) {
         const base = String(await kvGet(env, "public_worker_url", "")).replace(/\/+$/, "");
         if (!base) { await sendMessage(env, chatId, "أرسل /health أولاً ثم أعد /arena connect حتى أعرف رابط Worker."); return true; }
-        const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        await kvPut(env, "arena_connect_token", token);
-        await kvPut(env, "arena_connect_expires", Date.now() + 10 * 60 * 1000);
+        const link = await arenaReconnectLink(env);
         await sendMessage(env, chatId, [
           "🔐 رابط نقل جلسة Arena من Safari (صالح 10 دقائق ولمرة واحدة):",
-          `${base}/arena-connect?token=${token}`,
+          link,
           "",
           "افتحه في Safari واتبع 4 خطوات. لا يطلب كلمة مرور Google ولا يرسلها لجارفس.",
         ].join("\n"));
