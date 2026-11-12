@@ -449,13 +449,16 @@ async function callArenaBrowser(convo, system, env) {
     if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
     // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
-    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
+    // الصفحة الرئيسية تبدأ Battle Mode المجهول؛ Direct/Max يفتح نافذة Login ولا يرسل.
+    await page.goto("https://arena.ai/", { waitUntil: "domcontentloaded", timeout: 8000 });
     await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
     // Arena قد تعرض نافذة cookies فوق زر الإرسال.
     await page.evaluate(() => {
       const buttons = [...document.querySelectorAll("button")];
       const consent = buttons.find((b) => /accept cookies|accept all|agree|موافق/i.test((b.textContent || "").trim()));
       if (consent) consent.click();
+      // أغلق login/news dialogs؛ Battle المجهول لا يحتاج حساباً.
+      for (const b of buttons) if (/^(close|maybe later|not now|إغلاق)$/i.test((b.textContent || "").trim())) b.click();
     });
     const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
     const responsePromise = new Promise((resolve, reject) => {
