@@ -489,14 +489,23 @@ async function callArenaBrowser(convo, system, env) {
     // أحياناً Arena تفتح Login modal عند أول إرسال للزائر. أغلقها وأعد الإرسال مرة.
     await new Promise((r) => setTimeout(r, 900));
     if (!responseStarted) {
-      const retry = await page.evaluate(() => {
-        const close = [...document.querySelectorAll("button")].find((b) => /^(close|maybe later|not now|إغلاق)$/i.test((b.textContent || "").trim()));
-        if (close) close.click();
-        const send = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
-        if (send && !send.disabled) { setTimeout(() => send.click(), 250); return true; }
+      const dismissed = await page.evaluate(() => {
+        const action = [...document.querySelectorAll("button")].find((b) => /^(agree|close|maybe later|not now|موافق|إغلاق)$/i.test((b.textContent || "").trim()));
+        if (action) { action.click(); return true; }
         return false;
       });
-      if (!retry) await page.keyboard.press("Enter");
+      if (dismissed) await new Promise((r) => setTimeout(r, 700));
+      let retryBox = await page.$('textarea[name="message"]');
+      if (retryBox) {
+        const current = await page.evaluate(() => document.querySelector('textarea[name="message"]')?.value || "");
+        if (!current.trim()) { await retryBox.click(); await retryBox.type(prompt, { delay: 1 }); }
+        const sent = await page.evaluate(() => {
+          const send = document.querySelector('button[aria-label="Send message"], button[aria-label*="send" i]');
+          if (send && !send.disabled) { send.click(); return true; }
+          return false;
+        });
+        if (!sent) await page.keyboard.press("Enter");
+      }
     }
     let raw;
     try { raw = await responsePromise; }
