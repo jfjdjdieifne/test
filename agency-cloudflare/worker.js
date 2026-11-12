@@ -1502,7 +1502,7 @@ async function agentLoop(userText, env, chatId, opts) {
   const convo = [...hist, { role: "user", content: String(userText) }];
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
-    if (!out) return "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. حفظت رسالتك وسياقها؛ جرّب ابعتها مرة ثانية بعد لحظات. ما في داعي لأي مفتاح جديد.";
+    if (!out) return "Arena رفضت طلب المتصفح الآلي مؤقتاً. حفظت رسالتك وسياقها بالطابور وسأعيدها تلقائياً؛ لا تعيد إرسالها ولا تعمل ربطاً جديداً.";
     if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
     const call = parseToolCall(out);
     if (!call) {
