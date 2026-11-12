@@ -1523,10 +1523,17 @@ async function agentLoop(userText, env, chatId, opts) {
   const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : "") + threadBlock);
   const hist = o.mode === "worker" ? [] : (resolved.thread.messages || []);
   const convo = [...hist, { role: "user", content: String(userText) }];
+  // إذا المالك طلب البحث صراحةً، نفّذ الأداة أولاً ولا تترك النموذج يجيب من ذاكرته.
+  let forcedSearch = "";
+  if (/(?:ابحث|دور|دوّر|فتش|غوغل|google|عالنت|الإنترنت|الانترنت)/i.test(String(userText))) {
+    forcedSearch = await searchWeb(String(userText), env);
+    convo.push({ role: "user", content: "TOOL_RESULT search_web (مصادر حية؛ حلّلها ولا تدّعِ البحث خارجها):\n" + String(forcedSearch).slice(0, 5000) });
+  }
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
     if (!out) {
       const primary = await kvGet(env, "primary_intelligence_v1", "arena");
+      if (forcedSearch) return "بحثت فعلياً، لكن محرك التحليل ما رد. هاي نتائج البحث الخام بدل ما أخترع جواب:\n\n" + String(forcedSearch).slice(0, 3200);
       return primary === "groq" ? "Groq ما قبل الطلب حالياً. حفظت رسالتك؛ عم أفحص المفتاح والنموذج تلقائياً، وما في داعي تعيد ربط Arena." : "Arena رفضت طلب المتصفح الآلي مؤقتاً. حفظت رسالتك وسياقها بالطابور وسأعيدها تلقائياً؛ لا تعيد إرسالها ولا تعمل ربطاً جديداً.";
     }
     if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
