@@ -152,6 +152,7 @@ export default {
         }
       } catch (e) { console.log("brief error:", e && e.message ? e.message : e); }
       try { await processTaskQueue(env, STEPS_PER_TICK); } catch (e) { console.log("queue error:", e && e.message ? e.message : e); }
+      try { await proactiveTaskReview(env); } catch (e) { console.log("proactive review error:", e && e.message ? e.message : e); }
     })());
   },
 };
@@ -519,8 +520,8 @@ async function callArenaBrowser(convo, system, env) {
     if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
     // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
-    // الصفحة الرئيسية تبدأ Battle Mode المجهول؛ Direct/Max يفتح نافذة Login ولا يرسل.
-    await page.goto("https://arena.ai/", { waitUntil: "domcontentloaded", timeout: 8000 });
+    // افتح Direct Chat صراحةً. لا نستخدم الصفحة الرئيسية لأنها تبدأ Battle Mode.
+    await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
     const imported = await kvGet(env, "arena_imported_storage", {});
     const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
     if ((imported && typeof imported === "object" && Object.keys(imported).length) || importedCookie) {
@@ -551,7 +552,11 @@ async function callArenaBrowser(convo, system, env) {
     // الطريق الثابت: نفّذ نفس endpoint الذي تستعمله واجهة Arena من داخل origin والجلسة.
     // هذا يتجاوز زر React الذي قد يبقى disabled بسبب onboarding/modality state.
     try {
-      const directRaw = await page.evaluate(async (message) => {
+      const savedDirect = await kvGet(env, "arena_direct_session_v2", null);
+      // handoff تلقائي قبل تضخم الشات. الـprompt يحمل التعليمات وآخر السياق، ومدير
+      // السياق الدائم يحفظ الملخص/الحقائق للمحادثة التالية.
+      const previousDirect = savedDirect && (savedDirect.turns || 0) < 35 ? savedDirect : null;
+      const directRaw = await page.evaluate(async ({ message, previous }) => {
         const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         let token = "";
         for (let i = 0; i < 20; i++) { if (window.grecaptcha?.enterprise) break; await sleep(200); }
@@ -568,18 +573,34 @@ async function callArenaBrowser(convo, system, env) {
           const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
           return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
         };
-        const data = { id: id(), mode: "battle", userMessageId: id(), modelAMessageId: id(), modelBMessageId: id(), userMessage: { content: message, experimental_attachments: [], metadata: {} }, modality: "chat", recaptchaV3Token: token || "" };
+        // Arena ينشر قائمة النماذج داخل HTML. Max هو أول/أسرع اختيار في Direct Chat؛
+        // نقرأ الـid ديناميكياً بدل تثبيت اسم قد تغيّره Arena.
+        let modelAId = "";
+        try {
+          const html = await (await fetch("/text/direct")).text();
+          const marker = html.indexOf("initialModels");
+          if (marker >= 0) {
+            const start = html.indexOf("[", marker); let depth = 0, quoted = false, esc = false, end = -1;
+            for (let i = start; i >= 0 && i < html.length; i++) { const c = html[i]; if (quoted) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') quoted = false; } else if (c === '"') quoted = true; else if (c === "[") depth++; else if (c === "]" && --depth === 0) { end = i + 1; break; } }
+            if (end > start) { const models = JSON.parse(html.slice(start, end).replace(/\\"/g, '"')); const max = models.find((m) => /^max$/i.test(m.publicName || m.name || "")) || models[0]; modelAId = max?.id || ""; }
+          }
+        } catch {}
+        if (!modelAId) throw new Error("Arena Direct Max model id was not found");
+        const evaluationId = previous?.id || id();
+        const data = { id: evaluationId, mode: "direct-battle", userMessageId: id(), modelAMessageId: id(), modelAId, userMessage: { content: message, experimental_attachments: [], metadata: {} }, modality: "chat", recaptchaV3Token: token || "" };
         const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 15000);
         try {
-          const res = await fetch("/nextjs-api/stream/create-evaluation", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data), signal: ctl.signal });
+          const endpoint = previous?.id ? `/nextjs-api/stream/post-to-evaluation/${previous.id}` : "/nextjs-api/stream/create-evaluation";
+          const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data), signal: ctl.signal });
           const text = await res.text();
-          return { status: res.status, text };
+          return { status: res.status, text, evaluationId, modelAId };
         } finally { clearTimeout(timer); }
-      }, prompt);
+      }, { message: prompt, previous: previousDirect });
       const directText = directRaw && directRaw.status < 400 ? parseArenaDataStream(directRaw.text) : "";
       if (directText) {
         try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
-        await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "in-page-api" });
+        await kvPut(env, "arena_direct_session_v2", { id: directRaw.evaluationId, modelId: directRaw.modelAId, turns: (previousDirect?.turns || 0) + 1, updated: Date.now() });
+        await arenaMarkUp(env); await kvPut(env, "arena_browser_last_ok", { at: Date.now(), chars: directText.length, transport: "direct-max" });
         return directText;
       }
       console.log("arena direct diagnostic:", JSON.stringify({ status: directRaw?.status || 0, has_body: !!directRaw?.text }));
@@ -1179,6 +1200,22 @@ async function finishTask(task, tasks, env, status, note) {
     await sendMessage(env, owner, `${icon} المهمة ${task.id} ${status === "done" ? "اكتملت" : "توقفت"} (${task.stepCount || 0} خطوة):\n\n${task.result}`);
   }
   await callMeNow(env, `جارفس: مهمتك ${status === "done" ? "خلصت" : "توقفت"} — افتح التيليجرام`);
+}
+
+async function proactiveTaskReview(env) {
+  const tasks = await kvGet(env, "tasks", []);
+  const now = Date.now(); let changed = false;
+  const owner = await getOwnerChatId(env);
+  for (const task of tasks) {
+    if (!["queued", "running"].includes(task.status)) continue;
+    const quiet = now - (task.updated || task.created || now);
+    // لا نزعج المستخدم كل دقيقة: تنبيه استباقي واحد إذا علقت المهمة فعلاً.
+    if (quiet > 12 * 60000 && (!task.proactiveAlertAt || now - task.proactiveAlertAt > 60 * 60000)) {
+      task.proactiveAlertAt = now; changed = true;
+      if (owner) await sendMessage(env, owner, `⚠️ انتبهت إن المهمة معلّقة وما عم تتقدم:\n${String(task.goal).slice(0, 180)}\n\nآخر مرحلة: ${task.phase || task.status}\nرح ضل راقبها وأعيد المحاولة تلقائياً. إذا بدك غيّر الأولوية خبرني.`);
+    }
+  }
+  if (changed) await kvPut(env, "tasks", tasks);
 }
 
 async function processTaskQueue(env, maxSteps) {
