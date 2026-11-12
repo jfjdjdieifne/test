@@ -451,6 +451,12 @@ async function callArenaBrowser(convo, system, env) {
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
     await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
     await page.waitForSelector('textarea[name="message"]', { timeout: 6000 });
+    // Arena قد تعرض نافذة cookies فوق زر الإرسال.
+    await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll("button")];
+      const consent = buttons.find((b) => /accept cookies|accept all|agree|موافق/i.test((b.textContent || "").trim()));
+      if (consent) consent.click();
+    });
     const prompt = [`تعليمات جارفس:\n${String(system || "").slice(0, 5000)}`, ...convo.slice(-12).map((m) => `${m.role === "assistant" ? "المساعد" : "المستخدم"}: ${String(m.content || "").slice(0, 2500)}`)].join("\n\n").slice(-14000);
     const responsePromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("Arena stream timeout (12s)")), 12000);
@@ -463,8 +469,29 @@ async function callArenaBrowser(convo, system, env) {
     const box = await page.$('textarea[name="message"]');
     await box.click();
     await box.type(prompt, { delay: 1 });
-    await page.keyboard.press("Enter");
-    const raw = await responsePromise;
+    const clicked = await page.evaluate(() => {
+      const ta = document.querySelector('textarea[name="message"]');
+      const form = ta && ta.closest("form");
+      const candidates = [...(form || document).querySelectorAll('button[type="submit"], button')];
+      const submit = candidates.find((b) => !b.disabled && (b.type === "submit" || /send|submit|إرسال/i.test(`${b.getAttribute("aria-label") || ""} ${b.textContent || ""}`)));
+      if (!submit) return false;
+      submit.click(); return true;
+    });
+    if (!clicked) await page.keyboard.press("Enter");
+    let raw;
+    try { raw = await responsePromise; }
+    catch (e) {
+      const diag = await page.evaluate(() => ({
+        url: location.href,
+        title: document.title,
+        textarea: !!document.querySelector('textarea[name="message"]'),
+        valueLength: (document.querySelector('textarea[name="message"]') || {}).value?.length || 0,
+        buttons: [...document.querySelectorAll("button")].slice(-12).map((b) => ({ text: (b.textContent || "").trim().slice(0, 50), aria: b.getAttribute("aria-label"), disabled: !!b.disabled, type: b.type })),
+        body: (document.body?.innerText || "").slice(0, 1000),
+      }));
+      console.log("arena browser diagnostic:", JSON.stringify(diag));
+      throw e;
+    }
     const text = parseArenaDataStream(raw);
     try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
     if (!text) throw new Error("Arena browser returned an empty stream");
