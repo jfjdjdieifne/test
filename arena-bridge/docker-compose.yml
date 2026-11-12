@@ -1,0 +1,11 @@
+services:
+  arena-bridge:
+    build: .
+    container_name: jarvis-arena-bridge
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    # إن كان الجسر على VPS: ضع خلفه reverse proxy (Caddy/Nginx) مع HTTPS
+    # وحدّث ARENA_BRIDGE_URL في جارفس إلى الرابط العام.
