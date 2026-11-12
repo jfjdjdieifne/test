@@ -122,7 +122,8 @@ export default {
       const lastOk = await kvGet(env, "arena_browser_last_ok", null);
       const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
       const skipUntil = Number(await kvGet(env, "arena_skip_until", 0)) || 0;
-      return jsonResponse({ lastError, lastOk, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
+      let browserLimits = null; try { browserLimits = env.BROWSER ? await puppeteer.limits(env.BROWSER) : null; } catch {}
+      return jsonResponse({ lastError, lastOk, browserLimits, pendingDirect: (await kvGet(env, "arena_pending_direct_v1", [])).length, streamShape: await kvGet(env, "arena_stream_shape", null), diagnostic: await kvGet(env, "arena_browser_last_diagnostic", null), importedAgeMinutes: importedAt ? Math.round((Date.now() - importedAt) / 60000) : null, cooldownSeconds: Math.max(0, Math.round((skipUntil - Date.now()) / 1000)), hasDirectSession: !!(await kvGet(env, "arena_direct_session_v3", null)) }, 200);
     }
     if (url.pathname === "/" ) {
       return new Response("JARVIS CF is alive — see /health", { status: 200 });
@@ -165,6 +166,7 @@ export default {
         // لا تفتح Browser لمجرد keep-alive: حصة Cloudflare المجانية محدودة،
         // والتجديد يتم عند أول استخدام حقيقي مع حفظ refresh token المحدث.
       } catch (e) { console.log("brief error:", e && e.message ? e.message : e); }
+      try { await processDirectRetries(env); } catch (e) { console.log("direct retry error:", e?.message || e); }
       try {
         const lastUser = Number(await kvGet(env, "last_user_activity_at", 0)) || 0;
         // أعطِ رسائل المستخدم أولوية على المهام الخلفية حتى لا تتنافس على Browser.
@@ -547,6 +549,26 @@ function arenaSessionFromStorage(storage) {
   return null;
 }
 
+async function acquireArenaBrowser(env) {
+  // أعد الاتصال بجلسة Cloudflare الحية بدل إنشاء Chromium جديد لكل رسالة.
+  // هذا يخفض launches وحدود 429 جذرياً أثناء المحادثة النشطة وسلاسل الأدوات.
+  try {
+    const sessions = await puppeteer.sessions(env.BROWSER);
+    const available = (sessions || []).filter((s) => !s.connectionId);
+    available.sort((a, b) => Number(b.startTime || 0) - Number(a.startTime || 0));
+    for (const s of available) {
+      try { return { browser: await puppeteer.connect(env.BROWSER, s.sessionId), reused: true }; } catch {}
+    }
+  } catch (e) { console.log("arena sessions lookup:", e?.message || e); }
+  return { browser: await puppeteer.launch(env.BROWSER, { keep_alive: 120000 }), reused: false };
+}
+
+async function releaseArenaBrowser(browser) {
+  if (!browser) return;
+  // disconnect يبقي الجلسة قابلة لإعادة الاستخدام لدقيقتين؛ close كان يهدر launch جديداً.
+  try { await browser.disconnect(); } catch { try { await browser.close(); } catch {} }
+}
+
 async function arenaReconnectLink(env) {
   const base = String(await kvGet(env, "public_worker_url", "")).replace(/\/+$/, "");
   if (!base) return "";
@@ -562,7 +584,7 @@ async function refreshArenaSession(env) {
   try {
     const storage = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
     if (!storage || !Object.keys(storage).length) return false;
-    browser = await puppeteer.launch(env.BROWSER, { keep_alive: 30000 });
+    browser = (await acquireArenaBrowser(env)).browser;
     const page = await browser.newPage();
     const cookies = await kvGet(env, "arena_browser_cookies", []);
     if (Array.isArray(cookies) && cookies.length) try { await page.setCookie(...cookies); } catch {}
@@ -584,7 +606,7 @@ async function refreshArenaSession(env) {
     }
     return false;
   } catch (e) { console.log("arena session refresh error:", e?.message || e); return false; }
-  finally { if (browser) try { await browser.close(); } catch {} }
+  finally { await releaseArenaBrowser(browser); }
 }
 
 /** Arena بلا سيرفر: Chromium مُدار من Cloudflare Browser Rendering.
@@ -595,7 +617,7 @@ async function callArenaBrowser(convo, system, env) {
   if (!(await arenaIsOn(env)) || await arenaInCooldown(env)) return null;
   let browser;
   try {
-    browser = await puppeteer.launch(env.BROWSER, { keep_alive: 60000 });
+    browser = (await acquireArenaBrowser(env)).browser;
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
     const saved = await kvGet(env, "arena_browser_cookies", []);
@@ -715,13 +737,13 @@ async function callArenaBrowser(convo, system, env) {
       // افتح handoff جديد فوراً مع كامل السياق المرسل وحاول مرة واحدة تلقائياً.
       if (previousDirect) {
         await kvPut(env, "arena_direct_session_v3", null);
-        try { await browser.close(); } catch {}
+        await releaseArenaBrowser(browser); browser = null;
         return await callArenaBrowser(convo, system, env);
       }
     } catch (e) {
       console.log("arena direct error:", e && e.message ? e.message : e);
       const stale = await kvGet(env, "arena_direct_session_v3", null);
-      if (stale) { await kvPut(env, "arena_direct_session_v3", null); try { await browser.close(); } catch {} return await callArenaBrowser(convo, system, env); }
+      if (stale) { await kvPut(env, "arena_direct_session_v3", null); await releaseArenaBrowser(browser); browser = null; return await callArenaBrowser(convo, system, env); }
     }
 
     let responseStarted = false;
@@ -817,9 +839,9 @@ async function callArenaBrowser(convo, system, env) {
     console.log("arena browser error:", message);
     await kvPut(env, "arena_browser_last_error", { at: Date.now(), error: message.slice(0, 300) });
     await arenaMarkDown(env, 60000);
-    if (/429|rate limit|Unable to create new browser/i.test(message)) return "⏳ Arena جاهزة، بس Cloudflare منع فتح متصفح جديد مؤقتاً بسبب حد النسخة المجانية. ما بدك تعيد الربط. استنى دقيقة وابعت رسالتك نفسها؛ وما تستخدم /arena test إلا للتشخيص لأنه يستهلك جلسة متصفح لحاله.";
+    if (/429|rate limit|Unable to create new browser/i.test(message)) return "__ARENA_RETRY_429__";
     return null;
-  } finally { if (browser) { try { await browser.close(); } catch {} } }
+  } finally { await releaseArenaBrowser(browser); }
 }
 
 function arenaBridgeHeaders(cfg) {
@@ -1366,6 +1388,11 @@ async function processTaskQueue(env, maxSteps) {
   for (let i = 0; i < budget; i++) {
     const convo = [{ role: "user", content: buildTaskPrompt(task) }];
     const out = await llmComplete(convo, WORKER_PROMPT, env);
+    if (out === "__ARENA_RETRY_429__") {
+      task.lockedAt = 0; task.phase = "waiting_for_browser"; task.updated = Date.now();
+      const idxR = tasks.findIndex((t) => t.id === task.id); if (idxR !== -1) tasks[idxR] = { ...task };
+      await kvPut(env, "tasks", tasks); return;
+    }
     task.stepCount = (task.stepCount || 0) + 1;
     if (!out) {
       task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
@@ -1408,6 +1435,7 @@ async function agentLoop(userText, env, chatId, opts) {
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
     if (!out) return "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. حفظت رسالتك وسياقها؛ جرّب ابعتها مرة ثانية بعد لحظات. ما في داعي لأي مفتاح جديد.";
+    if (out === "__ARENA_RETRY_429__") return out;
     const call = parseToolCall(out);
     if (!call) {
       if (o.mode !== "worker") await saveThreadTurn(env, resolved, [...convo, { role: "assistant", content: out }]);
@@ -2176,6 +2204,27 @@ async function handleCommand(text, env, chatId) {
   }
 }
 
+async function queueDirectRetry(env, chatId, text) {
+  const rows = await kvGet(env, "arena_pending_direct_v1", []);
+  const duplicate = rows.find((r) => r.chatId === chatId && r.text === text && Date.now() - r.created < 10 * 60000);
+  if (duplicate) return duplicate.id;
+  const item = { id: "retry_" + Date.now().toString(36), chatId, text: String(text).slice(0, 6000), created: Date.now(), availableAt: Date.now() + 65000, attempts: 0 };
+  rows.push(item); await kvPut(env, "arena_pending_direct_v1", rows.slice(-20)); return item.id;
+}
+
+async function processDirectRetries(env) {
+  const rows = await kvGet(env, "arena_pending_direct_v1", []); if (!rows.length) return;
+  const now = Date.now(); const item = rows.find((r) => (r.availableAt || 0) <= now); if (!item) return;
+  item.attempts = (item.attempts || 0) + 1;
+  const answer = await agentLoop(item.text, env, item.chatId, { route: "direct", retry: true });
+  if (answer === "__ARENA_RETRY_429__" || /صار انقطاع مؤقت/.test(answer)) {
+    item.availableAt = now + Math.min(15 * 60000, 60000 * Math.pow(2, Math.min(item.attempts, 4)));
+    await kvPut(env, "arena_pending_direct_v1", rows); return;
+  }
+  await sendMessage(env, item.chatId, `✅ رجعت كملت طلبك تلقائياً:\n\n${answer}`);
+  await kvPut(env, "arena_pending_direct_v1", rows.filter((r) => r.id !== item.id));
+}
+
 async function handleUpdate(update, env, ctx) {
   const cq = update.callback_query;
   if (cq) { await handleCallbackQuery(cq, env, ctx); return; }
@@ -2257,6 +2306,11 @@ async function handleUpdate(update, env, ctx) {
     return;
   }
   const answer = await agentLoop(text, env, chatId, { ctx, route: "direct", namedAgent });
+  if (answer === "__ARENA_RETRY_429__") {
+    const retryId = await queueDirectRetry(env, chatId, text);
+    await sendMessage(env, chatId, `⏳ Cloudflare وصل حده المؤقت، بس ما ضاع طلبك. حفظته (${retryId.slice(-6)}) ورح أعيده تلقائياً بالخلفية وأبعتلك الجواب أول ما تفتح جلسة Arena — ما تعيد الرسالة ولا تعمل /arena connect.`);
+    return;
+  }
   await sendMessage(env, chatId, answer);
   if (isVoice) {
     const voiceOn = await kvGet(env, "voice_replies", false);
