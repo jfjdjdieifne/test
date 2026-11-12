@@ -40,7 +40,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Test (41 checks)
+      - name: Test (44 checks)
         run: npm test
 
       - name: Deploy Worker + Browser Rendering
