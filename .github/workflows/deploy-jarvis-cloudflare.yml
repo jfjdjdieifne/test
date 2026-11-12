@@ -1,0 +1,93 @@
+name: Deploy Jarvis to Cloudflare
+# Privacy-safe deployment: never tails Arena pages or records Telegram payloads.
+
+on:
+  push:
+    branches:
+      - "arena/38691ede-test"
+      - "arena/46b2f7b6-test"
+      - "arena/8b9f58ef-test"
+      - "arena/22fb9ec3-test"
+      - "arena/18b7bad1-test"
+      - "arena/bb9a83bd-test"
+      - "arena/1acf55dd-test"
+      - "arena/46e5cd40-test"
+      - "arena/cc2eb589-test"
+      - "arena/b9af6851-test"
+      - "arena/e25b99b0-test"
+    paths:
+      - "agency-cloudflare/**"
+      - ".github/workflows/deploy-jarvis-cloudflare.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-jarvis-cloudflare
+  cancel-in-progress: true
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agency-cloudflare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: agency-cloudflare/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test (44 checks)
+        run: npm test
+
+      - name: Deploy Worker + Browser Rendering
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          set +e
+          output=$(npx wrangler deploy 2>&1)
+          code=$?
+          set -e
+          printf '%s\n' "$output"
+          worker_url=$(printf '%s\n' "$output" | grep -Eo 'https://[A-Za-z0-9._-]+\.workers\.dev' | tail -1 || true)
+          echo "worker_url=$worker_url" >> "$GITHUB_OUTPUT"
+          {
+            echo '## نشر Jarvis إلى Cloudflare'
+            echo '```text'
+            printf '%s\n' "$output" | tail -c 12000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            one_line=$(printf '%s' "$output" | tail -c 4000 | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=Cloudflare deployment failed::$one_line"
+          fi
+          exit "$code"
+
+      - name: Privacy-safe live health check
+        env:
+          WORKER_URL: ${{ steps.deploy.outputs.worker_url }}
+        shell: bash
+        run: |
+          test -n "$WORKER_URL"
+          health=$(curl --fail --show-error --silent "$WORKER_URL/health")
+          printf '%s\n' "$health" | grep -q '"status":"ok"'
+          key=$(sed -n 's/^CALL_SECRET = "\(.*\)"/\1/p' wrangler.toml)
+          status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
+          printf 'Arena transport metadata: %s\n' "$status"
+          echo "::notice title=Arena transport metadata::$status"
+          # لا نرسل prompt آلياً بكل deploy: Cloudflare Browser المجاني يحدّ إنشاء
+          # الجلسات، والفحص المتكرر كان ينافس رسائل المستخدم ويسبب HTTP 429.
+          echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"
