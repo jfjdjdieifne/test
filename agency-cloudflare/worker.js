@@ -436,7 +436,7 @@ async function callOpenAICompatible(base, key, model, convo, system) {
     const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))], temperature: 0.4, max_tokens: 400 }),
+      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))], temperature: 0.35, max_tokens: 1600 }),
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) { console.log("llm HTTP", res.status, base); return null; }
@@ -1169,13 +1169,33 @@ async function callGroqSmart(convo, system, env, key) {
   return out;
 }
 
+async function getCoarenaLimits(env) {
+  const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) return null;
+  try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) }); return r.ok ? await r.json() : null; } catch { return null; }
+}
+function coarenaBalanceText(d) {
+  if (!d) return "ما قدرت اقرأ الرصيد هلق.";
+  const flat = JSON.stringify(d); const pick = (names) => { for (const n of names) { const m = flat.match(new RegExp(`\\"${n}\\"\\s*:\\s*([0-9.]+)`, "i")); if (m) return Number(m[1]); } return null; };
+  const limit = pick(["usd_per_day", "daily_limit_usd", "limit_usd", "limit"]);
+  const used = pick(["usd_used_today", "used_usd", "usage_usd", "used"]);
+  const remaining = pick(["usd_remaining", "remaining_usd", "remaining"]);
+  const left = remaining != null ? remaining : (limit != null && used != null ? Math.max(0, limit - used) : null);
+  return `رصيد Coarena اليوم${left != null ? ` الباقي $${left.toFixed(2)}` : " موجود لكن الصيغة ما بينت الباقي مباشرة"}${limit != null ? ` من $${limit.toFixed(2)}` : ""}. بيتجدد يومياً الساعة 3:00 AM حسب حسابك.`;
+}
+
 async function llmComplete(convo, system, env) {
   const primary = await kvGet(env, "primary_intelligence_v1", "arena");
   const coarenaKey = String(await kvGet(env, "coarena_api_key_v1", "") || "");
   if (primary === "coarena" && coarenaKey) {
     const model = String(await kvGet(env, "coarena_model_v1", "claude-fable-5-2") || "claude-fable-5-2");
-    const answer = await callOpenAICompatible("https://coarena.ai/api/v1", coarenaKey, model, convo, system);
-    if (answer) return answer;
+    const coarenaSystem = `${system}\n\nأنت تعمل الآن عبر Coarena Model API والنموذج الفعلي هو ${model}. إذا سُئلت عن هويتك قل: جارفس عبر Coarena، والنموذج ${model}. أعطِ جواباً كاملاً ومفصلاً حسب طلب المالك، ولا تبدأ تنسيق Markdown غير مكتمل.`;
+    const answer = await callOpenAICompatible("https://coarena.ai/api/v1", coarenaKey, model, convo, coarenaSystem);
+    if (answer) {
+      const limits = await getCoarenaLimits(env); const balance = coarenaBalanceText(limits);
+      const m = balance.match(/الباقي \$([0-9.]+)/); const left = m ? Number(m[1]) : null;
+      if (left != null && left <= 1) { const last = Number(await kvGet(env, "coarena_balance_alert_v1", 0)) || 0; if (Date.now() - last > 6 * 60 * 60000) { await kvPut(env, "coarena_balance_alert_v1", Date.now()); const owner = await getOwnerChatId(env); if (owner) await sendMessage(env, owner, `⚠️ ${balance} رح خفف الاستهلاك وأخلي المهام الثقيلة لبعد التجدد إلا إذا طلبت العكس.`); } }
+      return answer;
+    }
     await kvPut(env, "coarena_last_error_v1", { at: Date.now(), model });
     return null;
   }
@@ -1572,6 +1592,11 @@ async function processTaskQueue(env, maxSteps) {
 
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
+  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:قديش|كم|اديش|شو).{0,25}(?:رصيد|باقي|استهلاك|كريديت)|(?:رصيد|كريديت).{0,25}(?:قديش|كم|باقي)/i.test(String(userText))) {
+    const balance = coarenaBalanceText(await getCoarenaLimits(env));
+    if (/(?:بيكفي|يكفي|بكفي).*(?:مهمة|شغلة|بحث|مشروع)/i.test(String(userText))) return `${balance}\nغالباً بكفينا للمهمة المتوسطة، بس ما بقدر أضمن التكلفة قبل ما أعرف حجم الملفات وعدد خطوات البحث. بعطيك تنبيه قبل ما ينزل الباقي عن $1.`;
+    return balance;
+  }
   const memBlock = o.mode === "worker" ? "" : await relevantMemories(env, userText);
   const resolved = o.mode === "worker" ? null : await resolveThread(env, userText, o.threadId);
   const threadBlock = resolved ? `\n\nسياق مساحة العمل الحالية:\n- الاسم: ${resolved.thread.title}\n- المعرف: ${resolved.thread.id}\n- سبب اختيارها: ${resolved.reason}\n- الملخص السابق: ${resolved.thread.summary || "أول رسالة"}\nالتزم بهذه المهمة فقط ولا تخلطها بمشروع آخر.` : "";
