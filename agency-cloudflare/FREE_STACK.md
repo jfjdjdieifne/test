@@ -85,7 +85,7 @@ yarn && cp .env.example .env && yarn dx      # يحتاج Node 18+ وDocker — 
 | TTS (نص→صوت شامي) | **Microsoft Edge Neural TTS** (`ar-SY-LaithNeural`) — بلا مفتاح وبلا حدود |
 | VAD | **Silero** — يعمل محلياً على جهازك ولا يستهلك حصة |
 | المكالمة من الهاتف/المتصفح | صفحة `/live` بالمستودع (`live.html`) على أي رابط https مجاني (GitHub Pages/Netlify Drop) |
-| بدون أي تثبيت | `/voicecall` بتيليجرام — Gemini Live فوري بمقاطعة حقيقية |
+| المكالمة بدون تثبيت | `/live` — صوت Neural عربي عبر EC2، شغّال دايماً بدون أي خطوة عندك |
 
 التشغيل على جهازك: `agency-cloudflare/livekit-agent/README.md` — 10 دقائق مرة واحدة + نافذة ترمينال مفتوحة أثناء المكالمات.
 وللتشغيل **24/7 بلا جهازك**: `livekit-agent/AWS_EC2_AR.md` — دليل EC2 كامل على حساب AWS المجاني للمالك ($100 رصيد، حتى 2027-05-13).
