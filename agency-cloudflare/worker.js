@@ -78,7 +78,6 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/live-call") return handleGeminiLiveSocket(request, env);
     if (url.pathname === "/ask" || url.pathname === "/voice-ask" || url.pathname === "/call-end") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
       if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
@@ -2245,9 +2244,8 @@ const WELCOME = [
   "/arena primary — Arena أساس كل الردود ↔ رجوع للترتيب العادي",
   "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
   "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
-  "/voicecall — رابط آمن لمكالمة جارفس الصوتية",
   "/coarena — العقل المجاني (Claude Fable 5.2): key/status/model/on/off/raise 50 — يرفع حد **كل** المفاتيح معاً (أو اكتب بالعربي: «ارفع حدود كل المفاتيح»)",
-  "/live — مكالمة لايف حقيقية كاملة عبر LiveKit (تحتاج تشغيل Agent على جهازك)",
+  "/live — مكالمة لايف حقيقية عبر LiveKit — جارفس دايماً شغال بالسيرفر، بتفتح الرابط وتتصل من أي متصفح",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
   "/files — شو الملفات والصور بقدر أقراها وأعدلها",
@@ -2428,25 +2426,12 @@ async function handleCommand(text, env, chatId) {
       if (/^off$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "arena"); await sendMessage(env, chatId, "✅ رجعت Arena كمحرك أساسي."); return true; }
       await sendMessage(env, chatId, "الأوامر: /groq key NEW_KEY أو /groq on أو /groq off"); return true;
     }
-    case "/gemini": {
-      const km = arg.match(/^key\s+(.+)$/i);
-      if (!km) { await sendMessage(env, chatId, "لربط المكالمة الحية: /gemini key YOUR_NEW_KEY\nلن أطبع المفتاح أو أضعه في Git."); return true; }
-      const key = km[1].trim();
-      if (key.length < 20) { await sendMessage(env, chatId, "المفتاح قصير أو غير صالح."); return true; }
-      await kvPut(env, "gemini_api_key_v1", key);
-      await sendMessage(env, chatId, "✅ حفظت مفتاح Gemini بشكل خاص داخل Cloudflare KV. احذف رسالتك من تيليجرام الآن، ثم اكتب /voicecall."); return true;
-    }
-    case "/voicecall": {
-      const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
-      await kvPut(env, "voice_call_token", token);
-      await kvPut(env, "voice_call_token_expires", Date.now() + 30 * 60 * 1000);
-      const base = String(env.PUBLIC_WORKER_URL || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
-      await sendMessage(env, chatId, `📞 رابط مكالمتك الآمن (صالح 30 دقيقة):\n${base}/call?token=${token}\n\nافتحه واضغط اتصل — ما بدك تحط أي مفتاح.`); return true;
-    }
+    case "/voicecall":
+      await sendMessage(env, chatId, "هالخيار اتشال نهائياً (كان مكالمة Gemini).\nالحل الوحيد الآن: /live — مكالمة لايف بصوت جارفس شغال دايماً بالسيرفر."); return true;
     case "/live": {
       const base = String(env.PUBLIC_WORKER_URL || (await kvGet(env, "public_worker_url", "")) || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
       const lk = env.LIVEKIT_WS_URL ? "✅ LiveKit مضبوط (المشروع 1)" + (env.LIVEKIT_ALT_WS_URL ? " + احتياط (المشروع 2)" : "") : "❌ LiveKit مو مضبوط — راجع README_AR.md";
-      await sendMessage(env, chatId, `🎙️ المكالمة اللايف الحقيقية (LiveKit + Coarena + Edge TTS — كلها مجانية):\n\n1) شغّل الـ Agent على جهازك (مرة واحدة):\n   cd agency-cloudflare/livekit-agent\n   pip install -r requirements.txt\n   python agent.py start\n2) افتح: ${base}/live\n3) اضغط «اتصل بجارفس لايف» واحكِ طبيعي — بيسمعك ويرد فوراً وتقدر تقاطعه.\n\nحالة LiveKit: ${lk}\nبدون تشغيل Agent: استخدم /voicecall (مكالمة Gemini Live فورية) أو /call.`); return true;
+      await sendMessage(env, chatId, `🎙️ المكالمة اللايف الحقيقية — جارفس دايماً شغال بالسيرفر (AWS/EC2)، أنت ما بتثبت ولا شي:\n\n1) افتح: ${base}/live من أي متصفح (جوال أو لابتوب)\n2) اضغط «اتصل بجارفس لايف» واحكِ طبيعي — بيسمعك وبرد فوراً وتقدر تقاطعه\n\nحالة LiveKit: ${lk}\nالصوت: Polly (Hala/Zayd — عربي خليجي Neural) أو Edge السوري حسب إعداد السيرفر.`); return true;
     }
     case "/call":
       await sendMessage(env, chatId, await callMeNow(env, arg || "جارفس يحتاج قرارك")); return true;
@@ -2860,82 +2845,20 @@ async function handleTts(request, env) {
 
 /* --------------------- /ask — جسر صفحة المكالمة --------------------- */
 
-// مدير المكالمة سريع ومستقل عن انتظار Arena؛ الحقائق تُقرأ من ذاكرة جارفس.
-async function callGeminiVoiceManager(text, env) {
-  const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({
-    id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "",
-    status: t.status || "", result: String(t.result || t.output || "").slice(0, 700),
-    updatedAt: t.updatedAt || t.updated || "",
-  }));
-  const memories = (await getMemories(env)).slice(-12).map((m) => String(m.text || "").slice(0, 300));
-  const hour = Number(new Intl.DateTimeFormat("en", { timeZone: "Europe/Paris", hour: "2-digit", hour12: false }).format(new Date()));
-  const system = `أنت جارفس، المدير الصوتي الشخصي للدكتور. احكِ باللهجة الشامية الطبيعية بجمل قصيرة جداً مناسبة لمكالمة سريعة، بنبرة دافئة وتفاعلية، ومن دون Markdown. الوقت المحلي ${hour}:00. لا تخترع حالة أي مهمة: استعمل الحالة والنتيجة المعطاتين فقط. إذا المعلومة غير موجودة، قل إنها غير جاهزة وأنك ستضعها للبحث بالخلفية، ولا تدّعي أن التنفيذ تم. اسأل سؤالاً واحداً فقط كل مرة. إذا ذكر أنه يقود اختصر بشدة واهتم بالسلامة.\nحالة المهام: ${JSON.stringify(tasks)}\nذاكرة مختصرة: ${JSON.stringify(memories)}`;
-  return await callGemini([{ role: "user", content: text }], system, env);
-}
-
-async function handleGeminiLiveSocket(request, env) {
-  if ((request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") return new Response("WebSocket required", { status: 426 });
-  const token = new URL(request.url).searchParams.get("token") || "";
-  const expected = await kvGet(env, "voice_call_token", "");
-  const expires = Number(await kvGet(env, "voice_call_token_expires", 0)) || 0;
-  if (!token || token !== expected || expires < Date.now()) return new Response("Call link expired", { status: 401 });
-  const apiKey = String(await kvGet(env, "gemini_api_key_v1", env.GEMINI_API_KEY || "") || "").trim();
-  if (!apiKey) return new Response("Gemini key not configured", { status: 503 });
-
-  const pair = new WebSocketPair();
-  const client = pair[0], server = pair[1]; server.accept();
-  let model = String(env.GEMINI_LIVE_MODEL || "");
-  if (!model) {
-    try {
-      const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(10000) });
-      if (!modelsRes.ok) { server.send(JSON.stringify({ type: "error", message: `مفتاح Gemini مرفوض أو بلا صلاحية (HTTP ${modelsRes.status})` })); server.close(1008, "Gemini key rejected"); return new Response(null, { status: 101, webSocket: client }); }
-      const models = (await modelsRes.json()).models || [];
-      const live = models.filter((m) => (m.supportedGenerationMethods || []).some((x) => /bidiGenerateContent/i.test(x)));
-      model = (live.find((m) => /native.audio/i.test(m.name)) || live.find((m) => /live/i.test(m.name)) || live[0])?.name || "";
-      if (!model) { server.send(JSON.stringify({ type: "error", message: "حساب Gemini الحالي لا يعرض أي نموذج Live Audio" })); server.close(1008, "No Live model"); return new Response(null, { status: 101, webSocket: client }); }
-    } catch { server.send(JSON.stringify({ type: "error", message: "تعذر فحص نماذج Gemini المتاحة" })); server.close(1011, "Model discovery failed"); return new Response(null, { status: 101, webSocket: client }); }
-  }
-  const upstream = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(apiKey)}`);
-  const pending = []; let configured = false;
-  const sendUpstream = (data) => (upstream.readyState === 1 && configured) ? upstream.send(data) : pending.push(data);
-  upstream.addEventListener("open", async () => {
-    const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({ id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "", status: t.status || "", result: String(t.result || t.output || "").slice(0, 600) }));
-    upstream.send(JSON.stringify({ setup: { model, generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } } }, systemInstruction: { parts: [{ text: `أنت جارفس، مدير شخصي صوتي للدكتور قصي. احكِ بالشامية الطبيعية بسرعة ودفء، بجمل قصيرة، واسأل سؤالاً واحداً كل مرة. لا تخترع حالة المهام. إذا لم تكن النتيجة موجودة قل إنها غير جاهزة. اسمح بالمقاطعة واختصر أثناء القيادة. حالة المهام الحالية: ${JSON.stringify(tasks)}` }] } } }));
-  });
-  server.addEventListener("message", (e) => sendUpstream(e.data));
-  upstream.addEventListener("message", (e) => {
-    try {
-      const parsed = JSON.parse(typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data));
-      if (parsed.setupComplete || parsed.setup_complete) { configured = true; while (pending.length) upstream.send(pending.shift()); server.send(JSON.stringify({ type: "ready", model })); return; }
-      server.send(e.data);
-    } catch { try { server.send(e.data); } catch {} }
-  });
-  upstream.addEventListener("error", () => { try { server.send(JSON.stringify({ type: "error", message: "تعذر فتح Gemini Live" })); } catch {} });
-  upstream.addEventListener("close", (e) => { try { server.close(e.code || 1011, String(e.reason || "Gemini Live closed").slice(0, 120)); } catch {} });
-  server.addEventListener("close", () => { try { upstream.close(); } catch {} });
-  return new Response(null, { status: 101, webSocket: client });
-}
-
-// يرجّع "static" لو بالمفتاح الثابت (صفحة /call المالكة — عقل جارفس الكامل) أو "voice" لو بتوكن قصير العمر (صفحة /voicecall) أو null مرفوض.
+// صفحة /call المالكة — مفتاح ثابت CALL_SECRET فقط (الخيار الوحيد بعد إزالة مكالمات Gemini).
 async function authorizedCallRequest(request, env) {
   const provided = request.headers.get("x-jarvis-key") || "";
-  if (provided && provided === env.CALL_SECRET) return "static";
-  const token = request.headers.get("x-jarvis-call-token") || "";
-  const expected = await kvGet(env, "voice_call_token", "");
-  const expires = Number(await kvGet(env, "voice_call_token_expires", 0)) || 0;
-  return (!!token && token === expected && expires > Date.now()) ? "voice" : null;
+  return !!(provided && env.CALL_SECRET && provided === env.CALL_SECRET);
 }
 
 async function handleAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  const auth = await authorizedCallRequest(request, env); if (!auth) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
+  if (!(await authorizedCallRequest(request, env))) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const text = String(body?.text || "").trim().slice(0, 1500);
   if (!text) return send({ error: "text فارغ" }, 400);
-  const reply = auth === "static"
-    ? ((await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.")
-    : ((await callGeminiVoiceManager(text, env)) || "ما قدرت أوصل لخدمة الصوت الذكية هلق. جرّب بعد لحظة.");
+  const reply = (await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.";
   return send({ reply });
 }
 
@@ -2949,7 +2872,7 @@ function b64ToArrayBuffer(b64) {
 
 async function handleVoiceAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  const auth = await authorizedCallRequest(request, env); if (!auth) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
+  if (!(await authorizedCallRequest(request, env))) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const audio = body?.audio || {};
@@ -2958,14 +2881,12 @@ async function handleVoiceAsk(request, env, ctx) {
   const mime = String(audio.mimeType || "audio/webm").slice(0, 100);
   const text = await transcribeAudioBuffer(env, mime, buf);
   if (!text) return send({ error: "ما قدرت أفرّغ الصوت — Groq وWorkers AI وGemini كلهم مشغولين هلق. حاول مرة ثانية أو اكتب." }, 422);
-  const reply = auth === "static"
-    ? ((await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.")
-    : ((await callGeminiVoiceManager(text, env)) || "سمعتك، بس خدمة الرد الصوتي ما جاوبت هلق. جرّب بعد لحظة.");
+  const reply = (await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.";
   return send({ reply, transcript: text });
 }
 
 async function handleCallEnd(request, env, ctx) {
-  if (!(await authorizedCallRequest(request, env))) return jsonResponse({ error: "رابط المكالمة منتهي" }, 401, CORS_HEADERS);
+  if (!(await authorizedCallRequest(request, env))) return jsonResponse({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401, CORS_HEADERS);
   let body;
   try { body = await request.json(); } catch { return jsonResponse({ error: "JSON غير صالح" }, 400, CORS_HEADERS); }
   const transcript = Array.isArray(body?.transcript) ? body.transcript.slice(-40) : [];
