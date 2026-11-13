@@ -1,4 +1,5 @@
 import CALL_PAGE from "./callpage.mjs";
+import LIVE_PAGE from "./livepage.mjs";
 import puppeteer from "@cloudflare/puppeteer";
 import remotePuppeteer from "puppeteer-core";
 /**
@@ -52,6 +53,7 @@ TOOL_CALL: {"tool":"اسم_الأداة","args":{...}}
 
 const BASE_PROMPT = `أنت "جارفس"، ذكاء اصطناعي عربي خاص بصاحب العمل (المالك الوحيد). أسلوبك: واثق، مهني، موجز، وباللهجة الشامية السورية دائماً (مثال: "شلونك يا ريس؟ شو بدك اليوم؟"، "تمام، خليني اشيك لك"، "موشكلة، هسع بتدبرلك ياه"). ممنوع الفصحى الجامدة — رد طبيعي كسوري حقيقي.
 - لا تخترع معلومات؛ إن احتجت بيانات استخدم الأداة.
+- إذا سُئلت عن هويتك أو الموديل: أنت جارفس عبر Arena. لا تدّعي GPT-4o أو أي موديل تقني؛ Arena Max قد يختار النموذج ولا توجد هوية مؤكدة إلا إن ظهرت صراحةً في بيانات الجلسة.
 - إجابات قصيرة ومنظّمة بنقاط عند الحاجة (السطرز الموازي بالفصحى بس داخل الكود).
 - إذا كانت الرسالة صوتية: ردك جملتين أو ثلاث قصيرة فقط (عشان تتحول لصوت بسرعة)، وكلام طبيعي بدون نقاط أو رموز تنسيق — كإنك صديق ذكي يحكي وياه.
 - جميع الأرقام بالإنجليزية (واتساب، أسعار، روابط).
@@ -76,6 +78,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/live-call") return handleGeminiLiveSocket(request, env);
     if (url.pathname === "/ask" || url.pathname === "/voice-ask" || url.pathname === "/call-end") {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
       if (request.method !== "POST") return jsonResponse({ error: "POST only" }, 405, CORS_HEADERS);
@@ -105,6 +108,7 @@ export default {
       await kvPut(env, "arena_skip_until", 0);
       await kvPut(env, "arena_session_alerted_at", 0);
       await kvPut(env, "arena_direct_session_v3", null);
+      try { await syncBrowserlessArenaProfile(env, true); } catch {}
       return jsonResponse({ ok: true, imported: Object.keys(safeStorage).length }, 200, CORS_HEADERS);
     }
     if (url.pathname === "/arena-connect") {
@@ -122,7 +126,8 @@ export default {
       const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
       if (!token) return jsonResponse({ ok: false, reason: "not_configured" }, 200);
       let b; try {
-        b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
+        await syncBrowserlessArenaProfile(env, true);
+        b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000&profile=jarvis-arena`);
         const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
         await kvPut(env, "browserless_last_error_v1", null);
         const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
@@ -149,8 +154,16 @@ export default {
       if (request.method !== "GET" && request.method !== "POST") return jsonResponse({ error: "GET/POST only" }, 405, CORS_HEADERS);
       return handleTts(request, env);
     }
+    if (url.pathname === "/livekit-token") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: LIVEKIT_CORS_HEADERS });
+      if (request.method !== "GET") return jsonResponse({ error: "GET only" }, 405, LIVEKIT_CORS_HEADERS);
+      return handleLiveKitToken(request, env);
+    }
     if (url.pathname === "/call") {
       return new Response(CALL_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    }
+    if (url.pathname === "/live") {
+      return new Response(LIVE_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/webhook" && request.method === "POST") {
       const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
@@ -198,6 +211,73 @@ const CORS_HEADERS = {
   "access-control-allow-methods": "POST, OPTIONS",
   "access-control-allow-headers": "content-type, x-jarvis-key",
 };
+const LIVEKIT_CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-headers": "content-type, x-jarvis-key",
+};
+
+/* --------------------- LiveKit — توكن مكالمة اللايف ---------------------
+   الطريق: المتصفح يجلب توكن قصير العمر من هنا ثم يتصل بـ LiveKit Cloud مباشرة (WebRTC).
+   كل شي مجاني: LiveKit Cloud (مشروعان يعطيان حصتين) + Agent على جهاز المالك (livekit-agent/). */
+function base64Url(data) {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function mintLiveKitToken({ apiKey, apiSecret, identity, room, ttlSeconds, name }) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "HS256", typ: "JWT" };
+  const payload = {
+    iss: apiKey,
+    sub: identity,
+    jti: crypto.randomUUID(),
+    nbf: now - 10,
+    exp: now + ttlSeconds,
+    name: name || identity,
+    video: {
+      roomJoin: true,
+      room,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+      canUpdateOwnMetadata: true,
+    },
+  };
+  const unsigned = `${base64Url(JSON.stringify(header))}.${base64Url(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(apiSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(unsigned));
+  return `${unsigned}.${base64Url(new Uint8Array(sig))}`;
+}
+function liveKitProjectConfig(env, project) {
+  if (project === "2") {
+    return { serverUrl: env.LIVEKIT_ALT_WS_URL, apiKey: env.LIVEKIT_ALT_API_KEY, apiSecret: env.LIVEKIT_ALT_API_SECRET, project: "2" };
+  }
+  return { serverUrl: env.LIVEKIT_WS_URL, apiKey: env.LIVEKIT_API_KEY, apiSecret: env.LIVEKIT_API_SECRET, project: "1" };
+}
+async function handleLiveKitToken(request, env) {
+  const url = new URL(request.url);
+  const provided = request.headers.get("x-jarvis-key") || url.searchParams.get("key") || "";
+  if (!env.CALL_SECRET) return jsonResponse({ error: "CALL_SECRET غير مفعّل على السيرفر" }, 501, LIVEKIT_CORS_HEADERS);
+  if (!provided || provided !== env.CALL_SECRET) return jsonResponse({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401, LIVEKIT_CORS_HEADERS);
+  const cfg = liveKitProjectConfig(env, url.searchParams.get("project") === "2" ? "2" : "1");
+  if (!cfg.serverUrl || !cfg.apiKey || !cfg.apiSecret) {
+    return jsonResponse({ error: `LiveKit المشروع ${cfg.project} مو مضبوط — أضف ${cfg.project === "2" ? "LIVEKIT_ALT_WS_URL / LIVEKIT_ALT_API_KEY / LIVEKIT_ALT_API_SECRET" : "LIVEKIT_WS_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET"} في [vars] أو wrangler secret put` }, 503, LIVEKIT_CORS_HEADERS);
+  }
+  const roomRaw = String(url.searchParams.get("room") || "jarvis-live").trim();
+  const room = /^[\w-]{1,64}$/.test(roomRaw) ? roomRaw : "jarvis-live";
+  const identityRaw = String(url.searchParams.get("identity") || "owner").trim();
+  const identity = /^[\w@.-]{1,64}$/.test(identityRaw) ? identityRaw : "owner";
+  const token = await mintLiveKitToken({ apiKey: cfg.apiKey, apiSecret: cfg.apiSecret, identity, room, ttlSeconds: 2 * 3600, name: identity });
+  return jsonResponse({ serverUrl: cfg.serverUrl, room, identity, token, expiresIn: 2 * 3600, project: cfg.project }, 200, LIVEKIT_CORS_HEADERS);
+}
 
 function jsonResponse(obj, status, extraHeaders) {
   return new Response(JSON.stringify(obj), { status: status || 200, headers: { "content-type": "application/json; charset=utf-8", ...(extraHeaders || {}) } });
@@ -246,6 +326,58 @@ async function kvGet(env, key, fallback) {
 }
 async function kvPut(env, key, value) {
   try { if (env.JARVIS_KV) await env.JARVIS_KV.put(key, JSON.stringify(value)); } catch (e) { console.log("kvPut error:", e && e.message ? e.message : e); }
+}
+
+/* ---------------- Coarena (العقل المجاني الرسمي للمشروع) ----------------
+   مجمع مفاتيح — ما بيخلص الرصيد:
+   - البيئة: COARENA_API_KEY (الأساس) + COARENA_API_KEY_2، COARENA_API_KEY_3… (أي عدد)
+   - KV: مفتاح المالك عبر /coarena key (ينضم للمجمع أيضاً)
+   التوزيع round-robin (KV: coarena_rr_v1) عشان كل مفتاح ياخذ حصته اليومية بدل ما ينحرق الواحد.
+   عند فشل مفتاح — تجرب المفاتيح التالية قبل ما يسقط للسلسلة الاحتياطية. */
+async function coarenaKeyPool(env) {
+  const pool = [];
+  const seen = new Set();
+  const add = (label, value) => {
+    const v = String(value || "").trim();
+    if (v && !seen.has(v)) { seen.add(v); pool.push({ label, key: v }); }
+  };
+  add("env:COARENA_API_KEY", env && env.COARENA_API_KEY);
+  for (let i = 2; i <= 20; i++) add(`env:COARENA_API_KEY_${i}`, env && env[`COARENA_API_KEY_${i}`]);
+  // دعم قيمة مفصولة بفواصل: COARENA_EXTRA_KEYS="coa_a,coa_b"
+  for (const part of String((env && env.COARENA_EXTRA_KEYS) || "").split(",")) add("env:COARENA_EXTRA_KEYS", part);
+  add("kv:/coarena key", await kvGet(env, "coarena_api_key_v1", ""));
+  return pool;
+}
+async function coarenaApiKey(env) {
+  const pool = await coarenaKeyPool(env);
+  if (pool.length) {
+    // ابدأ من المفتاح الذي شارك عدّاد الـ round-robin حتى تتوزع المحادثات على كل المفاتيح
+    const rr = Number(await kvGet(env, "coarena_rr_v1", 0)) || 0;
+    return pool[rr % pool.length].key;
+  }
+  return "";
+}
+async function coarenaOrderedPool(env) {
+  const pool = await coarenaKeyPool(env);
+  const rr = Number(await kvGet(env, "coarena_rr_v1", 0)) || 0;
+  const start = pool.length ? rr % pool.length : 0;
+  return pool.slice(start).concat(pool.slice(0, start));
+}
+async function coarenaRrBump(env) {
+  try { const rr = Number(await kvGet(env, "coarena_rr_v1", 0)) || 0; await kvPut(env, "coarena_rr_v1", rr + 1); } catch {}
+}
+async function coarenaPoolInfo(env) {
+  const pool = await coarenaKeyPool(env);
+  return pool.map((p, i) => ({ index: i + 1, label: p.label, masked: p.key.slice(0, 4) + "…" + p.key.slice(-4), key: p.key }));
+}
+function coarenaModelFallback(env) {
+  return String((env && env.COARENA_MODEL) || "claude-fable-5-2").trim() || "claude-fable-5-2";
+}
+async function primaryIntelligence(env) {
+  const kv = await kvGet(env, "primary_intelligence_v1", null);
+  if (kv != null && String(kv).trim()) return String(kv).trim().toLowerCase();
+  const pool = await coarenaKeyPool(env);
+  return pool.length ? "coarena" : "arena";
 }
 const getHistory = (env) => kvGet(env, "history", []); // legacy fallback
 const saveHistory = (env, convo) => kvPut(env, "history", convo.slice(-MAX_HISTORY));
@@ -432,7 +564,7 @@ async function callOpenAICompatible(base, key, model, convo, system) {
     const res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))], temperature: 0.4, max_tokens: 400 }),
+      body: JSON.stringify({ model, messages: [{ role: "system", content: system }, ...convo.map((m) => ({ role: m.role, content: String(m.content) }))], temperature: 0.35, max_tokens: 1600 }),
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) { console.log("llm HTTP", res.status, base); return null; }
@@ -565,6 +697,23 @@ function arenaSessionFromStorage(storage) {
   return null;
 }
 
+async function syncBrowserlessArenaProfile(env, force) {
+  const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
+  if (!token) return false;
+  const importedAt = Number(await kvGet(env, "arena_imported_at", 0)) || 0;
+  const syncedAt = Number(await kvGet(env, "browserless_profile_synced_at", 0)) || 0;
+  if (!force && syncedAt >= importedAt && Date.now() - syncedAt < 6 * 60 * 60000) return true;
+  const storage = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
+  const cookies = await kvGet(env, "arena_browser_cookies", []);
+  const cleanCookies = (Array.isArray(cookies) ? cookies : []).filter((c) => c?.name && c?.value && c?.domain).map((c) => ({ name: String(c.name), value: String(c.value), domain: String(c.domain), path: c.path || "/", expires: Number.isFinite(c.expires) ? c.expires : -1, httpOnly: !!c.httpOnly, secure: c.secure !== false, session: !c.expires || c.expires < 0, sameSite: ["Strict", "Lax", "None"].includes(c.sameSite) ? c.sameSite : "Lax" }));
+  const state = { cookies: cleanCookies, origins: [{ origin: "https://arena.ai", localStorage: Object.fromEntries(Object.entries(storage || {}).filter(([k, v]) => typeof k === "string" && typeof v === "string")) }] };
+  const base = `https://production-ams.browserless.io`;
+  let res = await fetch(`${base}/profile/refresh?token=${encodeURIComponent(token)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "jarvis-arena", state }) });
+  if (!res.ok) res = await fetch(`${base}/profile/upload?token=${encodeURIComponent(token)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "jarvis-arena", state }) });
+  if (!res.ok) { await kvPut(env, "browserless_last_error_v1", { at: Date.now(), error: `profile sync HTTP ${res.status}` }); return false; }
+  await kvPut(env, "browserless_profile_synced_at", Date.now()); return true;
+}
+
 async function connectBrowserlessNative(endpoint) {
   // puppeteer-core يحاول استعمال حزمة ws الخاصة بـNode، وهي غير متاحة داخل Workers.
   // هذا Transport يربطه مباشرةً بـWebSocket الأصلي في Cloudflare Workers.
@@ -584,13 +733,49 @@ async function connectBrowserlessNative(endpoint) {
   return await remotePuppeteer.connect({ transport });
 }
 
+const managedBrowserSessions = new WeakMap();
+async function createHyperbrowserSession(env, interactive) {
+  const key = String(await kvGet(env, "hyperbrowser_api_key_v1", "") || "").trim();
+  if (!key) return null;
+  const headers = { "x-api-key": key, "content-type": "application/json" };
+  let profileId = String(await kvGet(env, "hyperbrowser_profile_v1", "") || "");
+  if (!profileId) {
+    const pr = await fetch("https://api.hyperbrowser.ai/api/profile", { method: "POST", headers, body: JSON.stringify({ name: "jarvis-arena" }), signal: AbortSignal.timeout(15000) });
+    if (!pr.ok) throw new Error(`Hyperbrowser profile HTTP ${pr.status}`);
+    profileId = String((await pr.json()).id || ""); if (!profileId) throw new Error("Hyperbrowser profile id missing");
+    await kvPut(env, "hyperbrowser_profile_v1", profileId);
+  }
+  const payload = JSON.stringify({ acceptCookies: true, useStealth: true, timeoutMinutes: interactive ? 30 : 20, profile: { id: profileId, persistChanges: true } });
+  let sr = await fetch("https://api.hyperbrowser.ai/api/session", { method: "POST", headers, body: payload, signal: AbortSignal.timeout(20000) });
+  // Free يسمح بجلسة واحدة. بعد انقطاع Worker قد تبقى جلسة orphan نشطة وتسبب 429؛
+  // أغلقها بأمان ثم أعد المحاولة مرة واحدة، بدل مطالبة المالك بمفتاح جديد.
+  if (sr.status === 429) {
+    try {
+      const lr = await fetch("https://api.hyperbrowser.ai/api/sessions?status=active&page=1", { headers: { "x-api-key": key }, signal: AbortSignal.timeout(10000) });
+      const active = lr.ok ? ((await lr.json()).sessions || []) : [];
+      for (const old of active) if (old?.id) await fetch(`https://api.hyperbrowser.ai/api/session/${encodeURIComponent(old.id)}/stop`, { method: "PUT", headers: { "x-api-key": key }, signal: AbortSignal.timeout(10000) });
+      if (active.length) { await new Promise((r) => setTimeout(r, 1200)); sr = await fetch("https://api.hyperbrowser.ai/api/session", { method: "POST", headers, body: payload, signal: AbortSignal.timeout(20000) }); }
+    } catch {}
+  }
+  if (!sr.ok) { const detail = String(await sr.text().catch(() => "")).replace(/[A-Za-z0-9_-]{24,}/g, "[redacted]").slice(0, 240); throw new Error(`Hyperbrowser session HTTP ${sr.status}${detail ? ` — ${detail}` : ""}`); }
+  const session = await sr.json(); if (!session.wsEndpoint) throw new Error("Hyperbrowser wsEndpoint missing");
+  return { ...session, key };
+}
+
 async function acquireArenaBrowser(env) {
+  // Hyperbrowser أولاً عند ربطه: ملف متصفح كامل دائم وCDP. الخطة المجانية
+  // ليست Residential حسب صفحة الأسعار؛ لذلك نتحقق عملياً ولا ندّعي أنها حل قبل نجاح Arena.
+  try {
+    const hs = await createHyperbrowserSession(env, false);
+    if (hs) { const browser = await connectBrowserlessNative(hs.wsEndpoint); managedBrowserSessions.set(browser, { provider: "hyperbrowser", id: hs.id, key: hs.key }); return { browser, provider: "hyperbrowser" }; }
+  } catch (e) { await kvPut(env, "hyperbrowser_last_error_v1", { at: Date.now(), error: String(e?.message || e).slice(0, 300) }); }
   // Browserless المجاني: 1000 وحدة/شهر، بلا بطاقة، ويدعم Puppeteer وCAPTCHA.
   // هو المسار الأول؛ Cloudflare (10 دقائق/يوم) يبقى احتياطياً تلقائياً.
   const browserlessToken = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
   if (browserlessToken) {
     try {
-      const endpoint = `wss://production-ams.browserless.io?token=${encodeURIComponent(browserlessToken)}&timeout=60000`;
+      await syncBrowserlessArenaProfile(env, false);
+      const endpoint = `wss://production-ams.browserless.io?token=${encodeURIComponent(browserlessToken)}&timeout=60000&profile=jarvis-arena`;
       return { browser: await connectBrowserlessNative(endpoint), provider: "browserless" };
     } catch (e) {
       const message = String(e?.message || e);
@@ -608,6 +793,12 @@ async function acquireArenaBrowser(env) {
 
 async function releaseArenaBrowser(browser) {
   if (!browser) return;
+  const managed = managedBrowserSessions.get(browser);
+  if (managed?.provider === "hyperbrowser") {
+    try { await browser.disconnect(); } catch {}
+    try { await fetch(`https://api.hyperbrowser.ai/api/session/${encodeURIComponent(managed.id)}/stop`, { method: "PUT", headers: { "x-api-key": managed.key }, signal: AbortSignal.timeout(10000) }); } catch {}
+    managedBrowserSessions.delete(browser); return;
+  }
   try { await browser.close(); } catch {}
 }
 
@@ -657,30 +848,32 @@ async function refreshArenaSession(env) {
 async function callArenaBrowser(convo, system, env) {
   if (!env || !env.BROWSER) return null;
   if (!(await arenaIsOn(env)) || await arenaInCooldown(env)) return null;
-  let browser;
+  let browser, browserProvider;
   try {
-    browser = (await acquireArenaBrowser(env)).browser;
+    const acquired = await acquireArenaBrowser(env); browser = acquired.browser; browserProvider = acquired.provider;
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
-    const saved = await kvGet(env, "arena_browser_cookies", []);
+    const saved = browserProvider === "hyperbrowser" ? [] : await kvGet(env, "arena_browser_cookies", []);
     if (Array.isArray(saved) && saved.length) { try { await page.setCookie(...saved); } catch {} }
     // Telegram webhook returns immediately and ctx.waitUntil has a ~30s ceiling؛ لازم ننهي
     // نجاحاً أو فشلاً ضمنه حتى ما تختفي نتيجة /arena test بصمت.
+    const imported = browserProvider === "hyperbrowser" ? {} : await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
+    const importedCookie = browserProvider === "hyperbrowser" ? "" : String(await kvGet(env, "arena_imported_cookie", "") || "");
+    // لازم كوكي المصادقة تنحط قبل أول تحميل؛ وإلا Arena تفتح حوار الدخول وتبقيه
+    // حتى بعد reload، وهذا كان يجعل النقل الناجح من Safari يبدو كأنه غير مصادق.
+    if (importedCookie) {
+      const specs = importedCookie.split(";").map((part) => { const i = part.indexOf("="); return i > 0 ? { name: part.slice(0, i).trim(), value: part.slice(i + 1).trim(), url: "https://arena.ai/", path: "/", secure: true } : null; }).filter(Boolean);
+      if (specs.length) { try { await page.setCookie(...specs); } catch {} }
+    }
+    const session = arenaSessionFromStorage(imported);
+    if (session) {
+      const encoded = "base64-" + btoa(unescape(encodeURIComponent(JSON.stringify(session))));
+      try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, url: "https://arena.ai/", path: "/", secure: true }); } catch {}
+    }
     // افتح Direct Chat صراحةً. لا نستخدم الصفحة الرئيسية لأنها تبدأ Battle Mode.
     await page.goto("https://arena.ai/text/direct", { waitUntil: "domcontentloaded", timeout: 8000 });
-    const imported = await kvGet(env, "arena_runtime_storage", await kvGet(env, "arena_imported_storage", {}));
-    const importedCookie = String(await kvGet(env, "arena_imported_cookie", "") || "");
     if ((imported && typeof imported === "object" && Object.keys(imported).length) || importedCookie) {
       if (imported && typeof imported === "object") await page.evaluate((items) => { for (const [k, v] of Object.entries(items)) localStorage.setItem(k, v); }, imported);
-      if (importedCookie) {
-        const specs = importedCookie.split(";").map((part) => { const i = part.indexOf("="); return i > 0 ? { name: part.slice(0, i).trim(), value: part.slice(i + 1).trim(), domain: "arena.ai", path: "/", secure: true } : null; }).filter(Boolean);
-        if (specs.length) { try { await page.setCookie(...specs); } catch {} }
-      }
-      const session = arenaSessionFromStorage(imported);
-      if (session) {
-        const encoded = "base64-" + btoa(unescape(encodeURIComponent(JSON.stringify(session))));
-        try { await page.setCookie({ name: "arena-auth-prod-v1", value: encoded, domain: "arena.ai", path: "/", secure: true }); } catch {}
-      }
       await page.reload({ waitUntil: "domcontentloaded", timeout: 8000 });
       // احتفظ بأي access/refresh session حدّثتها Arena؛ لا ترجع كل مرة للنسخة القديمة.
       try {
@@ -796,7 +989,7 @@ async function callArenaBrowser(convo, system, env) {
         // stream تابع لـnextjs-api؛ الصفحة نفسها هي origin الموثوق، ثم حلّل الداتا.
         if (!/\/nextjs-api\/stream\//.test(response.url())) return;
         responseStarted = true;
-        try { const body = await response.text(); clearTimeout(timer); resolve(body); }
+        try { const body = await response.text(); clearTimeout(timer); resolve({ body, status: response.status(), path: new URL(response.url()).pathname }); }
         catch (e) { clearTimeout(timer); reject(e); }
       });
     });
@@ -847,8 +1040,8 @@ async function callArenaBrowser(convo, system, env) {
         if (!sent) await page.keyboard.press("Enter");
       }
     }
-    let raw;
-    try { raw = await responsePromise; }
+    let captured;
+    try { captured = await responsePromise; }
     catch (e) {
       const diag = await page.evaluate(() => {
         const send = document.querySelector('button[aria-label="Send message"]');
@@ -870,6 +1063,9 @@ async function callArenaBrowser(convo, system, env) {
       }
       throw e;
     }
+    const raw = captured?.body || "";
+    const shape = arenaStreamShape(raw);
+    await kvPut(env, "arena_stream_shape", { at: Date.now(), status: captured?.status || 0, path: captured?.path || "", streamShape: shape });
     const text = parseArenaDataStream(raw);
     try { await kvPut(env, "arena_browser_cookies", await page.cookies()); } catch {}
     if (!text) throw new Error("Arena browser returned an empty stream");
@@ -1067,7 +1263,8 @@ async function arenaSelftest(env, deep) {
   if (!cfg.enabled) return null;
   if (!cfg.base && cfg.browser) {
     const answer = deep ? await callArenaBrowser([{ role: "user", content: "رد بكلمة OK فقط" }], "اختبار اتصال قصير", env) : null;
-    return { ok: deep ? !!answer : true, engines: [{ name: "cloudflare-browser-rendering", ready: true, ok: deep ? !!answer : true, ms: 0, sample: answer ? answer.slice(0, 80) : "Chromium binding ready", error: answer || !deep ? "" : "Arena لم يرجع جواباً" }] };
+    const transport = (await kvGet(env, "hyperbrowser_profile_v1", "")) ? "hyperbrowser-persistent-profile" : ((await kvGet(env, "browserless_token_v1", "")) ? "browserless" : "cloudflare-browser-rendering");
+    return { ok: deep ? !!answer : true, engines: [{ name: transport, ready: true, ok: deep ? !!answer : true, ms: 0, sample: answer ? answer.slice(0, 80) : "Chromium binding ready", error: answer || !deep ? "" : "Arena لم يرجع جواباً" }] };
   }
   try {
     const url = cfg.base + "/arena/selftest" + (deep ? "?deep=1" : "");
@@ -1083,7 +1280,125 @@ async function arenaSelftest(env, deep) {
   } catch (e) { console.log("arena selftest error:", e && e.message ? e.message : e); return null; }
 }
 
+async function callGroqSmart(convo, system, env, key) {
+  let model = String(await kvGet(env, "groq_model_v1", env.GROQ_MODEL || "") || "").trim();
+  if (!model) {
+    try {
+      const mr = await fetch("https://api.groq.com/openai/v1/models", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) });
+      if (!mr.ok) { await kvPut(env, "groq_last_error_v1", { at: Date.now(), status: mr.status, stage: "models" }); return null; }
+      const ids = ((await mr.json()).data || []).map((x) => x.id).filter((x) => !/whisper|guard|tts|speech/i.test(x));
+      model = ids.find((x) => /llama-3\.3-70b/i.test(x)) || ids.find((x) => /70b.*versatile/i.test(x)) || ids.find((x) => /llama.*instant/i.test(x)) || ids[0] || "";
+      if (model) await kvPut(env, "groq_model_v1", model);
+    } catch { await kvPut(env, "groq_last_error_v1", { at: Date.now(), status: 0, stage: "models" }); return null; }
+  }
+  if (!model) return null;
+  const out = await callOpenAICompatible("https://api.groq.com/openai/v1", key, model, convo, system);
+  await kvPut(env, "groq_last_error_v1", out ? null : { at: Date.now(), status: 0, stage: "chat", model });
+  return out;
+}
+
+function coarenaErrorAdvice(status, message) {
+  const m = String(message || "").toLowerCase();
+  if (/verif|تأكيد|توثيق|بريد|email/.test(m)) return "هالحساب يحتاج تأكيد بريد إلكتروني من Coarena نفسك — ما بقدر أتحقق نيابة عنك (افتح إيميلك واتبع الرابط).";
+  if (/pending|review|مراجعة|قيد/.test(m)) return "فيه طلب لسا قيد المراجعة عند Coarena — بستنى القرار الرسمي، طلب جديد ما بيسرّع شي.";
+  if (/429|rate|cooldown|too many|طلبات/.test(m) || status === 429) return "Coarena عم توازن الوتيرة (cooldown) — مو شرط ناقص؛ حاول بعد ساعات.";
+  if (status === 401 || status === 403 || /unauthor|invalid|revoked|unknown key|authentication/.test(m)) return "المفتاح مو معروف أو ملغى عند Coarena — بدك تستبدله بمفتاح من حسابك بكوارينا.";
+  if (/already|سبقت|مكرر|re-?quest.*exists/.test(m)) return "فيه طلب مطابق محفوظ مسبقاً — راجع لوحة Limits عند Coarena.";
+  if (/max|أقصى|cap/.test(m) && /50|max|أقصى/.test(m)) return "وصل الحد الأقصى المسموح بهذا المفتاح ($50/يوم).";
+  if (status === 0 || /abort|timeout|network|fetch failed/.test(m)) return "مهلة/مشكلة شبكة من هون — المتل: جرب كمان شوي.";
+  return "ما بقدر أقرر الشرط الناقص من هالرد — الرسالة الحقيقية: «" + String(message).slice(0, 120) + "»";
+}
+
+async function raiseCoarenaLimitsForAll(env, usd) {
+  const target = Math.max(5, Math.min(50, Number(usd) || 50));
+  const info = await coarenaPoolInfo(env);
+  const results = [];
+  for (const entry of info) {
+    let ok = false, status = 0, message = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${entry.key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: target }), signal: AbortSignal.timeout(10000) });
+        const d = await r.json().catch(() => ({}));
+        status = r.status;
+        if (r.ok) { ok = true; message = "وصل الطلب"; break; }
+        message = String(d?.error?.message || d?.message || `HTTP ${r.status}`).slice(0, 300);
+        if (r.status >= 400 && r.status < 500) break; // 4xx: لا تعيد الطلب — الشرط ناقص، مو الشبكة
+      } catch (e) {
+        status = 0;
+        message = String(e?.message || e).slice(0, 300);
+      }
+    }
+    results.push({ index: entry.index, label: entry.label, masked: entry.masked, ok, status, message, advice: ok ? "" : coarenaErrorAdvice(status, message) });
+  }
+  return { target, results };
+}
+
+function coarenaRaiseReportText(res) {
+  if (!res.results.length) return "Coarena مو مربوط — ما في أي مفتاح بالمجمع (لا COARENA_API_KEY ولا KV). ضيف مفتاحك ب wrangler.toml (COARENA_API_KEY / COARENA_API_KEY_2 …) أو بـ /coarena key.";
+  const lines = [`⬆️ طلب رفع الحد اليومي إلى $${res.target} — مجمّع المفاتيح كله (${res.results.length}):`];
+  let good = 0;
+  for (const r of res.results) {
+    if (r.ok) { good++; lines.push(`✅ #${r.index} ${r.masked} — وصل الطلب`); }
+    else lines.push(`❌ #${r.index} [${r.label}] ${r.masked} — ${r.message || "فشل غير معروف"}\n   ← ${r.advice}`);
+  }
+  lines.push(`المجموع: ✅ ${good} وصل | ❌ ${res.results.length - good} ما وصل`);
+  lines.push("⏳ الموافقة عند Coarena مو فورية (ساعات إلى أيام) — تحقق لاحقاً بـ /coarena status أو من لوحة Coarena Limits. المفاتيح المرفوضة ما بتتكرر لحالها — لازم الـ شرط ينحل أولاً.");
+  return lines.join("\n").slice(0, 3500);
+}
+
+function parseCoarenaRaisePhrase(text) {
+  const t = String(text || "");
+  if (!/(?:ارفع|رفع|رافع|زيد|زيادة|زد)[^\n]{0,40}(?:الحد|حدود|الرصيد|رصيد|الكوتا|كوتا)/i.test(t)) return null;
+  const target = /(?:50|٥٠)/.test(t) ? 50 : (/(?:10|١٠)/.test(t) ? 10 : 50);
+  return target;
+}
+
+async function getCoarenaLimits(env, keyOverride) {
+  const key = String(keyOverride || "").trim() || (await coarenaApiKey(env)); if (!key) return null;
+  try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) }); return r.ok ? await r.json() : null; } catch { return null; }
+}
+function coarenaBalanceText(d) {
+  if (!d) return "ما قدرت اقرأ الرصيد هلق.";
+  const flat = JSON.stringify(d); const pick = (names) => { for (const n of names) { const m = flat.match(new RegExp(`\\"${n}\\"\\s*:\\s*([0-9.]+)`, "i")); if (m) return Number(m[1]); } return null; };
+  const limit = pick(["usd_per_day", "daily_limit_usd", "limit_usd", "limit"]);
+  const used = pick(["usd_used_today", "used_usd", "usage_usd", "used"]);
+  const remaining = pick(["usd_remaining", "remaining_usd", "remaining"]);
+  const left = remaining != null ? remaining : (limit != null && used != null ? Math.max(0, limit - used) : null);
+  return `رصيد Coarena اليوم${left != null ? ` الباقي $${left.toFixed(2)}` : " موجود لكن الصيغة ما بينت الباقي مباشرة"}${limit != null ? ` من $${limit.toFixed(2)}` : ""}. بيتجدد يومياً الساعة 3:00 AM حسب حسابك.`;
+}
+
 async function llmComplete(convo, system, env) {
+  const primary = await primaryIntelligence(env);
+  if (primary === "coarena") {
+    const ordered = await coarenaOrderedPool(env);
+    const model = String(await kvGet(env, "coarena_model_v1", coarenaModelFallback(env)) || coarenaModelFallback(env));
+    const coarenaSystem = `${system}\n\nأنت تعمل الآن عبر Coarena Model API والنموذج الفعلي هو ${model}. إذا سُئلت عن هويتك قل: جارفس عبر Coarena، والنموذج ${model}. أعطِ جواباً كاملاً ومفصلاً حسب طلب المالك، ولا تبدأ تنسيق Markdown غير مكتمل.`;
+    let answeredKey = null;
+    let coarenaAnswer = null;
+    for (const entry of ordered) {
+      const answer = await callOpenAICompatible("https://coarena.ai/api/v1", entry.key, model, convo, coarenaSystem);
+      if (answer) { answeredKey = entry.key; coarenaAnswer = answer; break; }
+      console.log(`coarena key ${entry.label} failed — trying next key in pool`);
+    }
+    if (answeredKey) {
+      await coarenaRrBump(env);
+      const limits = await getCoarenaLimits(env, answeredKey); const balance = coarenaBalanceText(limits);
+      const m = balance.match(/الباقي \$([0-9.]+)/); const left = m ? Number(m[1]) : null;
+      if (left != null && left <= 1) { const last = Number(await kvGet(env, "coarena_balance_alert_v1", 0)) || 0; if (Date.now() - last > 6 * 60 * 60000) { await kvPut(env, "coarena_balance_alert_v1", Date.now()); const owner = await getOwnerChatId(env); if (owner) await sendMessage(env, owner, `⚠️ ${balance} رح خفف الاستهلاك وأخلي المهام الثقيلة لبعد التجدد إلا إذا طلبت العكس.`); } }
+      return coarenaAnswer;
+    }
+    // كل مفاتيح Coarena فشلت (حصة خلصت/انقطاع) — نكمل على باقي السلسلة بدل ما البوت يموت بصمت.
+    await kvPut(env, "coarena_last_error_v1", { at: Date.now(), model, poolSize: ordered.length });
+    console.log(`coarena pool exhausted (${ordered.length} keys) — falling back to the rest of the chain`);
+  }
+  const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
+  const hyperbrowserReady = !!(await kvGet(env, "hyperbrowser_profile_v1", ""));
+  // وجود Profile Hyperbrowser مصادق يعني أن اختيار المالك هو Arena حصراً؛ لا تسمح
+  // لإعداد Groq قديم أن يسبقها أو ينتحل هوية موديل آخر.
+  if (!hyperbrowserReady && (await primaryIntelligence(env)) === "groq" && groqKey) {
+    const fast = await callGroqSmart(convo, system, env, groqKey);
+    if (fast) return fast;
+  }
   // Arena هو الأساس افتراضياً (بمجرد ضبط ARENA_BRIDGE_URL). باقي المزودين احتياط،
   // فإذا الجسر نايم/فشل، رد جارفس ما يتوقف — بس ما بيوصل من Arena.
   if (await arenaIsPrimary(env)) {
@@ -1095,7 +1410,7 @@ async function llmComplete(convo, system, env) {
   return (
     (await callGemini(convo, system, env)) ||
     (await callOpenAICompatible("https://api.mistral.ai/v1", env.MISTRAL_API_KEY, (env.MISTRAL_MODEL || "mistral-large-latest").trim(), convo, system)) ||
-    (await callOpenAICompatible("https://api.groq.com/openai/v1", env.GROQ_API_KEY, (env.GROQ_MODEL || "llama-3.3-70b-versatile").trim(), convo, system)) ||
+    (groqKey ? await callGroqSmart(convo, system, env, groqKey) : null) ||
     (await callOpenAICompatible("https://integrate.api.nvidia.com/v1", env.NVIDIA_API_KEY, (env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct").trim(), convo, system)) ||
     (await callOpenRouterWithFallback(convo, system, env)) ||
     (await callArenaBridge(convo, system, env)) ||
@@ -1469,15 +1784,43 @@ async function processTaskQueue(env, maxSteps) {
 
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
+  if (parseCoarenaRaisePhrase(String(userText)) != null) {
+    return coarenaRaiseReportText(await raiseCoarenaLimitsForAll(env, parseCoarenaRaisePhrase(String(userText))));
+  }
+  if ((await primaryIntelligence(env)) === "coarena" && /(?:قديش|كم|اديش|شو).{0,25}(?:رصيد|باقي|استهلاك|كريديت)|(?:رصيد|كريديت).{0,25}(?:قديش|كم|باقي)/i.test(String(userText))) {
+    const balance = coarenaBalanceText(await getCoarenaLimits(env));
+    if (/(?:بيكفي|يكفي|بكفي).*(?:مهمة|شغلة|بحث|مشروع)/i.test(String(userText))) return `${balance}\nغالباً بكفينا للمهمة المتوسطة، بس ما بقدر أضمن التكلفة قبل ما أعرف حجم الملفات وعدد خطوات البحث. بعطيك تنبيه قبل ما ينزل الباقي عن $1.`;
+    return balance;
+  }
   const memBlock = o.mode === "worker" ? "" : await relevantMemories(env, userText);
   const resolved = o.mode === "worker" ? null : await resolveThread(env, userText, o.threadId);
   const threadBlock = resolved ? `\n\nسياق مساحة العمل الحالية:\n- الاسم: ${resolved.thread.title}\n- المعرف: ${resolved.thread.id}\n- سبب اختيارها: ${resolved.reason}\n- الملخص السابق: ${resolved.thread.summary || "أول رسالة"}\nالتزم بهذه المهمة فقط ولا تخلطها بمشروع آخر.` : "";
-  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : "") + threadBlock);
+  let taskBlock = "";
+  if (o.mode !== "worker") {
+    const tasks = (await kvGet(env, "tasks", []) || []).slice().sort((a, b) => Number(b.updated || b.created || 0) - Number(a.updated || a.created || 0));
+    const current = tasks.find((t) => ["running", "queued", "waiting_for_browser", "waiting"].includes(t.status)) || tasks[0];
+    if (current) {
+      const trace = (current.trace || []).slice(-3).map((x) => `${x.tool || x.step}: ${String(x.result || "").slice(0, 550)}`).join("\n");
+      taskBlock = `\n\nالمهمة الحالية التي يقصدها المالك في أسئلة المتابعة مثل «شو بتنصحني/شو صار/كمل»:\n- المعرف: ${current.id}\n- الطلب: ${String(current.goal || current.title || "").slice(0, 900)}\n- الحالة: ${current.status || "غير معروفة"}\n- التقدم: ${current.progress || 0}%\n- المرحلة: ${current.phase || ""}\n- النتيجة النهائية إن وجدت: ${String(current.result || current.output || "").slice(0, 1800)}\n- آخر أدلة التنفيذ:\n${trace || "لا يوجد"}\nيجب أن تجيب عن هذه المهمة تحديداً، لا تقدّم نصائح عامة عن Upwork أو موضوع قديم. إذا الأدلة غير كافية قل ذلك بوضوح.`;
+    }
+  }
+  const system = o.mode === "worker" ? WORKER_PROMPT : (BASE_PROMPT + (memBlock ? "\n\n" + memBlock : "") + threadBlock + taskBlock);
   const hist = o.mode === "worker" ? [] : (resolved.thread.messages || []);
   const convo = [...hist, { role: "user", content: String(userText) }];
+  // إذا المالك طلب البحث صراحةً، نفّذ الأداة أولاً ولا تترك النموذج يجيب من ذاكرته.
+  let forcedSearch = "";
+  if (/(?:ابحث|دور|دوّر|فتش|غوغل|google|عالنت|الإنترنت|الانترنت)/i.test(String(userText))) {
+    forcedSearch = await searchWeb(String(userText), env);
+    convo.push({ role: "user", content: "TOOL_RESULT search_web (مصادر حية؛ حلّلها ولا تدّعِ البحث خارجها):\n" + String(forcedSearch).slice(0, 5000) });
+  }
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
-    if (!out) return "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. حفظت رسالتك وسياقها؛ جرّب ابعتها مرة ثانية بعد لحظات. ما في داعي لأي مفتاح جديد.";
+    if (!out) {
+      const primary = await primaryIntelligence(env);
+      if (forcedSearch) return "بحثت فعلياً، لكن محرك التحليل ما رد. هاي نتائج البحث الخام بدل ما أخترع جواب:\n\n" + String(forcedSearch).slice(0, 3200);
+      if (primary === "coarena") return "Coarena والاحتياط كلهم مشغولين هلق — ما قدرت أوصل لجواب. افحص /coarena status كمان شوي وحاول مرة ثانية.";
+      return primary === "groq" ? "Groq ما قبل الطلب حالياً. حفظت رسالتك؛ عم أفحص المفتاح والنموذج تلقائياً، وما في داعي تعيد ربط Arena." : "Arena رفضت طلب المتصفح الآلي مؤقتاً. حفظت رسالتك وسياقها بالطابور وسأعيدها تلقائياً؛ لا تعيد إرسالها ولا تعمل ربطاً جديداً.";
+    }
     if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
     const call = parseToolCall(out);
     if (!call) {
@@ -1647,12 +1990,13 @@ async function sendVoiceReply(env, chatId, text) {
 }
 
 async function transcribeGroqAudio(env, buf) {
-  if (!env.GROQ_API_KEY) return null;
+  const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
+  if (!groqKey) return null;
   try {
     const fd = new FormData();
     fd.append("model", "whisper-large-v3-turbo");
     fd.append("file", new Blob([buf], { type: "audio/ogg" }), "voice.ogg");
-    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${env.GROQ_API_KEY}` }, body: fd, signal: AbortSignal.timeout(45000) });
+    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { authorization: `Bearer ${groqKey}` }, body: fd, signal: AbortSignal.timeout(45000) });
     if (res.ok) { const d = await res.json(); if (d.text) return String(d.text).trim() || null; }
     else { console.log("groq whisper HTTP", res.status, (await res.text().catch(() => "")).slice(0, 300)); }
   } catch (e) { console.log("groq whisper error:", e && e.message ? e.message : e); }
@@ -1901,6 +2245,9 @@ const WELCOME = [
   "/arena primary — Arena أساس كل الردود ↔ رجوع للترتيب العادي",
   "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
   "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
+  "/voicecall — رابط آمن لمكالمة جارفس الصوتية",
+  "/coarena — العقل المجاني (Claude Fable 5.2): key/status/model/on/off/raise 50 — يرفع حد **كل** المفاتيح معاً (أو اكتب بالعربي: «ارفع حدود كل المفاتيح»)",
+  "/live — مكالمة لايف حقيقية كاملة عبر LiveKit (تحتاج تشغيل Agent على جهازك)",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
   "/files — شو الملفات والصور بقدر أقراها وأعدلها",
@@ -2007,6 +2354,100 @@ async function handleCommand(text, env, chatId) {
       lines.push("", "للتفاصيل: /leads و /lead <رقم>");
       await sendMessage(env, chatId, lines.join("\n")); return true;
     }
+    case "/coarena": {
+      const cm = arg.match(/^key\s+(.+)$/i);
+      if (cm) {
+        const key = cm[1].trim(); if (!key.startsWith("coa_") || key.length < 25) { await sendMessage(env, chatId, "مفتاح Coarena غير صالح."); return true; }
+        await kvPut(env, "coarena_api_key_v1", key); await kvPut(env, "coarena_model_v1", "claude-fable-5-2"); await kvPut(env, "primary_intelligence_v1", "coarena");
+        const test = await callOpenAICompatible("https://coarena.ai/api/v1", key, "claude-fable-5-2", [{ role: "user", content: "رد فقط: جاهز" }], "اختبار اتصال قصير");
+        await sendMessage(env, chatId, test ? "✅ Coarena شغال وصار المحرك الأساسي. النموذج: Claude Fable 5.2. احذف رسالة المفتاح وابعت سؤالاً عادياً." : "❌ انحفظ المفتاح لكن اختبار Coarena لم يرجع جواباً. تأكد من صفحة Limits."); return true;
+      }
+      if (/^status$/i.test(arg)) {
+        const info = await coarenaPoolInfo(env); if (!info.length) { await sendMessage(env, chatId, "اربطه أولاً: /coarena key YOUR_KEY (أو اضبط COARENA_API_KEY)"); return true; }
+        const model = String(await kvGet(env, "coarena_model_v1", coarenaModelFallback(env)) || coarenaModelFallback(env));
+        const primary = await primaryIntelligence(env);
+        const lines = [`Coarena — مجمع المفاتيح (${info.length}):`];
+        for (const entry of info) {
+          let limitsText = "تعذرت القراءة";
+          try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${entry.key}` }, signal: AbortSignal.timeout(8000) }); const d = await r.json().catch(() => null); if (r.ok && d) limitsText = JSON.stringify(d).slice(0, 300); } catch {}
+          lines.push(`#${entry.index} [${entry.label}] ${entry.masked}\n   ${limitsText}`);
+        }
+        lines.push(`النموذج: ${model}`);
+        lines.push(`الأساسي هلق: ${primary}`);
+        const lastErr = await kvGet(env, "coarena_last_error_v1", null);
+        if (lastErr) lines.push(`آخر فشل: ${new Date(lastErr.at).toISOString()}`);
+        lines.push("التدوير round-robin — كل مفتاح ياخذ حصته، وفشل مفتاح = انتقال للتالي تلقائياً.");
+        await sendMessage(env, chatId, lines.join("\n").slice(0, 3500)); return true;
+      }
+      const mm = arg.match(/^model\s+([\w./-]+)$/i);
+      if (mm) { await kvPut(env, "coarena_model_v1", mm[1]); await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, `✅ نموذج Coarena: ${mm[1]}`); return true; }
+      if (/^on$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, "✅ Coarena صار المحرك الأساسي."); return true; }
+      if (/^off$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "arena"); await sendMessage(env, chatId, "✅ رجعت لـ Arena كمحرك أساسي. (Coarena بيشتغل بس لما يكون هو الأساسي — /coarena on ليرجع)."); return true; }
+      const raiseArg = arg.match(/^(?:limit|raise)(?:\s+(\d+))?$/i);
+      if (raiseArg) { const usd = Number(raiseArg[1]) || 50; await sendMessage(env, chatId, coarenaRaiseReportText(await raiseCoarenaLimitsForAll(env, usd))); return true; }
+      await sendMessage(env, chatId, "الأوامر: /coarena key NEW_KEY | /coarena status | /coarena model MODEL_ID | /coarena on | /coarena off | /coarena raise [50]  ← يرفع حد **كل** مفاتيح المجمع معاً"); return true;
+    }
+    case "/hyperbrowser": {
+      const hm = arg.match(/^key\s+(.+)$/i);
+      if (hm) {
+        const key = hm[1].trim(); if (!key.startsWith("hb_") || key.length < 20) { await sendMessage(env, chatId, "مفتاح Hyperbrowser غير صالح."); return true; }
+        await kvPut(env, "hyperbrowser_api_key_v1", key); await kvPut(env, "hyperbrowser_profile_v1", null);
+        await sendMessage(env, chatId, "✅ حفظت مفتاح Hyperbrowser بخصوصية. احذف رسالة المفتاح، ثم اكتب /hyperbrowser connect."); return true;
+      }
+      if (/^connect$/i.test(arg)) {
+        try {
+          const s = await createHyperbrowserSession(env, true); await kvPut(env, "hyperbrowser_login_session_v1", { id: s.id, at: Date.now() });
+          await sendMessage(env, chatId, `🔐 افتح المتصفح الحي وسجّل دخول Arena فقط:\n${s.liveUrl}\n\nبعد ما تتأكد أنك داخل Arena اكتب /hyperbrowser save`);
+        } catch (e) { await sendMessage(env, chatId, `❌ Hyperbrowser: ${String(e?.message || e).slice(0, 250)}`); }
+        return true;
+      }
+      if (/^save$/i.test(arg)) {
+        const s = await kvGet(env, "hyperbrowser_login_session_v1", null); const key = String(await kvGet(env, "hyperbrowser_api_key_v1", "") || "");
+        if (!s?.id || !key) { await sendMessage(env, chatId, "ما في جلسة ربط مفتوحة. اكتب /hyperbrowser connect"); return true; }
+        const r = await fetch(`https://api.hyperbrowser.ai/api/session/${encodeURIComponent(s.id)}/stop`, { method: "PUT", headers: { "x-api-key": key } });
+        if (r.ok) {
+          await kvPut(env, "hyperbrowser_login_session_v1", null);
+          await kvPut(env, "primary_intelligence_v1", "arena");
+          await kvPut(env, "arena_skip_until", 0);
+          const pending = await kvGet(env, "arena_pending_direct_v1", []); for (const item of pending) item.availableAt = Date.now(); await kvPut(env, "arena_pending_direct_v1", pending);
+          await sendMessage(env, chatId, "✅ انحفظ Profile كامل وصارت Arena المحرك الأساسي حصراً. هلق شغّل /arena test قبل أي سؤال عادي.");
+        }
+        else await sendMessage(env, chatId, `❌ تعذر حفظ الجلسة (HTTP ${r.status})`);
+        return true;
+      }
+      await sendMessage(env, chatId, "الأوامر: /hyperbrowser key NEW_KEY ثم /hyperbrowser connect ثم /hyperbrowser save"); return true;
+    }
+    case "/groq": {
+      const gm = arg.match(/^key\s+(.+)$/i);
+      if (gm) {
+        const key = gm[1].trim(); if (!key.startsWith("gsk_") || key.length < 30) { await sendMessage(env, chatId, "مفتاح Groq غير صالح."); return true; }
+        await kvPut(env, "groq_api_key_v1", key); await kvPut(env, "primary_intelligence_v1", "groq");
+        await sendMessage(env, chatId, "✅ حُفظ مفتاح Groq بخصوصية وصار المحرك السريع الأساسي. احذف رسالة المفتاح من تيليجرام، ثم ابعت سؤالاً عادياً للتجربة."); return true;
+      }
+      if (/^on$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "groq"); await sendMessage(env, chatId, "✅ Groq صار المحرك الأساسي السريع."); return true; }
+      if (/^off$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "arena"); await sendMessage(env, chatId, "✅ رجعت Arena كمحرك أساسي."); return true; }
+      await sendMessage(env, chatId, "الأوامر: /groq key NEW_KEY أو /groq on أو /groq off"); return true;
+    }
+    case "/gemini": {
+      const km = arg.match(/^key\s+(.+)$/i);
+      if (!km) { await sendMessage(env, chatId, "لربط المكالمة الحية: /gemini key YOUR_NEW_KEY\nلن أطبع المفتاح أو أضعه في Git."); return true; }
+      const key = km[1].trim();
+      if (key.length < 20) { await sendMessage(env, chatId, "المفتاح قصير أو غير صالح."); return true; }
+      await kvPut(env, "gemini_api_key_v1", key);
+      await sendMessage(env, chatId, "✅ حفظت مفتاح Gemini بشكل خاص داخل Cloudflare KV. احذف رسالتك من تيليجرام الآن، ثم اكتب /voicecall."); return true;
+    }
+    case "/voicecall": {
+      const token = crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+      await kvPut(env, "voice_call_token", token);
+      await kvPut(env, "voice_call_token_expires", Date.now() + 30 * 60 * 1000);
+      const base = String(env.PUBLIC_WORKER_URL || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
+      await sendMessage(env, chatId, `📞 رابط مكالمتك الآمن (صالح 30 دقيقة):\n${base}/call?token=${token}\n\nافتحه واضغط اتصل — ما بدك تحط أي مفتاح.`); return true;
+    }
+    case "/live": {
+      const base = String(env.PUBLIC_WORKER_URL || (await kvGet(env, "public_worker_url", "")) || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
+      const lk = env.LIVEKIT_WS_URL ? "✅ LiveKit مضبوط (المشروع 1)" + (env.LIVEKIT_ALT_WS_URL ? " + احتياط (المشروع 2)" : "") : "❌ LiveKit مو مضبوط — راجع README_AR.md";
+      await sendMessage(env, chatId, `🎙️ المكالمة اللايف الحقيقية (LiveKit + Coarena + Edge TTS — كلها مجانية):\n\n1) شغّل الـ Agent على جهازك (مرة واحدة):\n   cd agency-cloudflare/livekit-agent\n   pip install -r requirements.txt\n   python agent.py start\n2) افتح: ${base}/live\n3) اضغط «اتصل بجارفس لايف» واحكِ طبيعي — بيسمعك ويرد فوراً وتقدر تقاطعه.\n\nحالة LiveKit: ${lk}\nبدون تشغيل Agent: استخدم /voicecall (مكالمة Gemini Live فورية) أو /call.`); return true;
+    }
     case "/call":
       await sendMessage(env, chatId, await callMeNow(env, arg || "جارفس يحتاج قرارك")); return true;
     case "/learn": {
@@ -2081,7 +2522,8 @@ async function handleCommand(text, env, chatId) {
         const token = String(await kvGet(env, "browserless_token_v1", env.BROWSERLESS_TOKEN || "") || "").trim();
         if (!token) { await sendMessage(env, chatId, "اربط التوكن أولاً: /browserless TOKEN"); return true; }
         let b; try {
-          b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000`);
+          await syncBrowserlessArenaProfile(env, true);
+          b = await connectBrowserlessNative(`wss://production-ams.browserless.io?token=${encodeURIComponent(token)}&timeout=30000&profile=jarvis-arena`);
           const p = await b.newPage(); await p.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 15000 });
           await kvPut(env, "browserless_last_error_v1", null);
           await sendMessage(env, chatId, "✅ Browserless اتصل فعلياً وفتح صفحة اختبار. صار جاهز لـArena.");
@@ -2231,7 +2673,7 @@ async function handleCommand(text, env, chatId) {
             anyOk ? "✅ في محرك شغال — Arena جاهز" : "⚠️ ولا محرك رد الآن",
             "", ...lines,
             "",
-            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : "إذا كلهن أحمر: تأكد من الكوكيز/الجلسة أو شغّل LMArenaBridge وحدد LMArenaBridge_URL",
+            anyOk ? "جرّب: /arena_ask اكتب لي خبر اليوم" : ((await kvGet(env, "hyperbrowser_profile_v1", "")) ? "Hyperbrowser Profile محفوظ، لكن Arena رفضت الإرسال من شبكة الخطة المجانية. Proxy وCAPTCHA solving مدفوعان رسمياً لدى Hyperbrowser؛ أوقفت الإعادات التي تحرق الرصيد." : "جلسة Arena غير مصادقة. الطلب محفوظ ولن يضيع."),
           ].join("\n"));
           return true;
         }
@@ -2293,7 +2735,7 @@ async function processDirectRetries(env) {
   const now = Date.now(); const item = rows.find((r) => (r.availableAt || 0) <= now); if (!item) return;
   item.attempts = (item.attempts || 0) + 1;
   const answer = await agentLoop(item.text, env, item.chatId, { route: "direct", retry: true });
-  if (["__ARENA_RETRY_429__", "__ARENA_RETRY_DAILY__"].includes(answer) || /صار انقطاع مؤقت/.test(answer)) {
+  if (["__ARENA_RETRY_429__", "__ARENA_RETRY_DAILY__"].includes(answer) || /صار انقطاع مؤقت|Arena رفضت طلب المتصفح|Groq ما قبل الطلب/.test(answer)) {
     const d = new Date(); const nextUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 2);
     item.availableAt = answer === "__ARENA_RETRY_DAILY__" ? nextUtc : now + Math.min(15 * 60000, 60000 * Math.pow(2, Math.min(item.attempts, 4)));
     await kvPut(env, "arena_pending_direct_v1", rows); return;
@@ -2365,6 +2807,8 @@ async function handleUpdate(update, env, ctx) {
   }
   if (!text) { await sendMessage(env, chatId, "أرسل نصاً، صوتاً، صورة أو ملف (txt/csv/xlsx/docx)."); return; }
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
+  const raiseTarget = parseCoarenaRaisePhrase(text);
+  if (raiseTarget != null) { await sendMessage(env, chatId, coarenaRaiseReportText(await raiseCoarenaLimitsForAll(env, raiseTarget))); return; }
   const route = arenaRouteIntent(text);
   const namedAgent = await findMentionedAgent(env, text);
   if (/شو\s*(صار|وصل)|وين\s*(وصلنا|صرت)|اعطيني\s*(تقدم|ابديت)|update|progress/i.test(text)) {
@@ -2416,16 +2860,82 @@ async function handleTts(request, env) {
 
 /* --------------------- /ask — جسر صفحة المكالمة --------------------- */
 
+// مدير المكالمة سريع ومستقل عن انتظار Arena؛ الحقائق تُقرأ من ذاكرة جارفس.
+async function callGeminiVoiceManager(text, env) {
+  const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({
+    id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "",
+    status: t.status || "", result: String(t.result || t.output || "").slice(0, 700),
+    updatedAt: t.updatedAt || t.updated || "",
+  }));
+  const memories = (await getMemories(env)).slice(-12).map((m) => String(m.text || "").slice(0, 300));
+  const hour = Number(new Intl.DateTimeFormat("en", { timeZone: "Europe/Paris", hour: "2-digit", hour12: false }).format(new Date()));
+  const system = `أنت جارفس، المدير الصوتي الشخصي للدكتور. احكِ باللهجة الشامية الطبيعية بجمل قصيرة جداً مناسبة لمكالمة سريعة، بنبرة دافئة وتفاعلية، ومن دون Markdown. الوقت المحلي ${hour}:00. لا تخترع حالة أي مهمة: استعمل الحالة والنتيجة المعطاتين فقط. إذا المعلومة غير موجودة، قل إنها غير جاهزة وأنك ستضعها للبحث بالخلفية، ولا تدّعي أن التنفيذ تم. اسأل سؤالاً واحداً فقط كل مرة. إذا ذكر أنه يقود اختصر بشدة واهتم بالسلامة.\nحالة المهام: ${JSON.stringify(tasks)}\nذاكرة مختصرة: ${JSON.stringify(memories)}`;
+  return await callGemini([{ role: "user", content: text }], system, env);
+}
+
+async function handleGeminiLiveSocket(request, env) {
+  if ((request.headers.get("Upgrade") || "").toLowerCase() !== "websocket") return new Response("WebSocket required", { status: 426 });
+  const token = new URL(request.url).searchParams.get("token") || "";
+  const expected = await kvGet(env, "voice_call_token", "");
+  const expires = Number(await kvGet(env, "voice_call_token_expires", 0)) || 0;
+  if (!token || token !== expected || expires < Date.now()) return new Response("Call link expired", { status: 401 });
+  const apiKey = String(await kvGet(env, "gemini_api_key_v1", env.GEMINI_API_KEY || "") || "").trim();
+  if (!apiKey) return new Response("Gemini key not configured", { status: 503 });
+
+  const pair = new WebSocketPair();
+  const client = pair[0], server = pair[1]; server.accept();
+  let model = String(env.GEMINI_LIVE_MODEL || "");
+  if (!model) {
+    try {
+      const modelsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(10000) });
+      if (!modelsRes.ok) { server.send(JSON.stringify({ type: "error", message: `مفتاح Gemini مرفوض أو بلا صلاحية (HTTP ${modelsRes.status})` })); server.close(1008, "Gemini key rejected"); return new Response(null, { status: 101, webSocket: client }); }
+      const models = (await modelsRes.json()).models || [];
+      const live = models.filter((m) => (m.supportedGenerationMethods || []).some((x) => /bidiGenerateContent/i.test(x)));
+      model = (live.find((m) => /native.audio/i.test(m.name)) || live.find((m) => /live/i.test(m.name)) || live[0])?.name || "";
+      if (!model) { server.send(JSON.stringify({ type: "error", message: "حساب Gemini الحالي لا يعرض أي نموذج Live Audio" })); server.close(1008, "No Live model"); return new Response(null, { status: 101, webSocket: client }); }
+    } catch { server.send(JSON.stringify({ type: "error", message: "تعذر فحص نماذج Gemini المتاحة" })); server.close(1011, "Model discovery failed"); return new Response(null, { status: 101, webSocket: client }); }
+  }
+  const upstream = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(apiKey)}`);
+  const pending = []; let configured = false;
+  const sendUpstream = (data) => (upstream.readyState === 1 && configured) ? upstream.send(data) : pending.push(data);
+  upstream.addEventListener("open", async () => {
+    const tasks = (await kvGet(env, "tasks", []) || []).slice(-20).map((t) => ({ id: t.id, agent: t.agent || t.agentName || "", title: t.title || t.goal || "", status: t.status || "", result: String(t.result || t.output || "").slice(0, 600) }));
+    upstream.send(JSON.stringify({ setup: { model, generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Charon" } } } }, systemInstruction: { parts: [{ text: `أنت جارفس، مدير شخصي صوتي للدكتور قصي. احكِ بالشامية الطبيعية بسرعة ودفء، بجمل قصيرة، واسأل سؤالاً واحداً كل مرة. لا تخترع حالة المهام. إذا لم تكن النتيجة موجودة قل إنها غير جاهزة. اسمح بالمقاطعة واختصر أثناء القيادة. حالة المهام الحالية: ${JSON.stringify(tasks)}` }] } } }));
+  });
+  server.addEventListener("message", (e) => sendUpstream(e.data));
+  upstream.addEventListener("message", (e) => {
+    try {
+      const parsed = JSON.parse(typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data));
+      if (parsed.setupComplete || parsed.setup_complete) { configured = true; while (pending.length) upstream.send(pending.shift()); server.send(JSON.stringify({ type: "ready", model })); return; }
+      server.send(e.data);
+    } catch { try { server.send(e.data); } catch {} }
+  });
+  upstream.addEventListener("error", () => { try { server.send(JSON.stringify({ type: "error", message: "تعذر فتح Gemini Live" })); } catch {} });
+  upstream.addEventListener("close", (e) => { try { server.close(e.code || 1011, String(e.reason || "Gemini Live closed").slice(0, 120)); } catch {} });
+  server.addEventListener("close", () => { try { upstream.close(); } catch {} });
+  return new Response(null, { status: 101, webSocket: client });
+}
+
+// يرجّع "static" لو بالمفتاح الثابت (صفحة /call المالكة — عقل جارفس الكامل) أو "voice" لو بتوكن قصير العمر (صفحة /voicecall) أو null مرفوض.
+async function authorizedCallRequest(request, env) {
+  const provided = request.headers.get("x-jarvis-key") || "";
+  if (provided && provided === env.CALL_SECRET) return "static";
+  const token = request.headers.get("x-jarvis-call-token") || "";
+  const expected = await kvGet(env, "voice_call_token", "");
+  const expires = Number(await kvGet(env, "voice_call_token_expires", 0)) || 0;
+  return (!!token && token === expected && expires > Date.now()) ? "voice" : null;
+}
+
 async function handleAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  const provided = request.headers.get("x-jarvis-key") || "";
-  if (!env.CALL_SECRET) return send({ error: "CALL_SECRET غير مفعّل على السيرفر — أضفه: npx wrangler secret put CALL_SECRET" }, 501);
-  if (!provided || provided !== env.CALL_SECRET) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
+  const auth = await authorizedCallRequest(request, env); if (!auth) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const text = String(body?.text || "").trim().slice(0, 1500);
   if (!text) return send({ error: "text فارغ" }, 400);
-  const reply = await agentLoop(text, env, null, { ctx });
+  const reply = auth === "static"
+    ? ((await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.")
+    : ((await callGeminiVoiceManager(text, env)) || "ما قدرت أوصل لخدمة الصوت الذكية هلق. جرّب بعد لحظة.");
   return send({ reply });
 }
 
@@ -2439,9 +2949,7 @@ function b64ToArrayBuffer(b64) {
 
 async function handleVoiceAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  const provided = request.headers.get("x-jarvis-key") || "";
-  if (!env.CALL_SECRET) return send({ error: "CALL_SECRET غير مفعّل" }, 501);
-  if (!provided || provided !== env.CALL_SECRET) return send({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401);
+  const auth = await authorizedCallRequest(request, env); if (!auth) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const audio = body?.audio || {};
@@ -2450,14 +2958,14 @@ async function handleVoiceAsk(request, env, ctx) {
   const mime = String(audio.mimeType || "audio/webm").slice(0, 100);
   const text = await transcribeAudioBuffer(env, mime, buf);
   if (!text) return send({ error: "ما قدرت أفرّغ الصوت — Groq وWorkers AI وGemini كلهم مشغولين هلق. حاول مرة ثانية أو اكتب." }, 422);
-  const reply = await agentLoop(text, env, null, { ctx });
+  const reply = auth === "static"
+    ? ((await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.")
+    : ((await callGeminiVoiceManager(text, env)) || "سمعتك، بس خدمة الرد الصوتي ما جاوبت هلق. جرّب بعد لحظة.");
   return send({ reply, transcript: text });
 }
 
 async function handleCallEnd(request, env, ctx) {
-  const provided = request.headers.get("x-jarvis-key") || "";
-  if (!env.CALL_SECRET) return jsonResponse({ error: "CALL_SECRET غير مفعّل" }, 501, CORS_HEADERS);
-  if (!provided || provided !== env.CALL_SECRET) return jsonResponse({ error: "غير مصرّح" }, 401, CORS_HEADERS);
+  if (!(await authorizedCallRequest(request, env))) return jsonResponse({ error: "رابط المكالمة منتهي" }, 401, CORS_HEADERS);
   let body;
   try { body = await request.json(); } catch { return jsonResponse({ error: "JSON غير صالح" }, 400, CORS_HEADERS); }
   const transcript = Array.isArray(body?.transcript) ? body.transcript.slice(-40) : [];

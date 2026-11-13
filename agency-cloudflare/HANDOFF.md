@@ -1,6 +1,6 @@
 # 🤝 JARVIS — هاند أوف كامل لأي ايجنت يستلم المشروع
 
-> اكتبه: 2026-11-11 · آخر commit: `d7fd690` · الفرع: `arena/749f0c04-test` (لا تعيد تسميته ولا تنشئ غيره في هذه الجلسة)
+> اكتبه: 2026-11-11 · آخر تحديث: 2026-11-13 (الفرع `arena/c299d7e2-test`) · النشر الإنتاجي: `arena/749f0c04-test` (Workers Builds)
 > الجمهور: ايجنت جديد **ما يعرف شي** عن المشروع. اقرأه كامل قبل أي تعديل. أي شي مكتوب هون أهم من افتراضاتك.
 
 ---
@@ -31,7 +31,9 @@
 | `worker.js` (~1450 سطر) | **كل** الكود: الويبهوك، الأوامر، حلقة الوكيل، الأدوات، TTS/STT، قراءة الصور/الملفات |
 | `wrangler.toml` | الإعداد: `name = "jarvis-24-7"`، cron `* * * * *`، `[vars]` (انظر §6)، KV `JARVIS_KV`، `[ai] binding = "AI"` |
 | `call.html` | صفحة المكالمة (MediaRecorder → `/voice-ask`، و`/ask` للنص، و`speechSynthesis` أو `/tts` للنطق) |
-| `test.mjs` | 19 اختباراً بلا شبكة حقيقية (fetch وهمي). التشغيل: `node test.mjs` — **يجب أن تبقى 19/19** |
+| `live.html` + `livepage.mjs` | صفحة اللايف الحقيقي `/live` — LiveKit WebRTC + توكن من `/livekit-token`. عدّل `live.html` ثم `node -e "…"` لتوليد `livepage.mjs` |
+| `livekit-agent/` | Agent Python للّلايف الكامل (Coarena + Edge TTS + Groq Whisper + Silero VAD) — دليله `livekit-agent/README.md` |
+| `test.mjs` | 56 اختباراً بلا شبكة حقيقية (fetch وهمي). التشغيل: `node test.mjs` — **يجب أن تبقى 56/56** |
 | `apps-script-email.gs` | بوابة Gmail عبر Google Apps Script — **لم ينشرها المالك بعد** |
 | `README_AR.md` | دليل الإعداد الأصلي (wrangler login، KV، النشر) |
 
@@ -62,10 +64,12 @@ POST /webhook  (يتحقق من X-Telegram-Bot-Api-Secret-Token)
 | `/voice-ask` | POST | جسر صوتي: base64 audio → STT → agentLoop |
 | `/call-end` | POST | ينهي جلسة المكالمة: ملخص LLM → ذاكرة `mem:all` + إشعار تيليجرام (يتجاهل الجلسات بلا كلام) |
 | `/tts` | GET/POST | نطق **شامي مجاني** للصفحة (`?key=CALL_SECRET&text=…`)؛ Edge TTS ← Google TTS احتياط |
+| `/live` | GET | صفحة اللايف (LiveKit) |
+| `/livekit-token` | GET | توكن LiveKit قصير العمر (1–2) للّلايف (`x-jarvis-key: CALL_SECRET`؛ `?project=2` للمشروع الاحتياط) |
 
 ### العقل (السلسلة — بالترتيب)
 `callGemini (gemini-2.5-flash)` ← `callOpenAICompatible/Mistral` ← `Groq` ← `NVIDIA` ← `OpenRouter (Kimi K2: moonshotai/kimi-k2:free أولاً)` ← `callWorkersAI (@cf/meta/llama-3.3-70b-instruct-fp8-fast)` ← `callPollinations (keyless)`.
-المالك رفض مستقبلاً GitHub Models وCerebras وGroq كخيارات أولى (لكنها تبقى احتياطاً إن وُجدت مفاتيح). أي مزود x يفشل → التالي تلقائياً. rate-limit شامل → رسالة صادقة («خلصت الحصة» تُعالج بالأعلى فقط).
+منذ 2026-11-13: بوجود `COARENA_API_KEY` (بيئة/[vars]) وKV فاضي → Coarena (Claude Fable 5.2) أساسي تلقائياً؛ عند فشله (429/انقطاع) يكمل على السلسلة بدل `null`. أولوية العقل: KV (`/coarena on|off`) ← `COARENA_API_KEY` ← `arena`. `/coarena limit 50` يعيد تقديم طلب $50/يوم. المالك رفض مستقبلاً GitHub Models وCerebras وGroq كخيارات أولى (لكنها تبقى احتياطاً إن وُجدت مفاتيح). أي مزود x يفشل → التالي تلقائياً. rate-limit شامل → رسالة صادقة («خلصت الحصة» تُعالج بالأعلى فقط).
 
 ### STT (تفريغ الريكورد) — سلسلة متجددة
 `Groq whisper-large-v3-turbo` (إن وُجد مفتاح) ← `Workers AI @cf/openai/whisper-large-v3-turbo` (حصة يومية تتجدد) ← `Gemini 2.5 Flash` (كوتا محدودة). أي ريكورد واحد **لا** يجب أن يقتل الخدمة. تفريغ الفشل الشامل يبلّغ المالك بالترتيب.
@@ -98,7 +102,7 @@ git fetch origin
 git status --short --branch        # تأكد 0 0 مع origin واكتشاف أي تغيّر خارجي
 # عدّل، ثم:
 node --check agency-cloudflare/worker.js   # أو import عبر node -e
-node agency-cloudflare/test.mjs            # يجب: 19/19
+node agency-cloudflare/test.mjs            # يجب: 56/56
 git add -A && git commit -m "…" && git push origin arena/749f0c04-test
 sleep ~150
 gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | select(.name=="Workers Builds: jarvis-24-7") | {status, conclusion}'
@@ -128,6 +132,10 @@ gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | se
 | `CALL_SECRET` | مفتاح صفحة `/call` و`/tts` | مكشوف |
 | `CALL_ON_BRIEF` | `true` = رنّة مع الموجز الصباحي | عام |
 | `GROQ_API_KEY` · `APPS_SCRIPT_URL` · `APPS_SCRIPT_SECRET` · `OWNER_CHAT_ID` · `EDGE_TTS_VOICE` · `MISTRAL_API_KEY` · `NVIDIA_API_KEY` | اختيارية — تُضاف كـ vars أو secrets عند الحاجة | — |
+| `COARENA_API_KEY` · `COARENA_MODEL` | العقل المجاني (Coarena) — صاروا ب `[vars]` 2026-11-13 | مكشوف — يتطلب تدويراً |
+| `LIVEKIT_WS_URL` · `LIVEKIT_API_KEY` · `LIVEKIT_API_SECRET` | LiveKit المشروع 1 (اللايف) | مكشوف — يتطلب تدويراً |
+| `LIVEKIT_ALT_WS_URL` · `LIVEKIT_ALT_API_KEY` · `LIVEKIT_ALT_API_SECRET` | LiveKit المشروع 2 (احتياط، `?project=2`) | مكشوف — يتطلب تدويراً |
+| `LINPHONE_API_KEY` · `LINPHONE_SIP_URI` | هوية SIP (مقيدة IP 89.124.8.30 — لا تعمل من Cloudflare) | مكشوف |
 
 **ثوابت بنيوية**: KV `JARVIS_KV` (id موجود في `wrangler.toml`)، `[ai] binding = "AI"`، cron كل دقيقة، `compatibility_date 2024-11-01`.
 
@@ -149,6 +157,7 @@ gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | se
 10. **fetch_page معطلة ضد workers.dev حالياً** (2026-11-11 ~23:00) — موثوقيتها متذبذبة؛ اعتمد check-runs + فحص المالك الحي.
 11. **بناء `test`** (خدمة Workers ثانية على نفس الريبو) فاشل في كل commit — مسبق، منفصل عن الإنتاج.
 12. **اختبارات test.mjs** تتحقق من الأدوات والأوامر عبر fetch وهمي — أي تغيير سلوكي يتطلب تحديثها؛ لا «تصلح» الاختبارات لتمرير كود معطل، بل العكس.
+13. **قرارات 2026-11-13 (بطلب المالك)**: (أ) `COARENA_API_KEY` ب `[vars]` = Coarena أساس تلقائياً؛ عند فشله يكمل على السلسلة. (ب) LiveKit: مشروعان مجانيان — JWT يُوقَّع بالبوت (`/livekit-token`، HS256 بـ WebCrypto — بلا تبعيات)؛ صفحة `/live` تحتاج `livekit-agent/` على جهاز المالك (Groq STT + Coarena LLM + Edge TTS + Silero VAD، كله مجاني). (ج) Linphone: هوية SIP فقط — لا PSTN — ومفتاحها مقيد IP ولا يعمل من Cloudflare؛ مخزنة للتوثيق/الاستخدام من جهاز المالك. (د) Edge TTS يبقى الافتراضي للصوت السوري؛ المالك اختار Polly (Zayd/Hala ar-AE) كبديل AWS داخل حسابه (`JARVIS_TTS=polly` + IAM Role، ~$0). لا يوجد صوت سوري بـ Polly. (د-2) «كل المفاتيح على AWS»: ملف خدمة systemd على EC2 خارج git — الـ Bot يبقى على Cloudflare مع مفاتيحه. المجمع round-robin ينهي مشكلة «استهلاك $5 باليوم على مفتاح واحد» عملياً. (هـ) المالك فتح حساب AWS بـ $100 رصيد مجاني (Free Plan حتى 2027-05-13) — دليل تشغيل الـ Agent 24/7 على EC2 في `livekit-agent/AWS_EC2_AR.md` (أنا ما بدخل على حسابه؛ هو ينفذ ويملأ القيم محلياً). خطة «كل شي ببلاش على AWS» (أصوات عربية + Hermes + ميزانية الرصيد) في `LOCAL_VOICE_AWS_AR.md`.
 
 ---
 
@@ -203,6 +212,7 @@ gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | se
 
 - `6f6af53` Consent gate + `/tasks` + `/clear_tasks` + skill 3-ضربات.
 - `77679f1` عقل مجاني متجدد (Workers AI + Kimi K2 + Pollinations) + عبرة Groq/Gemini + حارس الملخصات الفارغة.
-- `d7fd690` (الحالي) رؤية وصور + قارئ xlsx/docx + STT متجدد (Groq←WorkersAI←Gemini) + TTS شامي عبر Edge TTS + `/tts` + صفحة المكالمة تقرأ منه + CallMeBot بصراحة.
+- `d7fd690` رؤية وصور + قارئ xlsx/docx + STT متجدد + TTS شامي عبر Edge TTS + CallMeBot بصراحة.
+- **الحالي (2026-11-13)** `feat(live+pool)`: Coarena أساس تلقائي + **مجمع مفاتيح round-robin** (COARENA_API_KEY…_20 / COARENA_EXTRA_KEYS) + **`/coarena raise` أو «ارفع حدود كل المفاتيح» بالعربي** يرفع الحد لكل المفاتيح معاً مع تشخيص عربي لكل مفتاح فشل + سقوط سلس + `/coarena status|off|limit` (المجمع مقنّع مع رصيد كل مفتاح) + `/livekit-token` (JWT HS256 WebCrypto) + `/live` (**بتبديل تلقائي مشروع 1→2**) + `livekit-agent/` (Coarena←Edge TTS **أو Polly Zayd/Hala** (JARVIS_TTS)←Groq Whisper←Silero) + Linphone/LiveKit ب `[vars]` + **56/56 اختباراً**.
 
 أي تعارض بين هذا الملف والكود: **الكود هو الحَكم**، وحدّث هذا الملف معه في نفس الـ commit.

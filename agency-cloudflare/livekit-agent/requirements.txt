@@ -1,0 +1,5 @@
+livekit-agents==1.8.11
+livekit-plugins-silero==1.8.11
+livekit-plugins-openai==1.8.11
+edge-tts==7.3.1
+boto3>=1.34,<2   # للـ Polly (JARVIS_TTS=polly) — احذفه لو حابب Edge TTS فقط

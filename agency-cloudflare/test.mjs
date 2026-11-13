@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0 };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0, coarenaCalls: 0, coarenaDown: false, coarenaAuths: [], coarenaDownKeys: [], limitRequests: [], limitsFailKeys: [] };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0; state.coarenaCalls = 0; state.coarenaDown = false; state.coarenaAuths = []; state.coarenaDownKeys = []; state.limitRequests = []; state.limitsFailKeys = [];
 }
 
 const mockKV = () => ({
@@ -47,6 +47,22 @@ global.fetch = async (input, init = {}) => {
   if (url.startsWith("https://api.callmebot.com/")) { state.callmebot++; return new Response("OK", { status: 200 }); }
   if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
   if (url.startsWith("https://script.google.com/")) { state.appsScript++; return j({ ok: true }); }
+  if (url === "https://coarena.ai/api/v1/chat/completions") {
+    state.coarenaCalls++;
+    const auth = String((init && init.headers && (init.headers.authorization || init.headers.Authorization)) || "");
+    state.coarenaAuths.push(auth);
+    const bearer = auth.replace(/^Bearer\s+/i, "");
+    if (state.coarenaDown || state.coarenaDownKeys.includes(bearer)) return j({ error: { message: "quota exceeded" } }, 429);
+    return j({ choices: [{ index: 0, message: { role: "assistant", content: "رد من Coarena المجاني" }, finish_reason: "stop" }] });
+  }
+  if (url === "https://coarena.ai/api/v1/limits") return j({ usd_remaining: 4.86, usd_per_day: 5 });
+  if (url === "https://coarena.ai/api/v1/limits/requests") {
+    const auth = String((init && init.headers && (init.headers.authorization || init.headers.Authorization)) || "");
+    const bearer = auth.replace(/^Bearer\s+/i, "");
+    state.limitRequests.push(bearer);
+    if (state.limitsFailKeys.includes(bearer)) return j({ error: { message: "email verification required" } }, 403);
+    return j({ ok: true, usd_per_day: 50 });
+  }
   /* جسر LMArena الوهمي */
   if (url.startsWith("https://arena.test/")) {
     state.arenaCalls++;
@@ -613,5 +629,143 @@ await t("44) الطلب المعقد يدخل طابور Agent ويرتبط با
   assert.ok(sentTexts().join("\n").includes("بدأت المهمة"));
 });
 
-console.log(`\n${passed}/44 اختبارات ناجحة`);
+
+await t("45) COARENA_API_KEY بالبيئة → Coarena أساس تلقائياً بدون أي أمر", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_testkey1234567890abcdef", GEMINI_API_KEY: "gem" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("احكي لي عن دبي"));
+  assert.equal(state.coarenaCalls, 1, "Coarena ما اننادى");
+  assert.equal(state.geminiCalls, 0, "Gemini اننادى رغم وجود مفتاح Coarena");
+  assert.ok(sentTexts().join("\n").includes("رد من Coarena المجاني"));
+});
+
+await t("46) /coarena off يرجع Coarena موقوفاً وGemini يشتغل", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_testkey1234567890abcdef", GEMINI_API_KEY: "gem" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/coarena off"));
+  assert.ok(sentTexts().join("\n").includes("Arena"));
+  state.coarenaCalls = 0;
+  state.geminiQueue.push({ text: "جواب من Gemini" });
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("شو أخبار دبي؟"));
+  assert.equal(state.coarenaCalls, 0, "Coarena اننادى رغم /coarena off");
+  assert.equal(state.geminiCalls, 1, "Gemini ما اننادى بعد الإيقاف");
+});
+
+await t("47) Coarena فاشل (429) → يكمل تلقائياً على الاحتياط بدل الصمت", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_testkey1234567890abcdef", GEMINI_API_KEY: "gem" });
+  state.coarenaDown = true;
+  state.geminiQueue.push({ text: "جواب من الاحتياط" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("سؤال عادي"));
+  assert.equal(state.coarenaCalls, 1, "Coarena ما اننادى أصلاً");
+  assert.ok(sentTexts().join("\n").includes("جواب من الاحتياط"), "ما وصل رد من الاحتياط");
+});
+
+await t("48) /livekit-token يوقّع JWT صالح + أذونات روم + المشروع الثاني", async () => {
+  const env = makeEnv({ CALL_SECRET: "s3cr3t", LIVEKIT_WS_URL: "wss://test-1.livekit.cloud", LIVEKIT_API_KEY: "APITESTONE", LIVEKIT_API_SECRET: "secret-one-0123456789abcdef0123456789", LIVEKIT_ALT_WS_URL: "wss://test-2.livekit.cloud", LIVEKIT_ALT_API_KEY: "APITESTTWO", LIVEKIT_ALT_API_SECRET: "secret-two-0123456789abcdef0123456789" });
+  // بدون مفتاح → 401
+  const unauthorized = await worker.fetch(new Request("http://x/livekit-token", { headers: { "x-jarvis-key": "wrong" } }), env, makeCtx());
+  assert.equal(unauthorized.status, 401);
+  // المشروع 1
+  const res = await worker.fetch(new Request("http://x/livekit-token?room=jarvis-live&identity=owner", { headers: { "x-jarvis-key": "s3cr3t" } }), env, makeCtx());
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.serverUrl, "wss://test-1.livekit.cloud");
+  assert.equal(body.project, "1");
+  const [h, p, s] = body.token.split(".");
+  const dec = (x) => Buffer.from(x.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString();
+  const payload = JSON.parse(dec(p));
+  assert.equal(payload.iss, "APITESTONE");
+  assert.equal(payload.sub, "owner");
+  assert.equal(payload.video.room, "jarvis-live");
+  assert.equal(payload.video.roomJoin, true);
+  assert.equal(payload.video.canPublish, true);
+  assert.ok(payload.exp > Math.floor(Date.now() / 1000));
+  const cryptoKey = await crypto.subtle.importKey("raw", new TextEncoder().encode("secret-one-0123456789abcdef0123456789"), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const sigBytes = Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  const valid = await crypto.subtle.verify("HMAC", cryptoKey, sigBytes, new TextEncoder().encode(h + "." + p));
+  assert.ok(valid, "توقيع JWT غير صالح");
+  // المشروع 2 (الاحتياط)
+  const res2 = await worker.fetch(new Request("http://x/livekit-token?project=2", { headers: { "x-jarvis-key": "s3cr3t" } }), env, makeCtx());
+  const body2 = await res2.json();
+  assert.equal(body2.serverUrl, "wss://test-2.livekit.cloud");
+  assert.equal(JSON.parse(dec(body2.token.split(".")[1])).iss, "APITESTTWO");
+});
+
+await t("49) /livekit-token بدون إعداد LiveKit → 503 برسالة عربية واضحة", async () => {
+  const env = makeEnv({ CALL_SECRET: "s3cr3t" });
+  const res = await worker.fetch(new Request("http://x/livekit-token", { headers: { "x-jarvis-key": "s3cr3t" } }), env, makeCtx());
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.ok(body.error.includes("LIVEKIT_WS_URL"));
+});
+
+await t("50) /live تعرض صفحة اللايف وسليمة", async () => {
+  const res = await worker.fetch(new Request("http://x/live"), makeEnv(), makeCtx());
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.ok(html.includes("livekit-client"), "الصفحة ما فيها مكتبة LiveKit");
+  assert.ok(html.includes("/livekit-token"), "الصفحة ما تستدعي مسار التوكن");
+});
+
+
+await t("51) مجمع Coarena round-robin: مفتاحان يتاوبان على المحادثات", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_firstkey00000000000000", COARENA_API_KEY_2: "coa_secondkey00000000000000", GEMINI_API_KEY: "gem" });
+  await runWebhook(env, makeCtx(), tgUpdate("رسالة أولى"));
+  await runWebhook(env, makeCtx(), tgUpdate("رسالة ثانية"));
+  const used = new Set(state.coarenaAuths.map((a) => a.replace(/^Bearer\s+/i, "")));
+  assert.ok(used.has("coa_firstkey00000000000000"), "المفتاح الأول ما انستخدم");
+  assert.ok(used.has("coa_secondkey00000000000000"), "المفتاح الثاني ما انستخدم — التاوب ما اشتغل");
+  assert.equal(state.geminiCalls, 0, "Gemini اننادى رغم نجاح Coarena");
+});
+
+await t("52) مفتاح أول ميت (429) → يرد من الثاني بدون Gemini", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_downkey000000000000000000", COARENA_API_KEY_2: "coa_alivekey00000000000000000", GEMINI_API_KEY: "gem" });
+  state.coarenaDownKeys.push("coa_downkey000000000000000000");
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("سؤال عادي"));
+  assert.ok(state.coarenaAuths.some((a) => a.includes("coa_alivekey")), "المفتاح الحي ما انجرّب بعد فشل الأول");
+  assert.ok(sentTexts().join("\n").includes("رد من Coarena المجاني"));
+  assert.equal(state.geminiCalls, 0, "سقط للسلسلة رغم نجاح المفتاح الثاني");
+});
+
+
+await t("53) /coarena limit يبعث طلب رفع لكل مفاتيح المجمع وليس الأول فقط", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_poolone000000000000000001", COARENA_API_KEY_2: "coa_pooltwo000000000000000002", COARENA_EXTRA_KEYS: "coa_poolexa0000000000000003" });
+  await runWebhook(env, makeCtx(), tgUpdate("/coarena limit 50"));
+  const asked = new Set(state.limitRequests);
+  for (const k of ["coa_poolone000000000000000001", "coa_pooltwo000000000000000002", "coa_poolexa0000000000000003"]) assert.ok(asked.has(k), "المفتاح ما انبعتله طلب رفع: " + k.slice(0, 12));
+  const reply = state.sent.map((s) => s.body && s.body.text || "").join("\n");
+  assert.ok(reply.includes("المجموع: ✅ 3"), "التقرير ما جمع نتائج المفاتيح الثلاثة: " + reply.slice(0, 300));
+});
+
+await t("54) مفتاح يحتاج تأكيد → تقرير ❌ مع تشخيص عربي واضح والباقي ✅", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_goodkey000000000000000004", COARENA_API_KEY_2: "coa_needsverify0000000000000005" });
+  state.limitsFailKeys.push("coa_needsverify0000000000000005");
+  await runWebhook(env, makeCtx(), tgUpdate("/coarena raise"));
+  const reply = state.sent.map((s) => s.body && s.body.text || "").join("\n");
+  assert.ok(reply.includes("تأكيد بريد"), "التشخيص الواضح مفقود: " + reply.slice(0, 400));
+  assert.ok(reply.includes("✅ #1"), "المفتاح الشاطر ما أعلن نجاحه");
+  assert.ok(reply.includes("❌ #2"), "المفتاح الفاشل ما أعلن فشله");
+  assert.equal(state.limitRequests.filter((k) => k === "coa_needsverify0000000000000005").length, 1, "المفتاح الفاشل بـ 4xx ما يجب يعاد المحاولة عليه");
+});
+
+await t("55) «ارفع حدود كل المفاتيح» بالعربي الطبيعي ترفع كل المفاتيح", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_natone0000000000000000006", COARENA_API_KEY_2: "coa_nattwo0000000000000000007" });
+  await runWebhook(env, makeCtx(), tgUpdate("ارفع حدود كل المفاتيح"));
+  const asked = new Set(state.limitRequests);
+  assert.ok(asked.has("coa_natone0000000000000000006") && asked.has("coa_nattwo0000000000000000007"), "العبارة العربية ما وصلت لكل المفاتيح");
+  const reply = state.sent.map((s) => s.body && s.body.text || "").join("\n");
+  assert.ok(reply.includes("المجموع"), "التقرير ما وصل المالك: " + reply.slice(0, 300));
+});
+
+await t("56) «ارفع حدود كل المفاتيح» ما بتروح Agent Mode (لا مهام جديدة)", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_taskguard000000000000000008", COARENA_API_KEY_2: "coa_taskguard2000000000000000009" });
+  await runWebhook(env, makeCtx(), tgUpdate("ارفع حدود كل المفاتيح"));
+  const tasks = env.JARVIS_KV ? await env.JARVIS_KV.get("tasks") : null;
+  assert.ok(!tasks || (Array.isArray(JSON.parse(tasks)) && JSON.parse(tasks).length === 0), "انعملت مهمة Agent بالغلط");
+});
+
+console.log(`\n${passed}/56 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

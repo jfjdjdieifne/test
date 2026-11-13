@@ -38,6 +38,40 @@ CALL_ON_BRIEF = "true"
 # Arena هو العقل الوحيد للردود؛ محركات STT/TTS تبقى أدوات صوت لا عقول بديلة.
 ARENA_ONLY = "true"
 
+# ===== Coarena — العقل المجاني الرسمي للمشروع (أُضيفت 2026-11-13 بطلب المالك) =====
+# $5/يوم مجاناً + طلب $50/يوم و300 req/min معلّق للمراجعة عند Coarena (يرد بـ /coarena limit 50).
+# بوجود COARENA_API_KEY يصير Coarena العقل الأساسي تلقائياً (ما لم يحفظ /coarena off أو اختيار آخر بالـ KV).
+COARENA_API_KEY = "coa_aafaa77cc0e5fb8b8d011e39c8adb316"
+COARENA_MODEL = "claude-fable-5-2"
+# مجمع مفاتيح Coarena — round-robin (فشل مفتاح = التالي؛ الرصيد يصير 10x)
+COARENA_API_KEY_2 = "coa_9aefac45e0f71267afca77cfc9a20bd7"
+COARENA_API_KEY_3 = "coa_42b3e3a7045982d2a27a9f7c70588470"
+COARENA_API_KEY_4 = "coa_3d5e83e1c157031cde3f20f366732f82"
+COARENA_API_KEY_5 = "coa_da7891c32dd83acdb4a3fa803fd190df"
+COARENA_API_KEY_6 = "coa_68a5393af4a64f1291a40de050737666"
+COARENA_API_KEY_7 = "coa_3332908536cf13b54ffbb47a7b776644"
+COARENA_API_KEY_8 = "coa_f1570a5f6690519e454b78569f81219e"
+COARENA_API_KEY_9 = "coa_35070a8582e87af5fad48cc03a56ad1b"
+COARENA_API_KEY_10 = "coa_b225695a5905d2597c9c9f0e891403e6"
+# لو زادت المفاتيح مستقبلاً: COARENA_API_KEY_11 .. _20 أو COARENA_EXTRA_KEYS = "coa_a,coa_b"
+# COARENA_EXTRA_KEYS = "coa_aaa,coa_bbb"
+
+# ===== LiveKit Cloud — مكالمة اللايف الحقيقية (مشروعان مجانيان = حصتان) =====
+LIVEKIT_WS_URL = "wss://asd-2qe0oo7c.livekit.cloud"
+LIVEKIT_API_KEY = "APIaXEQfHtH86XW"
+LIVEKIT_API_SECRET = "rKxzsennEDSYdiZB8fHP9PC7pc7LFgDco32UOvPl5mD"
+LIVEKIT_ALT_WS_URL = "wss://sa-xth8q7ie.livekit.cloud"
+LIVEKIT_ALT_API_KEY = "APIhXHrv3AnF4TV"
+LIVEKIT_ALT_API_SECRET = "jDuNK6yzq6PgHJc3HD2ztrnisjz5nndaWY1iy4eAW4U"
+
+# مفاتيح Coarena إضافية (اختياري — المالك بيضيف أكثر من مفتاح حتى ما يخلص الرصيد أبداً)
+# مجمع round-robin: كل مفتاح ياخذ حصته، وفشل واحد = انتقال للتالي تلقائياً، والكل ينضاف للرصيد اليومي
+
+# ===== Linphone SIP — هوية SIP شخصية (التفاصيل وحدودها ب README_AR.md قسم Linphone) =====
+# المفتاح مقيد على IP 89.124.8.30 — يعمل من جهازك فقط، مش من Cloudflare Worker.
+LINPHONE_SIP_URI = "sip:moudy.moray@sip.linphone.org"
+LINPHONE_API_KEY = "Xv0iOpwD1BNQwu9l1gex2l137hJ6kg6QEp7MznwH"
+
 # ===== جسر LMArena (اختياري) =====
 # شغّل الخدمة من مجلد arena-bridge/ (Python + gpt4free/Arena + LMArenaBridge المحلي)
 # ثم اضبط القيم هنا أو (الأفضل للأمان) عبر:
