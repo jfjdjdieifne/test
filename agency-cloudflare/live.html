@@ -91,12 +91,9 @@
     </select>
     <button id="saveSettings">حفظ على هذا الجهاز 🔒</button>
     <div class="hint">
-      <b>قبل الضغط على اتصل:</b> لازم يكون الـ Agent شغّال على جهازك (مرة واحدة فقط):<br>
-      <code>cd agency-cloudflare/livekit-agent</code><br>
-      <code>pip install -r requirements.txt</code><br>
-      <code>python agent.py start</code><br>
-      بدون تشغيل الـ Agent رح تتصل بالروم بس ما رح يرد عليك حدا.<br>
-      <b>ما بدك تثبت شي؟</b> ارجع لتيليجرام واكتب <b>/voicecall</b> (مكالمة Gemini Live فوراً) أو افتح صفحة <b>/call</b>.
+      <b>جارفس شغال دايماً على السيرفر (AWS/EC2) — أنت ما تثبّت ولا شي:</b><br>
+      افتح هاي الصفحة من أي متصفح واضغط «اتصل» — السيرفر هو يلي بيرد بصوت عربي.<br>
+      إذا ما رد عليك بعد 10 ثواني: السيرفر نايم أو غير شغّال — اسأل جارفس بتيليجرام <b>/live</b> لتشخيص الحالة.
     </div>
   </div>
 
@@ -239,7 +236,7 @@ callBtn.addEventListener("click", async () => {
   catch (e) {
     console.error(e);
     setStatus("", "تعذر الاتصال");
-    showErr("تعذر فتح المكالمة: " + (e.message || e) + "\n\nجرّب بالترتيب:\n1) تأكد إن CALL_SECRET صح بالمحادثة ⚙️\n2) تأكد إن LiveKit مضبوط (اسأل جارفس بتيليجرام: /live)\n3) شغّل الـ Agent: python agent.py start (من مجلد livekit-agent)\n4) إذا بدك حل فوراً بدون تثبيت: /voicecall بتيليجرام");
+    showErr("تعذر فتح المكالمة: " + (e.message || e) + "\n\nجرّب بالترتيب:\n1) تأكد إن CALL_SECRET صح بالإعدادات ⚙️\n2) تأكد إن LiveKit مضبوط (اسأل جارفس بتيليجرام: /live)\n3) تأكد إن السيرفر شغّال (الـ Agent على EC2 — راجع AWS_EC2_AR.md)");
     await disconnect();
   }
 });
