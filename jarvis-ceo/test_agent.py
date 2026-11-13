@@ -410,6 +410,16 @@ class TestBulkAutoDetect(unittest.TestCase):
         finally:
             integrations.ENV_PATH = os.path.expanduser("~/jarvis-ceo.env")
 
+class TestSelfEditBundle(unittest.TestCase):
+    def test_read_all_source_no_truncation(self):
+        import selfedit, os
+        bundle = selfedit.read_all_source()
+        self.assertIn("===== agent.py =====", bundle)
+        # agent.py أقل من 80 ألف حرف — لازم توصل كاملة بدون "مقصوصة"
+        block = bundle.split("===== agent.py =====", 1)[1].split("\n\n===== ", 1)[0]
+        full = open(os.path.join(selfedit.AGENT_DIR, "agent.py"), encoding="utf-8").read()
+        self.assertEqual(block.strip(), full.strip())
+
 
 if __name__ == "__main__":
     unittest.main()

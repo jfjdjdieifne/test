@@ -26,7 +26,7 @@ EDITABLE = {"agent.py", "brain.py", "db.py", "tools.py", "selfedit.py", "test_ag
 NEW_FILE_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}\.py$")
 
 
-def read_all_source(limit_per_file=14000, limit_total=60000):
+def read_all_source(limit_per_file=80000, limit_total=400000):
     out, total = [], 0
     for path in sorted(glob.glob(os.path.join(AGENT_DIR, "*.py")) + glob.glob(os.path.join(AGENT_DIR, "*.md"))):
         base = os.path.basename(path)
@@ -138,7 +138,7 @@ def apply_instruction(instruction, brain_chat, log_fn=print):
         },
     ]
     try:
-        raw = brain_chat(messages, temperature=0.3, max_tokens=7000)
+        raw = brain_chat(messages, temperature=0.3, max_tokens=32000)
     except Exception as e:  # noqa: BLE001
         return False, f"العقل ما رد: {e}"
 
