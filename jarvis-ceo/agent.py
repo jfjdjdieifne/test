@@ -873,13 +873,7 @@ def handle_message(msg):
 
     if reply:
         send_text(chat_id, reply)
-    if is_voice and reply:
-        try:
-            tts_path = os.path.join(UPLOAD_DIR, f"reply-{int(time.time())}.mp3")
-            tools.speak_to_file(reply[:1200], tts_path)
-            send_voice(chat_id, tts_path)
-        except Exception as e:  # noqa: BLE001
-            print(f"tts: {e}")
+    # الدكتور ما بده ردود صوتية — نص بس (الصوت بالمكالمات بس، لاحقاً)
 
 
 def handle_callback(cbq):
