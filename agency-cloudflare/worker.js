@@ -2916,23 +2916,26 @@ async function handleGeminiLiveSocket(request, env) {
   return new Response(null, { status: 101, webSocket: client });
 }
 
+// يرجّع "static" لو بالمفتاح الثابت (صفحة /call المالكة — عقل جارفس الكامل) أو "voice" لو بتوكن قصير العمر (صفحة /voicecall) أو null مرفوض.
 async function authorizedCallRequest(request, env) {
   const provided = request.headers.get("x-jarvis-key") || "";
-  if (provided && provided === env.CALL_SECRET) return true;
+  if (provided && provided === env.CALL_SECRET) return "static";
   const token = request.headers.get("x-jarvis-call-token") || "";
   const expected = await kvGet(env, "voice_call_token", "");
   const expires = Number(await kvGet(env, "voice_call_token_expires", 0)) || 0;
-  return !!token && token === expected && expires > Date.now();
+  return (!!token && token === expected && expires > Date.now()) ? "voice" : null;
 }
 
 async function handleAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  if (!(await authorizedCallRequest(request, env))) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
+  const auth = await authorizedCallRequest(request, env); if (!auth) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const text = String(body?.text || "").trim().slice(0, 1500);
   if (!text) return send({ error: "text فارغ" }, 400);
-  const reply = (await callGeminiVoiceManager(text, env)) || "ما قدرت أوصل لخدمة الصوت الذكية هلق. جرّب بعد لحظة.";
+  const reply = auth === "static"
+    ? ((await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.")
+    : ((await callGeminiVoiceManager(text, env)) || "ما قدرت أوصل لخدمة الصوت الذكية هلق. جرّب بعد لحظة.");
   return send({ reply });
 }
 
@@ -2946,7 +2949,7 @@ function b64ToArrayBuffer(b64) {
 
 async function handleVoiceAsk(request, env, ctx) {
   const send = (obj, status) => jsonResponse(obj, status || 200, CORS_HEADERS);
-  if (!(await authorizedCallRequest(request, env))) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
+  const auth = await authorizedCallRequest(request, env); if (!auth) return send({ error: "رابط المكالمة منتهي — ارجع لتيليجرام واكتب /voicecall" }, 401);
   let body;
   try { body = await request.json(); } catch { return send({ error: "JSON غير صالح" }, 400); }
   const audio = body?.audio || {};
@@ -2955,7 +2958,9 @@ async function handleVoiceAsk(request, env, ctx) {
   const mime = String(audio.mimeType || "audio/webm").slice(0, 100);
   const text = await transcribeAudioBuffer(env, mime, buf);
   if (!text) return send({ error: "ما قدرت أفرّغ الصوت — Groq وWorkers AI وGemini كلهم مشغولين هلق. حاول مرة ثانية أو اكتب." }, 422);
-  const reply = (await callGeminiVoiceManager(text, env)) || "سمعتك، بس خدمة الرد الصوتي ما جاوبت هلق. جرّب بعد لحظة.";
+  const reply = auth === "static"
+    ? ((await agentLoop(text, env, null, { ctx })) || "صار انقطاع مؤقت بين جارفس وArena قبل ما يكتمل الرد. جرّب مرة ثانية بعد لحظات.")
+    : ((await callGeminiVoiceManager(text, env)) || "سمعتك، بس خدمة الرد الصوتي ما جاوبت هلق. جرّب بعد لحظة.");
   return send({ reply, transcript: text });
 }
 
