@@ -38,6 +38,25 @@ CALL_ON_BRIEF = "true"
 # Arena هو العقل الوحيد للردود؛ محركات STT/TTS تبقى أدوات صوت لا عقول بديلة.
 ARENA_ONLY = "true"
 
+# ===== Coarena — العقل المجاني الرسمي للمشروع (أُضيفت 2026-11-13 بطلب المالك) =====
+# $5/يوم مجاناً + طلب $50/يوم و300 req/min معلّق للمراجعة عند Coarena (يرد بـ /coarena limit 50).
+# بوجود COARENA_API_KEY يصير Coarena العقل الأساسي تلقائياً (ما لم يحفظ /coarena off أو اختيار آخر بالـ KV).
+COARENA_API_KEY = "coa_aafaa77cc0e5fb8b8d011e39c8adb316"
+COARENA_MODEL = "claude-fable-5-2"
+
+# ===== LiveKit Cloud — مكالمة اللايف الحقيقية (مشروعان مجانيان = حصتان) =====
+LIVEKIT_WS_URL = "wss://asd-2qe0oo7c.livekit.cloud"
+LIVEKIT_API_KEY = "APIaXEQfHtH86XW"
+LIVEKIT_API_SECRET = "rKxzsennEDSYdiZB8fHP9PC7pc7LFgDco32UOvPl5mD"
+LIVEKIT_ALT_WS_URL = "wss://sa-xth8q7ie.livekit.cloud"
+LIVEKIT_ALT_API_KEY = "APIhXHrv3AnF4TV"
+LIVEKIT_ALT_API_SECRET = "jDuNK6yzq6PgHJc3HD2ztrnisjz5nndaWY1iy4eAW4U"
+
+# ===== Linphone SIP — هوية SIP شخصية (التفاصيل وحدودها ب README_AR.md قسم Linphone) =====
+# المفتاح مقيد على IP 89.124.8.30 — يعمل من جهازك فقط، مش من Cloudflare Worker.
+LINPHONE_SIP_URI = "sip:moudy.moray@sip.linphone.org"
+LINPHONE_API_KEY = "Xv0iOpwD1BNQwu9l1gex2l137hJ6kg6QEp7MznwH"
+
 # ===== جسر LMArena (اختياري) =====
 # شغّل الخدمة من مجلد arena-bridge/ (Python + gpt4free/Arena + LMArenaBridge المحلي)
 # ثم اضبط القيم هنا أو (الأفضل للأمان) عبر:

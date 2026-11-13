@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0 };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0, coarenaCalls: 0, coarenaDown: false };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0; state.coarenaCalls = 0; state.coarenaDown = false;
 }
 
 const mockKV = () => ({
@@ -47,6 +47,13 @@ global.fetch = async (input, init = {}) => {
   if (url.startsWith("https://api.callmebot.com/")) { state.callmebot++; return new Response("OK", { status: 200 }); }
   if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
   if (url.startsWith("https://script.google.com/")) { state.appsScript++; return j({ ok: true }); }
+  if (url === "https://coarena.ai/api/v1/chat/completions") {
+    state.coarenaCalls++;
+    if (state.coarenaDown) return j({ error: { message: "quota exceeded" } }, 429);
+    return j({ choices: [{ index: 0, message: { role: "assistant", content: "رد من Coarena المجاني" }, finish_reason: "stop" }] });
+  }
+  if (url === "https://coarena.ai/api/v1/limits") return j({ usd_remaining: 4.86, usd_per_day: 5 });
+  if (url === "https://coarena.ai/api/v1/limits/requests") return j({ ok: true });
   /* جسر LMArena الوهمي */
   if (url.startsWith("https://arena.test/")) {
     state.arenaCalls++;
@@ -613,5 +620,85 @@ await t("44) الطلب المعقد يدخل طابور Agent ويرتبط با
   assert.ok(sentTexts().join("\n").includes("بدأت المهمة"));
 });
 
-console.log(`\n${passed}/44 اختبارات ناجحة`);
+
+await t("45) COARENA_API_KEY بالبيئة → Coarena أساس تلقائياً بدون أي أمر", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_testkey1234567890abcdef", GEMINI_API_KEY: "gem" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("احكي لي عن دبي"));
+  assert.equal(state.coarenaCalls, 1, "Coarena ما اننادى");
+  assert.equal(state.geminiCalls, 0, "Gemini اننادى رغم وجود مفتاح Coarena");
+  assert.ok(sentTexts().join("\n").includes("رد من Coarena المجاني"));
+});
+
+await t("46) /coarena off يرجع Coarena موقوفاً وGemini يشتغل", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_testkey1234567890abcdef", GEMINI_API_KEY: "gem" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("/coarena off"));
+  assert.ok(sentTexts().join("\n").includes("Arena"));
+  state.coarenaCalls = 0;
+  state.geminiQueue.push({ text: "جواب من Gemini" });
+  const ctx2 = makeCtx();
+  await runWebhook(env, ctx2, tgUpdate("شو أخبار دبي؟"));
+  assert.equal(state.coarenaCalls, 0, "Coarena اننادى رغم /coarena off");
+  assert.equal(state.geminiCalls, 1, "Gemini ما اننادى بعد الإيقاف");
+});
+
+await t("47) Coarena فاشل (429) → يكمل تلقائياً على الاحتياط بدل الصمت", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_testkey1234567890abcdef", GEMINI_API_KEY: "gem" });
+  state.coarenaDown = true;
+  state.geminiQueue.push({ text: "جواب من الاحتياط" });
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("سؤال عادي"));
+  assert.equal(state.coarenaCalls, 1, "Coarena ما اننادى أصلاً");
+  assert.ok(sentTexts().join("\n").includes("جواب من الاحتياط"), "ما وصل رد من الاحتياط");
+});
+
+await t("48) /livekit-token يوقّع JWT صالح + أذونات روم + المشروع الثاني", async () => {
+  const env = makeEnv({ CALL_SECRET: "s3cr3t", LIVEKIT_WS_URL: "wss://test-1.livekit.cloud", LIVEKIT_API_KEY: "APITESTONE", LIVEKIT_API_SECRET: "secret-one-0123456789abcdef0123456789", LIVEKIT_ALT_WS_URL: "wss://test-2.livekit.cloud", LIVEKIT_ALT_API_KEY: "APITESTTWO", LIVEKIT_ALT_API_SECRET: "secret-two-0123456789abcdef0123456789" });
+  // بدون مفتاح → 401
+  const unauthorized = await worker.fetch(new Request("http://x/livekit-token", { headers: { "x-jarvis-key": "wrong" } }), env, makeCtx());
+  assert.equal(unauthorized.status, 401);
+  // المشروع 1
+  const res = await worker.fetch(new Request("http://x/livekit-token?room=jarvis-live&identity=owner", { headers: { "x-jarvis-key": "s3cr3t" } }), env, makeCtx());
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.serverUrl, "wss://test-1.livekit.cloud");
+  assert.equal(body.project, "1");
+  const [h, p, s] = body.token.split(".");
+  const dec = (x) => Buffer.from(x.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString();
+  const payload = JSON.parse(dec(p));
+  assert.equal(payload.iss, "APITESTONE");
+  assert.equal(payload.sub, "owner");
+  assert.equal(payload.video.room, "jarvis-live");
+  assert.equal(payload.video.roomJoin, true);
+  assert.equal(payload.video.canPublish, true);
+  assert.ok(payload.exp > Math.floor(Date.now() / 1000));
+  const cryptoKey = await crypto.subtle.importKey("raw", new TextEncoder().encode("secret-one-0123456789abcdef0123456789"), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const sigBytes = Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  const valid = await crypto.subtle.verify("HMAC", cryptoKey, sigBytes, new TextEncoder().encode(h + "." + p));
+  assert.ok(valid, "توقيع JWT غير صالح");
+  // المشروع 2 (الاحتياط)
+  const res2 = await worker.fetch(new Request("http://x/livekit-token?project=2", { headers: { "x-jarvis-key": "s3cr3t" } }), env, makeCtx());
+  const body2 = await res2.json();
+  assert.equal(body2.serverUrl, "wss://test-2.livekit.cloud");
+  assert.equal(JSON.parse(dec(body2.token.split(".")[1])).iss, "APITESTTWO");
+});
+
+await t("49) /livekit-token بدون إعداد LiveKit → 503 برسالة عربية واضحة", async () => {
+  const env = makeEnv({ CALL_SECRET: "s3cr3t" });
+  const res = await worker.fetch(new Request("http://x/livekit-token", { headers: { "x-jarvis-key": "s3cr3t" } }), env, makeCtx());
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.ok(body.error.includes("LIVEKIT_WS_URL"));
+});
+
+await t("50) /live تعرض صفحة اللايف وسليمة", async () => {
+  const res = await worker.fetch(new Request("http://x/live"), makeEnv(), makeCtx());
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.ok(html.includes("livekit-client"), "الصفحة ما فيها مكتبة LiveKit");
+  assert.ok(html.includes("/livekit-token"), "الصفحة ما تستدعي مسار التوكن");
+});
+
+console.log(`\n${passed}/50 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

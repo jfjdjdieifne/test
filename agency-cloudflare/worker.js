@@ -1,4 +1,5 @@
 import CALL_PAGE from "./callpage.mjs";
+import LIVE_PAGE from "./livepage.mjs";
 import puppeteer from "@cloudflare/puppeteer";
 import remotePuppeteer from "puppeteer-core";
 /**
@@ -153,8 +154,16 @@ export default {
       if (request.method !== "GET" && request.method !== "POST") return jsonResponse({ error: "GET/POST only" }, 405, CORS_HEADERS);
       return handleTts(request, env);
     }
+    if (url.pathname === "/livekit-token") {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: LIVEKIT_CORS_HEADERS });
+      if (request.method !== "GET") return jsonResponse({ error: "GET only" }, 405, LIVEKIT_CORS_HEADERS);
+      return handleLiveKitToken(request, env);
+    }
     if (url.pathname === "/call") {
       return new Response(CALL_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    }
+    if (url.pathname === "/live") {
+      return new Response(LIVE_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/webhook" && request.method === "POST") {
       const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
@@ -202,6 +211,73 @@ const CORS_HEADERS = {
   "access-control-allow-methods": "POST, OPTIONS",
   "access-control-allow-headers": "content-type, x-jarvis-key",
 };
+const LIVEKIT_CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-headers": "content-type, x-jarvis-key",
+};
+
+/* --------------------- LiveKit — توكن مكالمة اللايف ---------------------
+   الطريق: المتصفح يجلب توكن قصير العمر من هنا ثم يتصل بـ LiveKit Cloud مباشرة (WebRTC).
+   كل شي مجاني: LiveKit Cloud (مشروعان يعطيان حصتين) + Agent على جهاز المالك (livekit-agent/). */
+function base64Url(data) {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function mintLiveKitToken({ apiKey, apiSecret, identity, room, ttlSeconds, name }) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "HS256", typ: "JWT" };
+  const payload = {
+    iss: apiKey,
+    sub: identity,
+    jti: crypto.randomUUID(),
+    nbf: now - 10,
+    exp: now + ttlSeconds,
+    name: name || identity,
+    video: {
+      roomJoin: true,
+      room,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+      canUpdateOwnMetadata: true,
+    },
+  };
+  const unsigned = `${base64Url(JSON.stringify(header))}.${base64Url(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(apiSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(unsigned));
+  return `${unsigned}.${base64Url(new Uint8Array(sig))}`;
+}
+function liveKitProjectConfig(env, project) {
+  if (project === "2") {
+    return { serverUrl: env.LIVEKIT_ALT_WS_URL, apiKey: env.LIVEKIT_ALT_API_KEY, apiSecret: env.LIVEKIT_ALT_API_SECRET, project: "2" };
+  }
+  return { serverUrl: env.LIVEKIT_WS_URL, apiKey: env.LIVEKIT_API_KEY, apiSecret: env.LIVEKIT_API_SECRET, project: "1" };
+}
+async function handleLiveKitToken(request, env) {
+  const url = new URL(request.url);
+  const provided = request.headers.get("x-jarvis-key") || url.searchParams.get("key") || "";
+  if (!env.CALL_SECRET) return jsonResponse({ error: "CALL_SECRET غير مفعّل على السيرفر" }, 501, LIVEKIT_CORS_HEADERS);
+  if (!provided || provided !== env.CALL_SECRET) return jsonResponse({ error: "غير مصرّح — x-jarvis-key خاطئ" }, 401, LIVEKIT_CORS_HEADERS);
+  const cfg = liveKitProjectConfig(env, url.searchParams.get("project") === "2" ? "2" : "1");
+  if (!cfg.serverUrl || !cfg.apiKey || !cfg.apiSecret) {
+    return jsonResponse({ error: `LiveKit المشروع ${cfg.project} مو مضبوط — أضف ${cfg.project === "2" ? "LIVEKIT_ALT_WS_URL / LIVEKIT_ALT_API_KEY / LIVEKIT_ALT_API_SECRET" : "LIVEKIT_WS_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET"} في [vars] أو wrangler secret put` }, 503, LIVEKIT_CORS_HEADERS);
+  }
+  const roomRaw = String(url.searchParams.get("room") || "jarvis-live").trim();
+  const room = /^[\w-]{1,64}$/.test(roomRaw) ? roomRaw : "jarvis-live";
+  const identityRaw = String(url.searchParams.get("identity") || "owner").trim();
+  const identity = /^[\w@.-]{1,64}$/.test(identityRaw) ? identityRaw : "owner";
+  const token = await mintLiveKitToken({ apiKey: cfg.apiKey, apiSecret: cfg.apiSecret, identity, room, ttlSeconds: 2 * 3600, name: identity });
+  return jsonResponse({ serverUrl: cfg.serverUrl, room, identity, token, expiresIn: 2 * 3600, project: cfg.project }, 200, LIVEKIT_CORS_HEADERS);
+}
 
 function jsonResponse(obj, status, extraHeaders) {
   return new Response(JSON.stringify(obj), { status: status || 200, headers: { "content-type": "application/json; charset=utf-8", ...(extraHeaders || {}) } });
@@ -250,6 +326,24 @@ async function kvGet(env, key, fallback) {
 }
 async function kvPut(env, key, value) {
   try { if (env.JARVIS_KV) await env.JARVIS_KV.put(key, JSON.stringify(value)); } catch (e) { console.log("kvPut error:", e && e.message ? e.message : e); }
+}
+
+/* ---------------- Coarena (العقل المجاني الرسمي للمشروع) ----------------
+   المصدران للمفتاح:
+   1) KV عبر الأمر /coarena key (يتغلب على البيئة)
+   2) متغير البيئة COARENA_API_KEY (من wrangler.toml [vars] أو wrangler secret put)
+   الأولوية للعقل: اختيار صريح بالـ KV (/coarena on|off) ← وإلا Coarena إن وُجد مفتاحها ← وإلا arena. */
+async function coarenaApiKey(env) {
+  const kv = String((await kvGet(env, "coarena_api_key_v1", "")) || "").trim();
+  return kv || String((env && env.COARENA_API_KEY) || "").trim();
+}
+function coarenaModelFallback(env) {
+  return String((env && env.COARENA_MODEL) || "claude-fable-5-2").trim() || "claude-fable-5-2";
+}
+async function primaryIntelligence(env) {
+  const kv = await kvGet(env, "primary_intelligence_v1", null);
+  if (kv != null && String(kv).trim()) return String(kv).trim().toLowerCase();
+  return String((env && env.COARENA_API_KEY) || "").trim() ? "coarena" : "arena";
 }
 const getHistory = (env) => kvGet(env, "history", []); // legacy fallback
 const saveHistory = (env, convo) => kvPut(env, "history", convo.slice(-MAX_HISTORY));
@@ -1170,7 +1264,7 @@ async function callGroqSmart(convo, system, env, key) {
 }
 
 async function requestCoarenaDailyLimit(env, usd) {
-  const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) return { ok: false, message: "Coarena مو مربوط." };
+  const key = await coarenaApiKey(env); if (!key) return { ok: false, message: "Coarena مو مربوط — لا في KV ولا في COARENA_API_KEY." };
   try {
     const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: Math.max(5, Math.min(50, Number(usd) || 10)) }), signal: AbortSignal.timeout(10000) });
     const d = await r.json().catch(() => ({}));
@@ -1180,7 +1274,7 @@ async function requestCoarenaDailyLimit(env, usd) {
 }
 
 async function getCoarenaLimits(env) {
-  const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) return null;
+  const key = await coarenaApiKey(env); if (!key) return null;
   try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) }); return r.ok ? await r.json() : null; } catch { return null; }
 }
 function coarenaBalanceText(d) {
@@ -1194,10 +1288,10 @@ function coarenaBalanceText(d) {
 }
 
 async function llmComplete(convo, system, env) {
-  const primary = await kvGet(env, "primary_intelligence_v1", "arena");
-  const coarenaKey = String(await kvGet(env, "coarena_api_key_v1", "") || "");
+  const primary = await primaryIntelligence(env);
+  const coarenaKey = await coarenaApiKey(env);
   if (primary === "coarena" && coarenaKey) {
-    const model = String(await kvGet(env, "coarena_model_v1", "claude-fable-5-2") || "claude-fable-5-2");
+    const model = String(await kvGet(env, "coarena_model_v1", coarenaModelFallback(env)) || coarenaModelFallback(env));
     const coarenaSystem = `${system}\n\nأنت تعمل الآن عبر Coarena Model API والنموذج الفعلي هو ${model}. إذا سُئلت عن هويتك قل: جارفس عبر Coarena، والنموذج ${model}. أعطِ جواباً كاملاً ومفصلاً حسب طلب المالك، ولا تبدأ تنسيق Markdown غير مكتمل.`;
     const answer = await callOpenAICompatible("https://coarena.ai/api/v1", coarenaKey, model, convo, coarenaSystem);
     if (answer) {
@@ -1206,14 +1300,15 @@ async function llmComplete(convo, system, env) {
       if (left != null && left <= 1) { const last = Number(await kvGet(env, "coarena_balance_alert_v1", 0)) || 0; if (Date.now() - last > 6 * 60 * 60000) { await kvPut(env, "coarena_balance_alert_v1", Date.now()); const owner = await getOwnerChatId(env); if (owner) await sendMessage(env, owner, `⚠️ ${balance} رح خفف الاستهلاك وأخلي المهام الثقيلة لبعد التجدد إلا إذا طلبت العكس.`); } }
       return answer;
     }
+    // Coarena فشل (حصة خلصت/انقطاع) — نكمل على باقي السلسلة بدل ما البوت يموت بصمت.
     await kvPut(env, "coarena_last_error_v1", { at: Date.now(), model });
-    return null;
+    console.log("coarena failed — falling back to the rest of the chain");
   }
   const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
   const hyperbrowserReady = !!(await kvGet(env, "hyperbrowser_profile_v1", ""));
   // وجود Profile Hyperbrowser مصادق يعني أن اختيار المالك هو Arena حصراً؛ لا تسمح
   // لإعداد Groq قديم أن يسبقها أو ينتحل هوية موديل آخر.
-  if (!hyperbrowserReady && (await kvGet(env, "primary_intelligence_v1", "arena")) === "groq" && groqKey) {
+  if (!hyperbrowserReady && (await primaryIntelligence(env)) === "groq" && groqKey) {
     const fast = await callGroqSmart(convo, system, env, groqKey);
     if (fast) return fast;
   }
@@ -1602,12 +1697,12 @@ async function processTaskQueue(env, maxSteps) {
 
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
-  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:ارفع|رفع|زيد|زيادة).{0,30}(?:الحد|الرصيد).{0,20}(?:10|50|١٠|٥٠)|(?:10|50|١٠|٥٠).{0,30}(?:دولار|الحد)/i.test(String(userText))) {
+  if ((await primaryIntelligence(env)) === "coarena" && /(?:ارفع|رفع|زيد|زيادة).{0,30}(?:الحد|الرصيد).{0,20}(?:10|50|١٠|٥٠)|(?:10|50|١٠|٥٠).{0,30}(?:دولار|الحد)/i.test(String(userText))) {
     const target = /(?:50|٥٠)/.test(String(userText)) ? 50 : 10;
     const asked = await requestCoarenaDailyLimit(env, target);
     return asked.ok ? `تمام دكتور، قدمت طلب رفع حد Coarena اليومي إلى $${target} عبر الـAPI الرسمي. الموافقة مو فورية؛ رح راقب /limits وأخبرك لما يتغير.` : `ما قدرت أقدم الطلب: ${asked.message}`;
   }
-  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:قديش|كم|اديش|شو).{0,25}(?:رصيد|باقي|استهلاك|كريديت)|(?:رصيد|كريديت).{0,25}(?:قديش|كم|باقي)/i.test(String(userText))) {
+  if ((await primaryIntelligence(env)) === "coarena" && /(?:قديش|كم|اديش|شو).{0,25}(?:رصيد|باقي|استهلاك|كريديت)|(?:رصيد|كريديت).{0,25}(?:قديش|كم|باقي)/i.test(String(userText))) {
     const balance = coarenaBalanceText(await getCoarenaLimits(env));
     if (/(?:بيكفي|يكفي|بكفي).*(?:مهمة|شغلة|بحث|مشروع)/i.test(String(userText))) return `${balance}\nغالباً بكفينا للمهمة المتوسطة، بس ما بقدر أضمن التكلفة قبل ما أعرف حجم الملفات وعدد خطوات البحث. بعطيك تنبيه قبل ما ينزل الباقي عن $1.`;
     return balance;
@@ -1636,9 +1731,9 @@ async function agentLoop(userText, env, chatId, opts) {
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const out = await llmComplete(convo, system, env);
     if (!out) {
-      const primary = await kvGet(env, "primary_intelligence_v1", "arena");
+      const primary = await primaryIntelligence(env);
       if (forcedSearch) return "بحثت فعلياً، لكن محرك التحليل ما رد. هاي نتائج البحث الخام بدل ما أخترع جواب:\n\n" + String(forcedSearch).slice(0, 3200);
-      if (primary === "coarena") return "Coarena ما رجع جواباً حالياً. افحص /coarena status؛ ما رح أحوّل الطلب بصمت إلى Arena أو نموذج ثاني.";
+      if (primary === "coarena") return "Coarena والاحتياط كلهم مشغولين هلق — ما قدرت أوصل لجواب. افحص /coarena status كمان شوي وحاول مرة ثانية.";
       return primary === "groq" ? "Groq ما قبل الطلب حالياً. حفظت رسالتك؛ عم أفحص المفتاح والنموذج تلقائياً، وما في داعي تعيد ربط Arena." : "Arena رفضت طلب المتصفح الآلي مؤقتاً. حفظت رسالتك وسياقها بالطابور وسأعيدها تلقائياً؛ لا تعيد إرسالها ولا تعمل ربطاً جديداً.";
     }
     if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
@@ -2066,6 +2161,8 @@ const WELCOME = [
   "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
   "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
   "/voicecall — رابط آمن لمكالمة جارفس الصوتية",
+  "/coarena — العقل المجاني (Claude Fable 5.2): key/status/model/on/off/limit 50",
+  "/live — مكالمة لايف حقيقية كاملة عبر LiveKit (تحتاج تشغيل Agent على جهازك)",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
   "/files — شو الملفات والصور بقدر أقراها وأعدلها",
@@ -2181,13 +2278,22 @@ async function handleCommand(text, env, chatId) {
         await sendMessage(env, chatId, test ? "✅ Coarena شغال وصار المحرك الأساسي. النموذج: Claude Fable 5.2. احذف رسالة المفتاح وابعت سؤالاً عادياً." : "❌ انحفظ المفتاح لكن اختبار Coarena لم يرجع جواباً. تأكد من صفحة Limits."); return true;
       }
       if (/^status$/i.test(arg)) {
-        const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) { await sendMessage(env, chatId, "اربطه أولاً: /coarena key YOUR_KEY"); return true; }
-        try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` } }); const d = await r.json(); await sendMessage(env, chatId, `Coarena limits:\n${JSON.stringify(d, null, 2)}`.slice(0, 3500)); } catch { await sendMessage(env, chatId, "تعذر قراءة حدود Coarena."); } return true;
+        const key = await coarenaApiKey(env); if (!key) { await sendMessage(env, chatId, "اربطه أولاً: /coarena key YOUR_KEY (أو اضبط COARENA_API_KEY)"); return true; }
+        const kvKey = String(await kvGet(env, "coarena_api_key_v1", "") || "").trim();
+        const source = kvKey ? "KV (عبر /coarena key)" : "متغير البيئة COARENA_API_KEY";
+        const model = String(await kvGet(env, "coarena_model_v1", coarenaModelFallback(env)) || coarenaModelFallback(env));
+        const primary = await primaryIntelligence(env);
+        let balance = "";
+        try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` } }); const d = await r.json(); balance = `\nlimits: ${JSON.stringify(d).slice(0, 1200)}`; } catch { balance = "\nتعذرت قراءة حدود Coarena."; }
+        const lastErr = await kvGet(env, "coarena_last_error_v1", null);
+        await sendMessage(env, chatId, `Coarena: المصدر: ${source}\nالنموذج: ${model}\nالأساسي هلق: ${primary}${lastErr ? `\nآخر فشل: ${new Date(lastErr.at).toISOString()}` : ""}${balance}`.slice(0, 3500)); return true;
       }
       const mm = arg.match(/^model\s+([\w./-]+)$/i);
       if (mm) { await kvPut(env, "coarena_model_v1", mm[1]); await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, `✅ نموذج Coarena: ${mm[1]}`); return true; }
       if (/^on$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, "✅ Coarena صار المحرك الأساسي."); return true; }
-      await sendMessage(env, chatId, "الأوامر: /coarena key NEW_KEY | /coarena status | /coarena model MODEL_ID | /coarena on"); return true;
+      if (/^off$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "arena"); await sendMessage(env, chatId, "✅ رجعت لـ Arena كمحرك أساسي. (Coarena بيشتغل بس لما يكون هو الأساسي — /coarena on ليرجع)."); return true; }
+      if (/^limit\s+(\d+)$/i.test(arg)) { const usd = Number(arg.match(/^limit\s+(\d+)$/i)[1]); const res = await requestCoarenaDailyLimit(env, usd); await sendMessage(env, chatId, res.ok ? `✅ وصل طلب رفع الحد اليومي إلى $${Math.min(50, Math.max(5, usd))} — يبقى معلّقاً للمراجعة عند Coarena.` : `❌ الطلب ما نجح: ${res.message}`); return true; }
+      await sendMessage(env, chatId, "الأوامر: /coarena key NEW_KEY | /coarena status | /coarena model MODEL_ID | /coarena on | /coarena off | /coarena limit 50"); return true;
     }
     case "/hyperbrowser": {
       const hm = arg.match(/^key\s+(.+)$/i);
@@ -2244,6 +2350,11 @@ async function handleCommand(text, env, chatId) {
       await kvPut(env, "voice_call_token_expires", Date.now() + 30 * 60 * 1000);
       const base = String(env.PUBLIC_WORKER_URL || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
       await sendMessage(env, chatId, `📞 رابط مكالمتك الآمن (صالح 30 دقيقة):\n${base}/call?token=${token}\n\nافتحه واضغط اتصل — ما بدك تحط أي مفتاح.`); return true;
+    }
+    case "/live": {
+      const base = String(env.PUBLIC_WORKER_URL || (await kvGet(env, "public_worker_url", "")) || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
+      const lk = env.LIVEKIT_WS_URL ? "✅ LiveKit مضبوط (المشروع 1)" + (env.LIVEKIT_ALT_WS_URL ? " + احتياط (المشروع 2)" : "") : "❌ LiveKit مو مضبوط — راجع README_AR.md";
+      await sendMessage(env, chatId, `🎙️ المكالمة اللايف الحقيقية (LiveKit + Coarena + Edge TTS — كلها مجانية):\n\n1) شغّل الـ Agent على جهازك (مرة واحدة):\n   cd agency-cloudflare/livekit-agent\n   pip install -r requirements.txt\n   python agent.py start\n2) افتح: ${base}/live\n3) اضغط «اتصل بجارفس لايف» واحكِ طبيعي — بيسمعك ويرد فوراً وتقدر تقاطعه.\n\nحالة LiveKit: ${lk}\nبدون تشغيل Agent: استخدم /voicecall (مكالمة Gemini Live فورية) أو /call.`); return true;
     }
     case "/call":
       await sendMessage(env, chatId, await callMeNow(env, arg || "جارفس يحتاج قرارك")); return true;
