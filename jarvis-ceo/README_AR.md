@@ -24,6 +24,20 @@ COARENA_API_KEY=<مفتاح Coarena>
 GEMINI_API_KEY=<نفس مفتاح Gemini اللي بالتجارب>
 DAILY_TOKEN_CAP=200000
 CEO_CHAT_ID=<رقم محادثتك مع البوت>   # اختياري: أول من يحكي مع البوت بينحصر فيه
+
+# GitHub — Fine-grained PAT من github.com/settings/tokens (صلاحية Contents + Pull requests + Administration)
+GITHUB_TOKEN=<توكن GitHub>
+GITHUB_OWNER=jfjdjdieifne
+
+# جيميل — App Password من myaccount.google.com/apppasswords (حط خطوتين تفعيل أولاً)
+GMAIL_ADDRESS=<ايميلك>
+GMAIL_APP_PASSWORD=<كلمة مرور التطبيق>
+
+# X (تويتر) — من developer.x.com (اختياري)
+X_API_KEY= / X_API_SECRET= / X_ACCESS_TOKEN= / X_ACCESS_SECRET=
+
+# Meta — انستغرام Business مربوط بصفحة Facebook (الأصعب — بياخد خطوة إعداد)
+META_PAGE_ID= / META_PAGE_TOKEN= / META_IG_USER_ID=
 ```
 
 ```bash
@@ -46,6 +60,13 @@ sudo systemctl status jarvis-ceo
 |---|---|
 | أي نص أو فويس | يفهم ويرد — نص أو صوت |
 | `وكلائي` | لستة الوكلاء وشخصياتهم |
+| `شو موصول` | حالة كل الوصلات (GitHub/جيميل/السوشيال) |
+| `ربيوزاتي` | آخر ريبوز GitHub تبعك |
+| `ايميلاتي` | إيميلاتك غير المقروءة |
+| «عدّل ملف X بالريبو Y: …» | جارفس بقرا الملف، يعدّله، بيفتح PR — ما بيلمس main |
+| «ابعت إيميل لـ …» | مسودة + زر ✅ قبل الإرسال |
+| «انشر على x/facebook/instagram: …» | مسودة + زر ✅ قبل النشر |
+| `ارسل بدون موافقة` / `اسألني قبل الإرسال` | وضع التنفيذ الفوري / وضع الموافقة بضغطة |
 | `سعيد` / `محمود` / `أحمد` / `متداول` + طلب | يوزع المهمة على الوكيل المناسب |
 | Excel مرفق | «عبيلي كل صف…» / «وريني الأعمدة» |
 | `راقب example.com` | سعيد يفحص الموقع كل 30 دقيقة |

@@ -21,7 +21,8 @@ AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKUP_ROOT = os.path.join(AGENT_DIR, ".backups")
 MAX_BACKUPS = 12
 
-EDITABLE = {"agent.py", "brain.py", "db.py", "tools.py", "selfedit.py", "test_agent.py", "README_AR.md"}
+EDITABLE = {"agent.py", "brain.py", "db.py", "tools.py", "selfedit.py", "test_agent.py", "README_AR.md",
+            "github.py", "gmail.py", "social.py"}
 NEW_FILE_RE = re.compile(r"^[a-z][a-z0-9_]{0,40}\.py$")
 
 

@@ -160,5 +160,31 @@ class TestSelfEdit(unittest.TestCase):
             shutil.rmtree(fake_dir, ignore_errors=True)
 
 
+class TestIntegrations(unittest.TestCase):
+    def test_social_status_shape(self):
+        import social
+        st = social.status()
+        self.assertEqual(set(st), {"x", "facebook", "instagram"})
+        self.assertFalse(st["x"])  # بلا مفاتيح بالاختبار
+
+    def test_github_whoami_without_token(self):
+        import github
+        os.environ.pop("GITHUB_TOKEN", None)
+        github.TOKEN = ""
+        res = github.whoami()
+        self.assertFalse(res["ok"])
+
+    def test_gmail_not_configured(self):
+        import gmail
+        gmail.ADDR = ""
+        gmail.APP_PASSWORD = ""
+        self.assertFalse(gmail.configured())
+
+    def test_draft_roundtrip(self):
+        payload = {"kind": "email", "to": "x@y.com", "subject": "s", "body": "b"}
+        db.kv_set("draft:test123", json.dumps(payload, ensure_ascii=False))
+        loaded = json.loads(db.kv_get("draft:test123"))
+        self.assertEqual(loaded["to"], "x@y.com")
+        self.assertEqual(loaded["kind"], "email")
 if __name__ == "__main__":
     unittest.main()
