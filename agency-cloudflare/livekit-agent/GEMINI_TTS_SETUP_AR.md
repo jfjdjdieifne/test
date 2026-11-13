@@ -14,7 +14,19 @@
 ```
 **ملاحظة مهمة جداً عن AWS:** أمازون **لسا إلها دور كامل** — هي بيت التشغيل اللي Agent جارفس شغال عليه 24/7 (استقبال المكالمات + Whisper + العقل بانتظارك). Gemini هو فقط «الحنجرة» من بره الحساب. (وPolly ar-AE تضل خيار احتياطي داخل حسابك AWS.)
 
-## ٢) جيب مفتاح Gemini (3 دقائق، من المتصفح، بلا بطاقة)
+## ٠) جدول الموديلات المتاحة بلحظة 2026-11 (بناءً على ما رآه المالك بواجهة AI Studio)
+| الموديل ID | النوع/السعر (بدون الاشتراك المجاني) | متى تختاره |
+|---|---|---|
+| `gemini-3.8-flash-tts` | **Flagship** · $0.50/$9 · Sep 2026 · Voice Design + dual-speaker + **vocal bursts** | **الخيار الافتراضي الجديد** — الأعلى بالإحساس البشري |
+| `gemini-3.8-flash-lite-tts` | High-speed · $0.50/$6 · بديل 3.1 مباشرة | إذا حسيت 3.8 يبطّئ أو الكوتا أصغر |
+| `gemini-3.1-flash-tts-preview` | Preview قديم · $1/$20 | التقليدي الأول |
+| `gemini-2.5-pro-preview-tts` | Preview · $1/$20 | أقصى أداء للنصوص المعقدة |
+| `gemini-2.5-flash-preview-tts` | Preview · $0.50/$10 | اقتصادي ثابت |
+> كل النماذج حالياً تغطيها **الحصة المجانية** (as TTS models included in Google's free tier وفق التوثيق الرسمي) — التسعيرة فقط لو فعّلت فواتير.
+> **الأصوات الذكرية الأنسب بالنبرة الدافئة:** `Sulafat` (Warm — الافتراضي الحالي الموصى به عند المالك) · `Zubenelgenubi` (Casual) · `Charon` (Informative lower) · `Enceladus` (Breathy) · `Algieba` (Smooth) · `Sadachbia` (Lively) · `Gacrux` (Mature).
+> عدّل الصوت بأي وقت: `export GEMINI_TTS_VOICE=Sulafat` (الافتراضي بالكود `Charon` … انظر `GEMINI_TTS_ACCENT`/`GEMINI_TTS_STYLE`).
+
+## ١) جيب مفتاح Gemini (3 دقائق، من المتصفح، بلا بطاقة)
 
 1. افتح **[https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)** وسجل دخول بحساب Google (حسابك الأساسي أو ثانوي).
 2. اضغط **Create API key** ← اختار «Create API key in new project» (أو مشروعك الحالي — نفس الحصَّة بالنهاية).
