@@ -1,0 +1,16 @@
+[Unit]
+Description=Jarvis CEO — Telegram multi-agent executive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=REPLACE_USER
+WorkingDirectory=REPLACE_HOME/jarvis-ceo
+EnvironmentFile=REPLACE_HOME/jarvis-ceo.env
+ExecStart=/usr/bin/python3 REPLACE_HOME/jarvis-ceo/agent.py
+Restart=always
+RestartSec=3
+MemoryMax=350M
+
+[Install]
+WantedBy=multi-user.target
