@@ -1,0 +1,16 @@
+[Unit]
+Description=Jarvis CEO — Voice agent (LiveKit + Gemini Live)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/jarvis-ceo
+EnvironmentFile=/home/ec2-user/jarvis-ceo.env
+ExecStart=/home/ec2-user/jarvis-ceo/.venv/bin/python voice_agent.py start
+Restart=always
+RestartSec=5
+MemoryMax=300M
+
+[Install]
+WantedBy=multi-user.target

@@ -494,6 +494,47 @@ class TestBrainEmptyContent(unittest.TestCase):
             for k, v in old_keys.items():
                 if v is not None:
                     os.environ[k] = v
+class TestCallUrl(unittest.TestCase):
+    def setUp(self):
+        self._saved = {k: os.environ.get(k) for k in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "LIVEKIT_ROOM")}
+        for k in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+            os.environ.pop(k, None)
+        os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-for-tests")
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_no_creds_returns_none(self):
+        import agent
+        self.assertIsNone(agent.build_call_url())
+        self.assertIsNone(agent._call_markup())
+
+    def test_with_creds_builds_meet_url_and_jwt(self):
+        try:
+            import livekit.api  # noqa: F401
+        except Exception:
+            self.skipTest("livekit-api غير منصّبة محلياً")
+        import agent
+        os.environ["LIVEKIT_URL"] = "wss://demo-project-abcd1234.livekit.cloud"
+        os.environ["LIVEKIT_API_KEY"] = "APITestKeyTestKeyTestKeyTest1234"
+        os.environ["LIVEKIT_API_SECRET"] = "supersecretsecretsupersecretsecret42xyzw"
+        from urllib.parse import unquote
+        import base64, json
+        url = agent.build_call_url()
+        self.assertTrue(url)
+        self.assertIn("liveKitUrl=", url)
+        self.assertIn("token=", url)
+        tok = unquote(url.split("token=")[1])
+        body = tok.split(".")[1]
+        pad = "=" * (-len(body) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(body + pad))
+        self.assertTrue(payload.get("video", {}).get("roomJoin"))
+        self.assertEqual(payload.get("video", {}).get("room"), "jarvis-call")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -110,3 +110,32 @@ sudo systemctl status jarvis-ceo
 - **التعديل الذاتي**: نسخة احتياطية → تعديل → `py_compile` + كل الاختبارات → إذا فشل أي شي يرجع للنسخة تلقائياً → `تراجع` بأي وقت.
 - **ما بيلمس** `~/jarvis-ceo.env` ولا أي شي خارج مجلد jarvis-ceo.
 - **قرارات مالية/خارجية**: اقتراحات فقط — التنفيذ بموافقتك الصريحة.
+
+## 📞 المكالمة الصوتية (LiveKit + Gemini Live)
+
+زر «📞 المكالمة» بيتظهر بكل رسالة من البوت. **كبسة واحدة** → المتصفح يفتح المكالمة مباشرة ولاقي جارفس عم يرحب فيك حسب وقت اليوم (صباح/مساء/سهرة) مع دفء — بيسمع مزاجك وضجة الخلفية وبيعلّق عليهم (Gemini Live Affective Dialog).
+
+### الإعداد (مرة واحدة)
+1. حساب LiveKit Cloud مجاني: `cloud.livekit.io` ← أنشئ مشروع ← Settings ← Keys ← انسخ **API Key** و**Secret** وعنوان wss
+2. على السيرفر احفظ بملف `~/jarvis-ceo.env`:
+   ```bash
+   LIVEKIT_URL=wss://<مشروعك>.livekit.cloud
+   LIVEKIT_API_KEY=API...
+   LIVEKIT_API_SECRET=...
+   ```
+3. ثبّت الاعتماديات والخدمة:
+   ```bash
+   cd ~/jarvis-ceo && .venv/bin/pip install livekit-agents livekit-plugins-google livekit-api
+   sudo cp jarvis-voice.service /etc/systemd/system/jarvis-voice.service
+   sudo systemctl daemon-reload && sudo systemctl enable --now jarvis-voice
+   ```
+4. الصوت: الوكالة بتجيب مفتاح Gemini لحالها (`GEMINI_API_KEY` أو أول مفتاح من `GEMINI_TTS_API_KEYS`).
+   اختياري: `GEMINI_LIVE_VOICE=Charon|Puck|Fenrir|Aoede...` و `GEMINI_LIVE_MODEL=...`
+
+### بالمكالمة
+- «مرحبا» ← بيرحب فيك حسب الساعة والجو
+- أي سؤال/طلب ← لازم يستجب مباشرة أو «هلأ بشوف» ويرد
+- «احفظ: مكان الاجتماع يوم الهلا» ← بينحفظ بالمذكرة
+- «احفظ مفتاح TAVILY_API_KEY=...» ← بينحفظ بالمكان السري (ما بيطبع القيمة)
+- «خلص» / «روح» / «سكر» / «باي» ← المكالمة بتسكر لحالها
+- واجهة الاتصال على Meet: مجانية ومفتوحة المصدر، وما بتحتاج حساب فيها — يكفي توكنك المؤقت (٦ ساعات)

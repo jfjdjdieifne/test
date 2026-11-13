@@ -76,13 +76,49 @@ def tg(method, params=None, timeout=60, files=None):
         return None
 
 
+
+CALL_ROOM = os.environ.get("LIVEKIT_ROOM", "jarvis-call")
+_MEET_TEMPLATE = os.environ.get(
+    "CEO_MEET_URL",
+    "https://meet.livekit.io/custom/?liveKitUrl={url}&token={token}",
+)
+
+def build_call_url():
+    """رابط «📞 المكالمة» جاهز للطرق — أو None إذا LiveKit مش موجود بالـ env."""
+    url = os.environ.get("LIVEKIT_URL", "").strip()
+    key = os.environ.get("LIVEKIT_API_KEY", "").strip()
+    secret = os.environ.get("LIVEKIT_API_SECRET", "").strip()
+    if not (url and key and secret):
+        return None
+    try:
+        from datetime import timedelta
+        from urllib.parse import quote
+        from livekit.api import AccessToken, VideoGrants
+        token = (AccessToken(key, secret)
+                 .with_identity("doctor")
+                 .with_name("الدكتور")
+                 .with_ttl(timedelta(hours=6))
+                 .with_grants(VideoGrants(room_join=True, room=CALL_ROOM))
+                 .to_jwt())
+        return _MEET_TEMPLATE.format(url=quote(url, safe=""), token=quote(token, safe=""))
+    except Exception as e:
+        print(f"call_url: {e}")
+        return None
+
+
+def _call_markup():
+    url = build_call_url()
+    return {"inline_keyboard": [[{"text": "📞 المكالمة", "url": url}]]} if url else None
+
+
 def send_text(chat_id, text, reply_markup=None):
     text = text or "…"
+    markup = reply_markup if reply_markup else _call_markup()
     chunks = [text[i:i + 3800] for i in range(0, len(text), 3800)] or ["…"]
     for n, chunk in enumerate(chunks):
         params = {"chat_id": chat_id, "text": chunk}
-        if reply_markup and n == len(chunks) - 1:  # الأزرار بآخر قطعة
-            params["reply_markup"] = reply_markup
+        if markup and n == len(chunks) - 1:  # الأزرار بآخر قطعة
+            params["reply_markup"] = markup
         tg("sendMessage", params)
 
 def send_voice(chat_id, path):
@@ -863,6 +899,7 @@ def handle_message(msg):
         return
 
     db.add_message(chat_id, "user", text)
+    send_text(chat_id, "ثواني — عم بنظر فيها 🔎")
     try:
         reply = think(chat_id, text, is_voice=is_voice)
     except brain.BrainError as e:
