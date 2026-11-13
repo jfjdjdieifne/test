@@ -2427,7 +2427,7 @@ async function handleCommand(text, env, chatId) {
     case "/live": {
       const base = String(env.PUBLIC_WORKER_URL || (await kvGet(env, "public_worker_url", "")) || "https://jarvis-24-7.moudy-moray-8.workers.dev").replace(/\/$/, "");
       const lk = env.LIVEKIT_WS_URL ? "✅ LiveKit مضبوط (المشروع 1)" + (env.LIVEKIT_ALT_WS_URL ? " + احتياط (المشروع 2)" : "") : "❌ LiveKit مو مضبوط — راجع README_AR.md";
-      await sendMessage(env, chatId, `🎙️ المكالمة اللايف الحقيقية — جارفس دايماً شغال بالسيرفر (AWS/EC2)، أنت ما بتثبت ولا شي:\n\n1) افتح: ${base}/live من أي متصفح (جوال أو لابتوب)\n2) اضغط «اتصل بجارفس لايف» واحكِ طبيعي — بيسمعك وبرد فوراً وتقدر تقاطعه\n\nحالة LiveKit: ${lk}\nالصوت: Polly (Hala/Zayd — عربي خليجي Neural) أو Edge السوري حسب إعداد السيرفر.`); return true;
+      await tgApi(env, "sendMessage", { chat_id: chatId, text: `🎙️ المكالمة اللايف — جارفس دايماً شغال بالسيرفر (AWS/EC2)، أنت ما بتثبت ولا شي.\n\nاضغط الزر تحت — المتصفح يفتح ويتصل فوراً (أول مرة فقط: رح يطلب إذن المايك + CALL_SECRET بالإعدادات ويتجمد بحفظها).`, reply_markup: { inline_keyboard: [[{ text: "📞 اتصل بجارفس الآن", url: `${base}/live?connect=1` }]] } });
     }
     case "/call":
       await sendMessage(env, chatId, await callMeNow(env, arg || "جارفس يحتاج قرارك")); return true;

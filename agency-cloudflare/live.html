@@ -129,6 +129,17 @@ $("saveSettings").addEventListener("click", () => {
 });
 $("gearBtn").addEventListener("click", () => $("settingsPanel").classList.toggle("open"));
 if (localStorage.getItem(LS_URL) && localStorage.getItem(LS_KEY)) $("settingsPanel").classList.remove("open");
+// فتح فوري من تيليجرام: /live?connect=1 → يتصل تلقائياً لو الإعدادات محفوظة من قبل
+const qs = new URLSearchParams(location.search);
+if (qs.get("connect") === "1") {
+  if (localStorage.getItem(LS_KEY)) {
+    setStatus("think", "عم افتح المكالمة…");
+    setTimeout(() => { try { $("callBtn").click(); } catch (e) { console.error(e); } }, 450);
+  } else {
+    $("settingsPanel").classList.add("open");
+    showErr("أول مرة فقط — اكتب CALL_SECRET بالإعدادات واحفظ، وبعدها كل فتح للرابط من تيليجرام بيدخل فوراً.");
+  }
+}
 
 function addBubble(kind, text) {
   const div = document.createElement("div");
