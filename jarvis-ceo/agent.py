@@ -243,6 +243,25 @@ def think(chat_id, user_text, is_voice=False):
         return raw.strip()
 
     action = plan.get("action", "reply")
+    # حواجز النية الصريحة — العقل ما بيروح لقرار فيه أثر (تعديل/إيميل/نشر/GitHub)
+    # إلا إذا الدكتور ذكر شي صريح يدل عليه. غير كذا بننزّلها لرد عادي.
+    SIDE_EFFECT_HINTS = {
+        "edit_code": r"(عدّل|عدل|الكود|نفسك|لحالك|صلّح|صلح|ضيف|أضف|غيّر|غير|تحديث|bug|feature|update|edit|modify|change|fix|add)",
+        "github_edit": r"(ريبو|repo|جيتهاب|github|كوميت|commit|pull request|فرع|branch)",
+        "draft_email": r"(ايميل|إيميل|بريد|email|مسودة|draft|ابعت ايميل|ارسل ايميل)",
+        "post_social": r"(انشر|نشر|بوست|منشور|twitter|x\.com|تويتر|فيس|فيسبوك|انستغرام|post|tweet|publish)",
+    }
+    hint = SIDE_EFFECT_HINTS.get(action)
+    if hint and not re.search(hint, user_text, re.I):
+        try:
+            plain = brain.chat(
+                [{"role": "system", "content": "أنت جارفس، مدير تنفيذي على تيلغرام، تحكي باللهجة الشامية باختصار. جاوب سؤال الدكتور مباشرة بنص حر بدون JSON وبدون أدوات."}] + convo,
+                temperature=0.6,
+            ).strip()
+            db.add_message(chat_id, "assistant", plain)
+            return plain
+        except brain.BrainError as e:
+            return f"العقل مشغول هلأ — {e}"
     if action == "delegate":
         name = AGENT_ALIASES.get(str(plan.get("agent", "")).strip(), str(plan.get("agent", "")).strip())
         task = str(plan.get("task", "")).strip() or user_text

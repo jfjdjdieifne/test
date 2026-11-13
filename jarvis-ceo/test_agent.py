@@ -420,6 +420,49 @@ class TestSelfEditBundle(unittest.TestCase):
         full = open(os.path.join(selfedit.AGENT_DIR, "agent.py"), encoding="utf-8").read()
         self.assertEqual(block.strip(), full.strip())
 
+class TestThinkSideEffectGate(unittest.TestCase):
+    """سؤال عادي لازم ما يروح لـ edit_code حتى لو العقل قرر عكسي."""
+    def _fake_brain(self, plan_json):
+        import brain as brainmod
+
+        class FakeBrain:
+            BrainError = brainmod.BrainError
+            @staticmethod
+            def system_prompt():
+                return "TEST"
+            @staticmethod
+            def chat(messages, temperature=0.6, max_tokens=None):
+                for m in messages:
+                    if m.get("role") == "system" and "بدون JSON" in m.get("content", ""):
+                        return "طوكيو يا دكتور"
+                return plan_json
+            @staticmethod
+            def extract_json(text):
+                import json as _json
+                return _json.loads(text)
+        return FakeBrain
+
+    def test_trivia_with_edit_code_plan_becomes_plain_reply(self):
+        import sys, os, types
+        import agent
+        orig_brain = agent.brain
+        agent.brain = self._fake_brain('{"action":"edit_code","task":"whatever"}')
+        try:
+            out = agent.think(123, "شو عاصمة اليابان؟")
+            self.assertEqual(out, "طوكيو يا دكتور")
+        finally:
+            agent.brain = orig_brain
+
+    def test_trivia_with_email_plan_becomes_plain_reply(self):
+        import agent
+        orig_brain = agent.brain
+        agent.brain = self._fake_brain('{"action":"draft_email","to":"x@y.z","subject":"s","body":"b"}')
+        try:
+            out = agent.think(123, "شو عاصمة اليابان؟")
+            self.assertEqual(out, "طوكيو يا دكتور")
+        finally:
+            agent.brain = orig_brain
+
 
 if __name__ == "__main__":
     unittest.main()
