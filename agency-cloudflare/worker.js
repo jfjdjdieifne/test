@@ -1172,7 +1172,7 @@ async function callGroqSmart(convo, system, env, key) {
 async function requestCoarenaDailyLimit(env, usd) {
   const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) return { ok: false, message: "Coarena مو مربوط." };
   try {
-    const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: Math.max(5, Math.min(10, Number(usd) || 10)) }), signal: AbortSignal.timeout(10000) });
+    const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: Math.max(5, Math.min(50, Number(usd) || 10)) }), signal: AbortSignal.timeout(10000) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { ok: false, message: String(d?.error?.message || d?.message || `HTTP ${r.status}`).slice(0, 500) };
     return { ok: true, data: d };
@@ -1602,9 +1602,10 @@ async function processTaskQueue(env, maxSteps) {
 
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
-  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:ارفع|رفع|زيد|زيادة).{0,30}(?:الحد|الرصيد).{0,20}(?:10|١٠)|(?:10|١٠).{0,30}(?:دولار|الحد)/i.test(String(userText))) {
-    const asked = await requestCoarenaDailyLimit(env, 10);
-    return asked.ok ? "تمام دكتور، قدمت طلب رفع حد Coarena اليومي من $5 إلى $10 عبر الـAPI الرسمي. الموافقة مو فورية بالضرورة؛ رح راقب /limits وأخبرك لما يتغير." : `ما قدرت أقدم الطلب: ${asked.message}`;
+  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:ارفع|رفع|زيد|زيادة).{0,30}(?:الحد|الرصيد).{0,20}(?:10|50|١٠|٥٠)|(?:10|50|١٠|٥٠).{0,30}(?:دولار|الحد)/i.test(String(userText))) {
+    const target = /(?:50|٥٠)/.test(String(userText)) ? 50 : 10;
+    const asked = await requestCoarenaDailyLimit(env, target);
+    return asked.ok ? `تمام دكتور، قدمت طلب رفع حد Coarena اليومي إلى $${target} عبر الـAPI الرسمي. الموافقة مو فورية؛ رح راقب /limits وأخبرك لما يتغير.` : `ما قدرت أقدم الطلب: ${asked.message}`;
   }
   if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:قديش|كم|اديش|شو).{0,25}(?:رصيد|باقي|استهلاك|كريديت)|(?:رصيد|كريديت).{0,25}(?:قديش|كم|باقي)/i.test(String(userText))) {
     const balance = coarenaBalanceText(await getCoarenaLimits(env));
