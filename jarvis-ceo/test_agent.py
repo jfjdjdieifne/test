@@ -186,5 +186,51 @@ class TestIntegrations(unittest.TestCase):
         loaded = json.loads(db.kv_get("draft:test123"))
         self.assertEqual(loaded["to"], "x@y.com")
         self.assertEqual(loaded["kind"], "email")
+
+    def test_notes_fts(self):
+        import db as dbmod
+        dbmod.notes_add("اتفاق مع دكتور العيادة: 1500 دولار للمهمة كاملة", "test")
+        hits = dbmod.notes_search("العيادة")
+        self.assertTrue(any("1500" in h["text"] for h in hits))
+        self.assertGreaterEqual(dbmod.notes_count(), 1)
+
+    def test_git_push_backup_no_token(self):
+        # بلا توكن — ما بيعمل ولا شيء وما بيرفع خطأ
+        os.environ.pop("GITHUB_TOKEN", None)
+        os.environ.pop("GITHUB_OWNER", None)
+        selfedit._git_push_backup("20990101-000000")
+
+    def test_debate_three_call_structure(self):
+        os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-for-tests")
+        import agent
+        import brain as brain_mod
+        calls = []
+        def stub(msgs, temperature=0.6, max_tokens=None):
+            calls.append(msgs[0]["content"])
+            return "جواب تجريبي للوكيل"
+        original = brain_mod.chat
+        original_send = agent.send_text
+        brain_mod.chat = stub
+        agent.send_text = lambda *a, **k: None
+        try:
+            out = agent.handle_debate(1, "هل استثمر مبلغ كبير هلأ؟")
+        finally:
+            brain_mod.chat = original
+            agent.send_text = original_send
+        self.assertEqual(len(calls), 3)  # متفائل + متشائم + قاضي
+        self.assertIn("القاضي", out)
+
+    def test_opportunity_none_without_tavily(self):
+        os.environ.setdefault("TELEGRAM_BOT_TOKEN", "dummy-for-tests")
+        import agent
+        import tools as tools_mod
+        old = tools_mod.TAVILY_API_KEY
+        tools_mod.TAVILY_API_KEY = ""
+        try:
+            self.assertIsNone(agent.opportunity_of_the_day())
+        finally:
+            tools_mod.TAVILY_API_KEY = old
+
+
 if __name__ == "__main__":
     unittest.main()

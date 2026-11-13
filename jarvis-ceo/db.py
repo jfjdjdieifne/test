@@ -166,6 +166,34 @@ def done_task(task_id):
         c.execute("UPDATE tasks SET status='done' WHERE id=?", (int(task_id),))
 
 
+# ---------- ذاكرة المعرفة العميقة (Search داخل كل شي يحفظه) ----------
+
+def notes_add(text, source="chat"):
+    with conn() as c:
+        c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS notes USING fts5(text, source)")
+        c.execute("INSERT INTO notes(text, source) VALUES (?,?)", (text[:20000], source[:80]))
+
+def notes_search(query, limit=4):
+    with conn() as c:
+        c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS notes USING fts5(text, source)")
+        try:
+            rows = c.execute(
+                "SELECT text, source FROM notes WHERE notes MATCH ? ORDER BY rank LIMIT ?",
+                (query, int(limit)),
+            ).fetchall()
+        except Exception:
+            rows = c.execute(
+                "SELECT text, source FROM notes WHERE text LIKE ? LIMIT ?",
+                (f"%{query}%", int(limit)),
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+def notes_count():
+    with conn() as c:
+        c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS notes USING fts5(text, source)")
+        return c.execute("SELECT COUNT(*) n FROM notes").fetchone()["n"]
+
+
 # ---------- سقف الإنفاق اليومي (حماية الـ $55) ----------
 
 def _today_key():

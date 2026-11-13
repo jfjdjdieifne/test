@@ -192,8 +192,45 @@ def apply_instruction(instruction, brain_chat, log_fn=print):
 
 def _git_commit(snapshot, instruction):
     try:
+        if not os.path.isdir(os.path.join(AGENT_DIR, ".git")):
+            subprocess.run(["git", "init", "-b", "main"], cwd=AGENT_DIR, capture_output=True, timeout=20)
         subprocess.run(["git", "add", "-A"], cwd=AGENT_DIR, capture_output=True, timeout=15)
         msg = f"self-edit ({snapshot}): {instruction[:80]}"
-        subprocess.run(["git", "commit", "-m", msg, "--no-verify"], cwd=AGENT_DIR, capture_output=True, timeout=15)
+        subprocess.run(["git", "-c", "user.name=jarvis", "-c", "user.email=jarvis@localhost",
+                        "commit", "-m", msg, "--no-verify"], cwd=AGENT_DIR, capture_output=True, timeout=15)
+        _git_push_backup(snapshot)
     except Exception:
         pass  # git مجرد تتبع — التعديل ما بيوقف عليه
+
+
+def _git_push_backup(snapshot):
+    """رفع نسخة احتياطية تلقائية لفرع على GitHub — أفضل جهد، ما بيعيق ولا شي.
+    يحتاج GITHUB_TOKEN و GITHUB_OWNER بـ .env — والتوكن ما بينكتب على القرص."""
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    owner = os.environ.get("GITHUB_OWNER", "").strip()
+    if not token or not owner:
+        return
+    repo = "jarvis-ceo-backup"
+    env = dict(os.environ)
+    try:  # إنشاء الريبو مرة وحدة — إذا موجود بيتجاهل بهدوء
+        import json as _json
+        import urllib.request as _urlreq
+        body = _json.dumps({"name": repo, "private": True, "auto_init": False}).encode()
+        req = _urlreq.Request("https://api.github.com/user/repos", data=body, method="POST",
+                              headers={"Authorization": f"Bearer {token}",
+                                       "Accept": "application/vnd.github+json",
+                                       "User-Agent": "jarvis-ceo"})
+        try:
+            _urlreq.urlopen(req, timeout=20)
+        except Exception:
+            pass  # موجود أصلاً
+    except Exception:
+        pass
+    cred = '!f() { echo "username=x-access-token"; echo "password=$GITHUB_TOKEN"; }; f'
+    try:
+        subprocess.run(["git", "-c", f"credential.helper={cred}",
+                        "push", f"https://github.com/{owner}/{repo}.git",
+                        f"HEAD:refs/heads/backups/{snapshot}"],
+                       cwd=AGENT_DIR, env=env, capture_output=True, timeout=60)
+    except Exception:
+        pass

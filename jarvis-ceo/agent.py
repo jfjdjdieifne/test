@@ -318,6 +318,45 @@ def handle_self_edit(chat_id, instruction):
     return msg
 
 
+OP_QUERY = "أهم ترند عالمي أو فرصة عمل بمجال التقنية والأسواق اليوم"
+
+
+def opportunity_of_the_day():
+    """فقرة «فرصة اليوم» للتقرير الصباحي — Tavily + فابل (استدعاء واحد باليوم فقط)."""
+    if not tools.TAVILY_API_KEY:
+        return None
+    news = tools.web_search(OP_QUERY, max_results=4)
+    if not news:
+        return None
+    try:
+        out = brain.chat([
+            {"role": "system", "content":
+             "أنت الشريك الذكي للدكتور. عطيك ترندات اليوم — دورك: فرصة واحدة عملية يقدر يبلشها اليوم بنفس أدواته "
+             "(بوت تيليجرام مع فابل 5.2، نشر على السوشيال، GitHub). الشكل: «💡 فرصة اليوم: عنوان» ثم 3 جمل قصيرة: شو هي، ليش هلأ، أول خطوة. "
+             "باللهجة الشامية، بلا فذلكة."},
+            {"role": "user", "content": f"ترندات اليوم:\n{news}"},
+        ], temperature=0.7, max_tokens=350)
+        return out.strip()
+    except brain.BrainError:
+        return None
+
+
+def handle_debate(chat_id, question):
+    send_text(chat_id, "⚖️ بدست المحكمة: متفائل × متشائم → القاضي…")
+    optimist = brain.chat([
+        {"role": "system", "content": "أنت محامي الفرصة: دورك الوحيد تلتقط الأسباب الإيجابية والربح والتوقيت — بواقعية بلا تهويل. 4 أسطر كحد أقصى، باللهجة الشامية."},
+        {"role": "user", "content": question}], temperature=0.6, max_tokens=350)
+    pessimist = brain.chat([
+        {"role": "system", "content": "أنت محامي الخطر: دورك الوحيد تلتقط المخاطر والعيوب والخسارة والتوقيت الغلط — بواقعية بلا تشاؤم مرضي. 4 أسطر كحد أقصى، باللهجة الشامية."},
+        {"role": "user", "content": question}], temperature=0.6, max_tokens=350)
+    judge = brain.chat([
+        {"role": "system", "content": "أنت القاضي الحكيم: اسمع موقف المتفائل والمتشائم وارمِ حكمك النهائي: القرار الصح + شرط واحد للحماية. 5 أسطر، باللهجة الشامية."},
+        {"role": "user", "content": f"القرار المطروح: {question}\n\nالمتفائل:\n{optimist}\n\nالمتشائم:\n{pessimist}"}],
+        temperature=0.5, max_tokens=450)
+    db.add_message(chat_id, "assistant", judge, agent="القاضي")
+    return f"🟢 المتفائل:\n{optimist}\n\n🔴 المتشائم:\n{pessimist}\n\n⚖️ القاضي:\n{judge}"
+
+
 def handle_github_edit(chat_id, repo, path, instruction):
     if not github.configured():
         return "GitHub لسا مو موصول — الدكتور يحط GITHUB_TOKEN بـ ~/jarvis-ceo.env وبرجع بجرب."
@@ -492,6 +531,34 @@ def handle_message(msg):
     if low in ("/integrations", "شو موصول", "الموصول", "الوصلات", "متصلات"):
         send_text(chat_id, integrations_status())
         return
+    if low.startswith(("احفظ ", "/note ")):
+        note = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
+        if not note:
+            send_text(chat_id, "اكتب شو بدك أحفظ — مثال: «احفظ: عقد العيادة بـ150 دولار»")
+            return
+        db.notes_add(note, f"chat:{chat_id}")
+        send_text(chat_id, f"حفظتها بالذاكرة العميقة 🧠 ({db.notes_count()} ملاحظة) — اسألني «تذكر …» وقت ما بدك")
+        return
+    if low.startswith(("تذكر ", "/recall ")):
+        query = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
+        hits = db.notes_search(query, 4)
+        if not hits:
+            send_text(chat_id, "ما لقيت شي بالذاكرة بهالموضوع.")
+        else:
+            lines = ["🧠 من ذاكرتي:"] + [f"• {h['text'][:300]}" for h in hits]
+            send_text(chat_id, "\n".join(lines))
+        return
+    if low.startswith(("ناقش قرار", "ناظرني", "/debate ", "ناقشني")):
+        q = re.split(r"[:：]", text, maxsplit=1)
+        question = q[1].strip() if len(q) > 1 else text.split(None, 1)[-1].strip()
+        if len(question) < 6:
+            send_text(chat_id, "اكتب القرار المطروح — مثال: «ناقش قرار: استثمر بـ 2000$ بوت تداول الذكاء؟»")
+            return
+        try:
+            send_text(chat_id, handle_debate(chat_id, question))
+        except brain.BrainError as e:
+            send_text(chat_id, f"العقل مشغول هلأ: {e}")
+        return
     if low in ("/inbox", "ايميلاتي", "إيميلي", "وريني الايميل", "وريني الإيميل", "الرسايل"):
         if not gmail.configured():
             send_text(chat_id, "جيميل لسا مو موصول — الدكتور يحط GMAIL_ADDRESS و GMAIL_APP_PASSWORD بـ ~/jarvis-ceo.env")
@@ -634,6 +701,9 @@ HELP = (
     "شو موصول — حالة كل الوصلات (GitHub/جيميل/السوشيال)\n"
     "ربيوزاتي — آخر ريبوز GitHub تبعك\n"
     "ايميلاتي — إيميلاتك غير المقروءة\n"
+    "احفظ: <أي شي> — بتحفظها بالذاكرة العميقة 🧠 | تذكر <كلمة> — بحث فوري\n"
+    "ناقش قرار: <السؤال> — المتفائل × المتشائم × القاضي ⚖️\n"
+    "فرصة اليوم — بتقرير الصباح (إذا Tavily مربوط)\n"
     "حالة — إحصائيات سريعة + الإنفاق اليوم\n"
     "مهام — المهام المفتوحة\n"
     "تراجع — الغاء آخر تعديل عملته على حالي\n"
@@ -672,7 +742,10 @@ def morning_report(chat_id):
     facts = gather_facts("ذهب بيتكوين طقس")
     st = db.stats()
     open_t = db.open_tasks(5)
+    opportunity = opportunity_of_the_day()
     lines = ["☀️ صباح الخير دكتور — معك جارفس:", "", facts]
+    if opportunity:
+        lines += ["", opportunity]
     if open_t:
         lines += ["", "📋 مهام مفتوحة:"] + [f"- ({t['agent']}) {t['prompt'][:90]}" for t in open_t]
     if gmail.configured():
