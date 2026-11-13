@@ -30,6 +30,11 @@ BASE_SYSTEM = """أنت «جارفس» — مدير «الدكتور» التن�
 - لما يقول «خلص» / «روح» / «سكر» / «باي» / «مش وقتها» — احكيلي بسرعة «تسلم يا دكتور، باي» واستن نفسك متصلة — المكالمة بتسكر تلقائياً.
 - ممنوع أي إرسال/نشر/شراء/حذف بلا موافقة صريحة.
 - المكالمة صوتية فقط — لا إيميلات ولا منشورات بدون إذنه.
+- «ورجيني/فرّجيني/افتح» → افتح بطاقة (صورة/موقع/قائمة/نص) بالأداة open_card — لا توصف لي بس.
+- «سكر/قفل/خلاص القايمة» → close_panel وارجع للمحادثة.
+- «ميوت» / «اسكت» / «بلا كلام» → set_quiet_mode(true) — ما تحكي غير لما يقول «شيل الميوت» أو «رجع».
+- «شيل الميوت» / «رجع حكي» → set_quiet_mode(false).
+- لما تفتح بطاقة — احكي سطر واحد بالضبط («فتحتلها X») — لا تطل شرح واترك الشاشة تتكلم.
 """
 
 
@@ -65,6 +70,62 @@ def _greeting_instruction():
         "وعلّق عليها بشكل طبيعي (التعب/الحماس/الجو/الضجة)، واساله شو بدي مني اليوم أو بخادمك هلأ. "
         "تصرف كصديق مقرب بيرد على نداء، مو موظف روبوتي."
     )
+
+
+
+async def _publish_data(payload):
+    """ينشر أمر لواجهة المكالمة على تيليجرام → Meet custom (topic=jarvis)."""
+    import json
+    try:
+        room = agents.get_job_context().room
+        await room.local_participant.publish_data(
+            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            reliable=True, topic="jarvis")
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"publish_data: {e}")
+        return False
+
+
+@function_tool
+async def open_card(context: RunContext, kind: str, title: str = "", url: str = "",
+                    text: str = "", caption: str = "", items: str = ""):
+    """يفتح بطاقة على شاشة الدكتور: kind=image (url+caption) أو web (url) أو text (text) أو list (items مفصولة بفواصل)."""
+    if kind == "image" and url:
+        await _publish_data({"type": "show", "kind": "image", "title": title or "صورة", "url": url, "caption": caption})
+        return "فتحتلك صورة — شفها على الشاشة."
+    if kind == "web" and url:
+        await _publish_data({"type": "show", "kind": "web", "title": title or "موقع", "url": url})
+        return "فتحتلك الموقع — شفه."
+    if kind == "text":
+        await _publish_data({"type": "show", "kind": "text", "title": title, "text": text})
+        return "عرضتلك ياه."
+    if kind == "list":
+        parts = [p.strip() for p in items.replace("،", "\n").replace(",", "\n").splitlines() if p.strip()]
+        await _publish_data({"type": "show", "kind": "list", "title": title or "قائمة", "items": parts[:20]})
+        return "فتحتلك القائمة."
+    return "ما فهمت شو العرض بدي."
+
+
+@function_tool
+async def close_panel(context: RunContext):
+    """يسكر البطاقة ويرجع المكالمة كاملة بريئة (مثلاً لما الدكتور يحكي «سكر القايمة»)."""
+    await _publish_data({"type": "close_panel"})
+    return "سكرت."
+
+
+@function_tool
+async def set_quiet_mode(context: RunContext, quiet: bool):
+    """ميوت/شيل ميوت — لما الدكتور يحكي «ميوت» أو «اسكت» أو «شيل الميوت»."""
+    await _publish_data({"type": "set_volume", "value": 0 if quiet else 1})
+    return "سكت خلص." if quiet else "رجعت أحكي."
+
+
+@function_tool
+async def set_caption(context: RunContext, text: str):
+    """يعرض نص ببطاقة صغيرة بدون فيديو — مثلاً سعر أو رقم بالسياق المباشر."""
+    await _publish_data({"type": "summary", "text": text})
+    return "معروض عشاشيك."
 
 
 @function_tool
@@ -115,8 +176,27 @@ async def entrypoint(ctx: JobContext):
     )
     agent = Agent(
         instructions=BASE_SYSTEM + _profile_context(),
-        tools=[end_call, save_secret, save_note],
+        tools=[end_call, save_secret, save_note, open_card, close_panel, set_quiet_mode, set_caption],
     )
+    import asyncio
+    import json as _json
+
+    def _on_data(packet, *_):
+        try:
+            data = packet.data if isinstance(packet.data, (bytes, bytearray)) else bytes(packet.data)
+            msg = _json.loads(data.decode("utf-8"))
+        except Exception:
+            return
+        if msg.get("type") == "summary_request":
+            asyncio.ensure_future(session.generate_reply(
+                instructions="لخّص المكالمة بفحوى قصيرة (٥ جمل كحد أقصى) مع أي مهام بيني وبين الدكتور — حتى لو النتيجة مريرة أو ما بتعجب."
+            ))
+
+    try:
+        ctx.room.on("data_received", _on_data)
+    except Exception as e:  # noqa: BLE001
+        print(f"data listener: {e}")
+
     await session.start(agent=agent, room=ctx.room)
     await session.generate_reply(instructions=_greeting_instruction())
 

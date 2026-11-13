@@ -106,14 +106,22 @@ def build_call_url():
         return None
 
 
-def _call_markup():
+def _call_keyboard():
+    """لوحة ثابتة أسفل المحادثة — الدكتور يكبس «📞 المكالمة» متى بدي."""
+    return {"keyboard": [
+        [{"text": "📞 المكالمة"}, {"text": "حالة"}],
+        [{"text": "وكلائي"}, {"text": "شو لازم اضيف"}],
+    ], "resize_keyboard": True, "is_persistent": True}
+
+
+def _call_url_markup():
     url = build_call_url()
-    return {"inline_keyboard": [[{"text": "📞 المكالمة", "url": url}]]} if url else None
+    return {"inline_keyboard": [[{"text": "🎙️ افتح المكالمة الآن", "url": url}]]} if url else None
 
 
 def send_text(chat_id, text, reply_markup=None):
     text = text or "…"
-    markup = reply_markup if reply_markup else _call_markup()
+    markup = reply_markup
     chunks = [text[i:i + 3800] for i in range(0, len(text), 3800)] or ["…"]
     for n, chunk in enumerate(chunks):
         params = {"chat_id": chat_id, "text": chunk}
@@ -606,7 +614,14 @@ def handle_message(msg):
 
     low = text.lower().strip()
     if low in ("/start", "start", "اهلا", "مرحبا", "هاي", "هلا"):
-        send_text(chat_id, "أهلاً دكتور 👋 " + HELP.split("\n", 1)[1])
+        send_text(chat_id, "أهلاً دكتور 👋 " + HELP.split("\n", 1)[1], reply_markup=_call_keyboard())
+        return
+    if low in ("📞 المكالمة", "/call", "مكالمة", "بدي مكالمة", "اتصل", "اكبس مكالمة"):
+        markup = _call_url_markup()
+        if markup:
+            send_text(chat_id, "الخط جاهز 🎧 اكبس وانت داخل — أول ما تفتح المكالمة جارفس بيسلم عليك حسب الساعة والجو.", reply_markup=markup)
+        else:
+            send_text(chat_id, "LiveKit لسا مش مضبوط — اكتب «شو لازم اضيف» وضيف LIVEKIT_URL وLIVEKIT_API_KEY وLIVEKIT_API_SECRET بـ ~/jarvis-ceo.env وبعدها sudo systemctl restart jarvis-ceo")
         return
     if low in ("/help", "مساعدة", "اوامر", "أوامر", "شو بتعرف تعمل"):
         send_text(chat_id, HELP)
@@ -965,6 +980,7 @@ HELP = (
     "خصوصي — انسى كل المحادثة\n"
     "أي تعديل على نفسك — احكي طبيعي («غيّر/أضف/صلح/احذف…») وبطبقه بحالي\n"
     "نشر/إرسال — بصيغلك وبيعطيك زر ✅ قبل ما ينفذ\n"
+    "📞 المكالمة — يفتحلك خط مباشر معي بكبسة وحدة (صوت بس، بلا كتابة)\n"
     "مساعدة — هالرسالة"
 )
 

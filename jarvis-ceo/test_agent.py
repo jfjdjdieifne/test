@@ -511,7 +511,7 @@ class TestCallUrl(unittest.TestCase):
     def test_no_creds_returns_none(self):
         import agent
         self.assertIsNone(agent.build_call_url())
-        self.assertIsNone(agent._call_markup())
+        self.assertIsNone(agent._call_url_markup())
 
     def test_with_creds_builds_meet_url_and_jwt(self):
         try:
