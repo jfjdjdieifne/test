@@ -33,7 +33,7 @@
 | `call.html` | صفحة المكالمة (MediaRecorder → `/voice-ask`، و`/ask` للنص، و`speechSynthesis` أو `/tts` للنطق) |
 | `live.html` + `livepage.mjs` | صفحة اللايف الحقيقي `/live` — LiveKit WebRTC + توكن من `/livekit-token`. عدّل `live.html` ثم `node -e "…"` لتوليد `livepage.mjs` |
 | `livekit-agent/` | Agent Python للّلايف الكامل (Coarena + Edge TTS + Groq Whisper + Silero VAD) — دليله `livekit-agent/README.md` |
-| `test.mjs` | 52 اختباراً بلا شبكة حقيقية (fetch وهمي). التشغيل: `node test.mjs` — **يجب أن تبقى 52/52** |
+| `test.mjs` | 56 اختباراً بلا شبكة حقيقية (fetch وهمي). التشغيل: `node test.mjs` — **يجب أن تبقى 56/56** |
 | `apps-script-email.gs` | بوابة Gmail عبر Google Apps Script — **لم ينشرها المالك بعد** |
 | `README_AR.md` | دليل الإعداد الأصلي (wrangler login، KV، النشر) |
 
@@ -102,7 +102,7 @@ git fetch origin
 git status --short --branch        # تأكد 0 0 مع origin واكتشاف أي تغيّر خارجي
 # عدّل، ثم:
 node --check agency-cloudflare/worker.js   # أو import عبر node -e
-node agency-cloudflare/test.mjs            # يجب: 52/52
+node agency-cloudflare/test.mjs            # يجب: 56/56
 git add -A && git commit -m "…" && git push origin arena/749f0c04-test
 sleep ~150
 gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | select(.name=="Workers Builds: jarvis-24-7") | {status, conclusion}'
@@ -213,6 +213,6 @@ gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | se
 - `6f6af53` Consent gate + `/tasks` + `/clear_tasks` + skill 3-ضربات.
 - `77679f1` عقل مجاني متجدد (Workers AI + Kimi K2 + Pollinations) + عبرة Groq/Gemini + حارس الملخصات الفارغة.
 - `d7fd690` رؤية وصور + قارئ xlsx/docx + STT متجدد + TTS شامي عبر Edge TTS + CallMeBot بصراحة.
-- **الحالي (2026-11-13)** `feat(live+pool)`: Coarena أساس تلقائي + **مجمع مفاتيح round-robin** (COARENA_API_KEY…_20 / COARENA_EXTRA_KEYS) + سقوط سلس + `/coarena status|off|limit` (المجمع مقنّع مع رصيد كل مفتاح) + `/livekit-token` (JWT HS256 WebCrypto) + `/live` (**بتبديل تلقائي مشروع 1→2**) + `livekit-agent/` (Coarena←Edge TTS **أو Polly Zayd/Hala** (JARVIS_TTS)←Groq Whisper←Silero) + Linphone/LiveKit ب `[vars]` + **52/52 اختباراً**.
+- **الحالي (2026-11-13)** `feat(live+pool)`: Coarena أساس تلقائي + **مجمع مفاتيح round-robin** (COARENA_API_KEY…_20 / COARENA_EXTRA_KEYS) + **`/coarena raise` أو «ارفع حدود كل المفاتيح» بالعربي** يرفع الحد لكل المفاتيح معاً مع تشخيص عربي لكل مفتاح فشل + سقوط سلس + `/coarena status|off|limit` (المجمع مقنّع مع رصيد كل مفتاح) + `/livekit-token` (JWT HS256 WebCrypto) + `/live` (**بتبديل تلقائي مشروع 1→2**) + `livekit-agent/` (Coarena←Edge TTS **أو Polly Zayd/Hala** (JARVIS_TTS)←Groq Whisper←Silero) + Linphone/LiveKit ب `[vars]` + **56/56 اختباراً**.
 
 أي تعارض بين هذا الملف والكود: **الكود هو الحَكم**، وحدّث هذا الملف معه في نفس الـ commit.

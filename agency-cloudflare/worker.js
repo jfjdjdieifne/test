@@ -1297,19 +1297,60 @@ async function callGroqSmart(convo, system, env, key) {
   return out;
 }
 
-async function requestCoarenaDailyLimit(env, usd) {
-  const ordered = await coarenaOrderedPool(env);
-  if (!ordered.length) return { ok: false, message: "Coarena مو مربوط — لا بأي مفتاح (لا COARENA_API_KEY ولا KV)." };
-  let lastError = "لا استجابة";
-  for (const entry of ordered) {
-    try {
-      const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${entry.key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: Math.max(5, Math.min(50, Number(usd) || 10)) }), signal: AbortSignal.timeout(10000) });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok) return { ok: true, data: d, keyLabel: entry.label };
-      lastError = String(d?.error?.message || d?.message || `HTTP ${r.status}`).slice(0, 500);
-    } catch (e) { lastError = String(e?.message || e).slice(0, 300); }
+function coarenaErrorAdvice(status, message) {
+  const m = String(message || "").toLowerCase();
+  if (/verif|تأكيد|توثيق|بريد|email/.test(m)) return "هالحساب يحتاج تأكيد بريد إلكتروني من Coarena نفسك — ما بقدر أتحقق نيابة عنك (افتح إيميلك واتبع الرابط).";
+  if (/pending|review|مراجعة|قيد/.test(m)) return "فيه طلب لسا قيد المراجعة عند Coarena — بستنى القرار الرسمي، طلب جديد ما بيسرّع شي.";
+  if (/429|rate|cooldown|too many|طلبات/.test(m) || status === 429) return "Coarena عم توازن الوتيرة (cooldown) — مو شرط ناقص؛ حاول بعد ساعات.";
+  if (status === 401 || status === 403 || /unauthor|invalid|revoked|unknown key|authentication/.test(m)) return "المفتاح مو معروف أو ملغى عند Coarena — بدك تستبدله بمفتاح من حسابك بكوارينا.";
+  if (/already|سبقت|مكرر|re-?quest.*exists/.test(m)) return "فيه طلب مطابق محفوظ مسبقاً — راجع لوحة Limits عند Coarena.";
+  if (/max|أقصى|cap/.test(m) && /50|max|أقصى/.test(m)) return "وصل الحد الأقصى المسموح بهذا المفتاح ($50/يوم).";
+  if (status === 0 || /abort|timeout|network|fetch failed/.test(m)) return "مهلة/مشكلة شبكة من هون — المتل: جرب كمان شوي.";
+  return "ما بقدر أقرر الشرط الناقص من هالرد — الرسالة الحقيقية: «" + String(message).slice(0, 120) + "»";
+}
+
+async function raiseCoarenaLimitsForAll(env, usd) {
+  const target = Math.max(5, Math.min(50, Number(usd) || 50));
+  const info = await coarenaPoolInfo(env);
+  const results = [];
+  for (const entry of info) {
+    let ok = false, status = 0, message = "";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${entry.key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: target }), signal: AbortSignal.timeout(10000) });
+        const d = await r.json().catch(() => ({}));
+        status = r.status;
+        if (r.ok) { ok = true; message = "وصل الطلب"; break; }
+        message = String(d?.error?.message || d?.message || `HTTP ${r.status}`).slice(0, 300);
+        if (r.status >= 400 && r.status < 500) break; // 4xx: لا تعيد الطلب — الشرط ناقص، مو الشبكة
+      } catch (e) {
+        status = 0;
+        message = String(e?.message || e).slice(0, 300);
+      }
+    }
+    results.push({ index: entry.index, label: entry.label, masked: entry.masked, ok, status, message, advice: ok ? "" : coarenaErrorAdvice(status, message) });
   }
-  return { ok: false, message: lastError };
+  return { target, results };
+}
+
+function coarenaRaiseReportText(res) {
+  if (!res.results.length) return "Coarena مو مربوط — ما في أي مفتاح بالمجمع (لا COARENA_API_KEY ولا KV). ضيف مفتاحك ب wrangler.toml (COARENA_API_KEY / COARENA_API_KEY_2 …) أو بـ /coarena key.";
+  const lines = [`⬆️ طلب رفع الحد اليومي إلى $${res.target} — مجمّع المفاتيح كله (${res.results.length}):`];
+  let good = 0;
+  for (const r of res.results) {
+    if (r.ok) { good++; lines.push(`✅ #${r.index} ${r.masked} — وصل الطلب`); }
+    else lines.push(`❌ #${r.index} [${r.label}] ${r.masked} — ${r.message || "فشل غير معروف"}\n   ← ${r.advice}`);
+  }
+  lines.push(`المجموع: ✅ ${good} وصل | ❌ ${res.results.length - good} ما وصل`);
+  lines.push("⏳ الموافقة عند Coarena مو فورية (ساعات إلى أيام) — تحقق لاحقاً بـ /coarena status أو من لوحة Coarena Limits. المفاتيح المرفوضة ما بتتكرر لحالها — لازم الـ شرط ينحل أولاً.");
+  return lines.join("\n").slice(0, 3500);
+}
+
+function parseCoarenaRaisePhrase(text) {
+  const t = String(text || "");
+  if (!/(?:ارفع|رفع|رافع|زيد|زيادة|زد)[^\n]{0,40}(?:الحد|حدود|الرصيد|رصيد|الكوتا|كوتا)/i.test(t)) return null;
+  const target = /(?:50|٥٠)/.test(t) ? 50 : (/(?:10|١٠)/.test(t) ? 10 : 50);
+  return target;
 }
 
 async function getCoarenaLimits(env, keyOverride) {
@@ -1743,10 +1784,8 @@ async function processTaskQueue(env, maxSteps) {
 
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
-  if ((await primaryIntelligence(env)) === "coarena" && /(?:ارفع|رفع|زيد|زيادة).{0,30}(?:الحد|الرصيد).{0,20}(?:10|50|١٠|٥٠)|(?:10|50|١٠|٥٠).{0,30}(?:دولار|الحد)/i.test(String(userText))) {
-    const target = /(?:50|٥٠)/.test(String(userText)) ? 50 : 10;
-    const asked = await requestCoarenaDailyLimit(env, target);
-    return asked.ok ? `تمام دكتور، قدمت طلب رفع حد Coarena اليومي إلى $${target} عبر الـAPI الرسمي. الموافقة مو فورية؛ رح راقب /limits وأخبرك لما يتغير.` : `ما قدرت أقدم الطلب: ${asked.message}`;
+  if (parseCoarenaRaisePhrase(String(userText)) != null) {
+    return coarenaRaiseReportText(await raiseCoarenaLimitsForAll(env, parseCoarenaRaisePhrase(String(userText))));
   }
   if ((await primaryIntelligence(env)) === "coarena" && /(?:قديش|كم|اديش|شو).{0,25}(?:رصيد|باقي|استهلاك|كريديت)|(?:رصيد|كريديت).{0,25}(?:قديش|كم|باقي)/i.test(String(userText))) {
     const balance = coarenaBalanceText(await getCoarenaLimits(env));
@@ -2207,7 +2246,7 @@ const WELCOME = [
   "/arena test — تشخيص المحركات (يقولك مين شغال فعلياً)",
   "/arena_ask <سؤال> — سؤال مباشر عبر Arena (بدون أي مزود آخر)",
   "/voicecall — رابط آمن لمكالمة جارفس الصوتية",
-  "/coarena — العقل المجاني (Claude Fable 5.2): key/status/model/on/off/limit 50",
+  "/coarena — العقل المجاني (Claude Fable 5.2): key/status/model/on/off/raise 50 — يرفع حد **كل** المفاتيح معاً (أو اكتب بالعربي: «ارفع حدود كل المفاتيح»)",
   "/live — مكالمة لايف حقيقية كاملة عبر LiveKit (تحتاج تشغيل Agent على جهازك)",
   "/call <نص> — رنّة تيليجرام فورية عبر CallMeBot",
   "/health — فحص أني شغال",
@@ -2344,8 +2383,9 @@ async function handleCommand(text, env, chatId) {
       if (mm) { await kvPut(env, "coarena_model_v1", mm[1]); await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, `✅ نموذج Coarena: ${mm[1]}`); return true; }
       if (/^on$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, "✅ Coarena صار المحرك الأساسي."); return true; }
       if (/^off$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "arena"); await sendMessage(env, chatId, "✅ رجعت لـ Arena كمحرك أساسي. (Coarena بيشتغل بس لما يكون هو الأساسي — /coarena on ليرجع)."); return true; }
-      if (/^limit\s+(\d+)$/i.test(arg)) { const usd = Number(arg.match(/^limit\s+(\d+)$/i)[1]); const res = await requestCoarenaDailyLimit(env, usd); await sendMessage(env, chatId, res.ok ? `✅ وصل طلب رفع الحد اليومي إلى $${Math.min(50, Math.max(5, usd))} — يبقى معلّقاً للمراجعة عند Coarena.` : `❌ الطلب ما نجح: ${res.message}`); return true; }
-      await sendMessage(env, chatId, "الأوامر: /coarena key NEW_KEY | /coarena status | /coarena model MODEL_ID | /coarena on | /coarena off | /coarena limit 50"); return true;
+      const raiseArg = arg.match(/^(?:limit|raise)(?:\s+(\d+))?$/i);
+      if (raiseArg) { const usd = Number(raiseArg[1]) || 50; await sendMessage(env, chatId, coarenaRaiseReportText(await raiseCoarenaLimitsForAll(env, usd))); return true; }
+      await sendMessage(env, chatId, "الأوامر: /coarena key NEW_KEY | /coarena status | /coarena model MODEL_ID | /coarena on | /coarena off | /coarena raise [50]  ← يرفع حد **كل** مفاتيح المجمع معاً"); return true;
     }
     case "/hyperbrowser": {
       const hm = arg.match(/^key\s+(.+)$/i);
@@ -2767,6 +2807,8 @@ async function handleUpdate(update, env, ctx) {
   }
   if (!text) { await sendMessage(env, chatId, "أرسل نصاً، صوتاً، صورة أو ملف (txt/csv/xlsx/docx)."); return; }
   if (text.startsWith("/") && (await handleCommand(text, env, chatId))) return;
+  const raiseTarget = parseCoarenaRaisePhrase(text);
+  if (raiseTarget != null) { await sendMessage(env, chatId, coarenaRaiseReportText(await raiseCoarenaLimitsForAll(env, raiseTarget))); return; }
   const route = arenaRouteIntent(text);
   const namedAgent = await findMentionedAgent(env, text);
   if (/شو\s*(صار|وصل)|وين\s*(وصلنا|صرت)|اعطيني\s*(تقدم|ابديت)|update|progress/i.test(text)) {
