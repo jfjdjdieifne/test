@@ -150,14 +150,49 @@ function clearErr() { errBox.style.display = "none"; }
 
 let room = null, connected = false;
 
-async function fetchLiveKitToken() {
+async function fetchLiveKitToken(project) {
   const base = (localStorage.getItem(LS_URL) || location.origin).replace(/\/+$/, "");
   const key = localStorage.getItem(LS_KEY) || "";
-  const project = localStorage.getItem(LS_PROJECT) || "1";
-  const res = await fetch(base + "/livekit-token?project=" + encodeURIComponent(project), { headers: { "x-jarvis-key": key } });
+  const res = await fetch(base + "/livekit-token?project=" + encodeURIComponent(project || "1"), { headers: { "x-jarvis-key": key } });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
   return data;
+}
+
+function setupRoom(r, cfg) {
+  r.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+    if (track.kind === LivekitClient.Track.Kind.Audio) {
+      const el = track.attach();
+      el.autoplay = true;
+      document.body.appendChild(el);
+      setStatus("live", "جارفس يسمعك — احكِ طبيعي 🎙️");
+      addBubble("sys", "🔊 اتصلت بالمشروع " + cfg.project + " — جارفس (الـ Agent) دخل وحكيه يسمع.");
+    }
+  });
+  try {
+    if (LivekitClient.RoomEvent.TranscriptionReceived) {
+      r.on(LivekitClient.RoomEvent.TranscriptionReceived, (segments, participant) => {
+        const text = (segments || []).map((s) => s.text || "").join(" ").trim();
+        if (!text) return;
+        const isLocal = participant && r.localParticipant && participant.identity === r.localParticipant.identity;
+        addBubble(isLocal ? "me" : "ai", text);
+      });
+    }
+  } catch (e) { console.log("transcription event غير مدعوم:", e); }
+  r.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
+    connected = false; callBtn.classList.remove("on"); callBtn.innerHTML = "🎙️<br>اتصل<br>بلايف";
+    setStatus("", "انتهت المكالمة");
+    addBubble("sys", "📴 انقطع الاتصال" + (reason ? " — " + reason : ""));
+  });
+}
+
+async function tryConnect(project) {
+  const cfg = await fetchLiveKitToken(project);
+  const r = new LivekitClient.Room({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  setupRoom(r, cfg);
+  await r.connect(cfg.serverUrl, cfg.token);
+  await r.localParticipant.setMicrophoneEnabled(true);
+  return { room: r, cfg };
 }
 
 async function connect() {
@@ -166,44 +201,27 @@ async function connect() {
   const key = localStorage.getItem(LS_KEY) || "";
   if (!key) { $("settingsPanel").classList.add("open"); throw new Error("جوا الإعدادات واكتب CALL_SECRET أولاً."); }
   setStatus("think", "عم أجهز التوكن…");
-  const cfg = await fetchLiveKitToken();
-
-  room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true, audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-
-  room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-    if (track.kind === LivekitClient.Track.Kind.Audio) {
-      const el = track.attach();
-      el.autoplay = true;
-      document.body.appendChild(el);
-      setStatus("live", "جارفس يسمعك — احكِ طبيعي 🎙️");
-      addBubble("sys", "🔊 اتصلت بالروم — جارفس (الـ Agent) دخل وحكيه يسمع.");
+  const preferred = localStorage.getItem(LS_PROJECT) || "1";
+  const order = preferred === "1" ? ["1", "2"] : [preferred];
+  let lastErr = null;
+  for (const project of order) {
+    try {
+      setStatus("think", "عم اتصل بالمشروع " + project + "…");
+      const res = await tryConnect(project);
+      room = res.room;
+      if (project !== preferred) addBubble("sys", "⚠️ المشروع " + preferred + " ما اشتغل — رجعنا تلقائياً على المشروع 2 (حصة ثانية).");
+      connected = true;
+      callBtn.classList.add("on");
+      callBtn.innerHTML = "📵<br>أنهِ<br>المكالمة";
+      setStatus("live", "متصل — إذا ما دخل جارفس خلال 10 ثواني شغّل الـ Agent (شوف الإعدادات ⚙️)");
+      addBubble("sys", "✅ دخلت روم «" + res.cfg.room + "» بالمشروع " + project + " — بانتظار دخول جارفس…");
+      return;
+    } catch (e) {
+      console.error("project " + project + " failed:", e);
+      lastErr = e;
     }
-  });
-  // النص (اختياري — إذا كان الـ Agent ينشر تفريغاً)
-  try {
-    if (LivekitClient.RoomEvent.TranscriptionReceived) {
-      room.on(LivekitClient.RoomEvent.TranscriptionReceived, (segments, participant) => {
-        const text = (segments || []).map((s) => s.text || "").join(" ").trim();
-        if (!text) return;
-        const isLocal = participant && room.localParticipant && participant.identity === room.localParticipant.identity;
-        addBubble(isLocal ? "me" : "ai", text);
-      });
-    }
-  } catch (e) { console.log("transcription event غير مدعوم:", e); }
-  room.on(LivekitClient.RoomEvent.Disconnected, (reason) => {
-    connected = false; callBtn.classList.remove("on"); callBtn.innerHTML = "🎙️<br>اتصل<br>بلايف";
-    setStatus("", "انتهت المكالمة");
-    addBubble("sys", "📴 انقطع الاتصال" + (reason ? " — " + reason : ""));
-  });
-
-  setStatus("think", "عم اتصل بالروم…");
-  await room.connect(cfg.serverUrl, cfg.token);
-  await room.localParticipant.setMicrophoneEnabled(true);
-  connected = true;
-  callBtn.classList.add("on");
-  callBtn.innerHTML = "📵<br>أنهِ<br>المكالمة";
-  setStatus("live", "متصل — إذا ما دخل جارفس خلال 10 ثواني شغّل الـ Agent (شوف الإعدادات ⚙️)");
-  addBubble("sys", "✅ دخلت الروم «" + cfg.room + "» كـ «" + cfg.identity + "» — بانتظار دخول جارفس…");
+  }
+  throw lastErr || new Error("تعذر الاتصال بأي مشروع LiveKit");
 }
 
 async function disconnect() {

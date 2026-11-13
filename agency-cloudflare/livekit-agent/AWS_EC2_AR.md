@@ -105,9 +105,16 @@ Environment=LIVEKIT_URL=ضع_wss_مالتك_هون
 Environment=LIVEKIT_API_KEY=ضع_المفتاح_هون
 Environment=LIVEKIT_API_SECRET=ضع_السر_هون
 Environment=COARENA_API_KEY=ضع_coa_هون
+Environment=COARENA_API_KEY_2=ضع_مفتاح_Coarena_الثاني_هون_أو_احذف_السطر
+Environment=COARENA_API_KEY_3=ضع_مفتاح_Coarena_الثالث_هون_أو_احذف_السطر
 Environment=COARENA_MODEL=claude-fable-5-2
 Environment=GROQ_API_KEY=ضع_gsk_هون
+Environment=JARVIS_TTS=edge
 Environment=EDGE_TTS_VOICE=ar-SY-LaithNeural
+# لما تختار Polly على AWS: JARVIS_TTS=polly + POLLY_VOICE=Zayd|Hala + AWS_REGION=us-east-2
+# Environment=JARVIS_TTS=polly
+# Environment=POLLY_VOICE=Zayd
+# Environment=AWS_REGION=us-east-2
 ExecStart=/home/ec2-user/test/agency-cloudflare/livekit-agent/.venv/bin/python agent.py start
 
 [Install]
@@ -118,13 +125,26 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now jarvis-live
 journalctl -u jarvis-live -f     # شوف السجلات — Ctrl+C لإيقاف العرض (الخدمة تظل شغالة)
 ```
-القيم هي نفسها الموجودة عندك ب `wrangler.toml [vars]` (LIVEKIT_* / COARENA_API_KEY) + مفتاح Groq المجاني الجديد من https://console.groq.com (بدون بطاقة):
+القيم هي نفسها الموجودة عندك ب `wrangler.toml [vars]` (LIVEKIT_* / COARENA_*) + مفتاح Groq المجاني الجديد من https://console.groq.com (بدون بطاقة):
 - `LIVEKIT_URL` = `LIVEKIT_WS_URL` (المشروع 1) أو قيمة المشروع 2 لو حابب
 - `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` = نفس الاسم ب `[vars]`
-- `COARENA_API_KEY` = نفس اللي ب `[vars]` (يبدأ بـ `coa_`)
+- `COARENA_API_KEY` (+ `_2`/`_3`… لو حبيت مجمع مفاتيح للـ Agent — توزيع round-robin على الـ Worker بين كل المفاتيح ب [vars] أصلاً)
 - `GROQ_API_KEY` = مفتاح جديد من console.groq.com — مجاني، بدون بطاقة
 
+**«كل المفاتيح على AWS» — الجرد الكامل:** ملف الخدمة على السيرفر هو المكان الوحيد اللي بتحط فيه: LIVEKIT_URL/KEY/SECRET (مشروع واحد يكفي للـ Agent — الثاني للصفحة `/live` كاحتياط وبتبديل تلقائي)، COARENA_API_KEY (+_2..)، GROQ_API_KEY، JARVIS_TTS/POLLY_* — **Linphone SIP/API-KEY بتظل ب [vars] للتوثيق بس — ما إلها استخدام بالـ Agent**. **مفتاح البوت التيليجرام والكرسي وDB ما بتحطها هون ولا بأي ملف بالمستودع** — bot يضل على Cloudflare منفصلاً. وملف الخدمة على السيرفر بـ root-readable، وبرة git تماماً.
+
 > **لا تكتب القيم بأي ملف بالمستودع، ولا ترسلها بتيليجرام.** ملف الخدمة `/etc/systemd/system/jarvis-live.service` موجود على السيرفر فقط.
+
+### الخطوة 5.5 — صوت AWS Polly (بشري، داخل حسابك — اختياري لكن موصى به)
+> **تنبيه أمين:** أمازون ما عندها صوت **سوري** — أصواتها العربية Neural هي **Zayd (ذكر، ar-AE خليجي/فصحى)** و**Hala (أنثى، ar-AE)**. إذا بدك **سوري ذكر حرفي، يضل Edge TTS `ar-SY-LaithNeural` هو الحل** (الافتراضي، وشغّال الآن).
+
+**التبديل لصوت Polly (15 دقيقة):**
+1. IAM → Roles → **Create role** → AWS service → EC2 → attach policy **AmazonPollyReadOnlyAccess** → اسم `jarvis-polly` → Create.
+2. EC2 → **Instances** → `jarvis-live` → **Actions → Security → Modify IAM role** → اختر `jarvis-polly` → Update. (هيك الـ Agent بياخد صلاحية Polly بدون أي مفتاح AWS بملف.)
+3. عدّل السيرفر: `sudo nano /etc/systemd/system/jarvis-live.service` → خلّي `JARVIS_TTS=polly` و أضف `POLLY_VOICE=Zayd` و`AWS_REGION=us-east-2` → `sudo systemctl daemon-reload && sudo systemctl restart jarvis-live`.
+4. `journalctl -u jarvis-live -f` ← لازم يطلع `polly-1` كمصدر صوت بدون أخطاء.
+
+**الكلفة:** Neural Polly فيها **1M حرف/شهر مجاني لأول 12 شهر** للحسابات الجديدة — استخدامك الشخصي ≈ 5–50k حرف/شهر → **$0 فعلياً**. وبعدها: سنتات معدودة.
 
 ### الخطوة 6 — جرّب
 1. من تيليجرام: `/live` → يتأكد إن LiveKit مضبوط.

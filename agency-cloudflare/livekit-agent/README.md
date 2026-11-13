@@ -39,6 +39,10 @@ export LIVEKIT_API_KEY=...                             # API key
 export LIVEKIT_API_SECRET=...                          # API secret
 export COARENA_API_KEY=coa_...                         # نفس COARENA_API_KEY ب [vars]
 export GROQ_API_KEY=gsk_...                            # https://console.groq.com — مجاني، بدون بطاقة
+# الصوت: الافتراضي Edge TTS السوري. أو Polly على حسابك AWS (Hala/Zayd ar-AE — لا يوجد سوري بـ Polly):
+# export JARVIS_TTS=polly
+# export POLLY_VOICE=Zayd                              # Zayd (ذكر) · Hala (أنثى)
+# export AWS_REGION=us-east-2                          # على EC2: IAM Role (AmazonPollyReadOnlyAccess) بدون مفاتيح؛ محلياً: AWS_ACCESS_KEY_ID/SECRET لليزر الاختياري بـ IAM Polly فقط
 ```
 (القيم الحقيقية عندك — ما في شي هون، فقط أسماء المتغيرات. أو انسخ `.env.example` → `.env` واملأه.)
 

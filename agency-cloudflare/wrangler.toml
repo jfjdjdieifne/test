@@ -52,6 +52,15 @@ LIVEKIT_ALT_WS_URL = "wss://sa-xth8q7ie.livekit.cloud"
 LIVEKIT_ALT_API_KEY = "APIhXHrv3AnF4TV"
 LIVEKIT_ALT_API_SECRET = "jDuNK6yzq6PgHJc3HD2ztrnisjz5nndaWY1iy4eAW4U"
 
+# مفاتيح Coarena إضافية (اختياري — المالك بيضيف أكثر من مفتاح حتى ما يخلص الرصيد أبداً)
+# مجمع round-robin: كل مفتاح ياخذ حصته، وفشل واحد = انتقال للتالي تلقائياً، والكل ينضاف للرصيد اليومي
+# الصق كل مفتاح بمتغير منفصل، أو COARENA_EXTRA_KEYS بقيم مفصولة بفواصل
+# COARENA_API_KEY_2 = "coa_ضع_مفتاحك_الثاني_هون"
+# COARENA_API_KEY_3 = "coa_ضع_مفتاحك_الثالث_هون"
+# COARENA_API_KEY_4 = "coa_ضع_مفتاحك_الرابع_هون"
+# COARENA_API_KEY_5 = "coa_ضع_مفتاحك_الخامس_هون"
+# COARENA_EXTRA_KEYS = "coa_aaa,coa_bbb,coa_ccc"
+
 # ===== Linphone SIP — هوية SIP شخصية (التفاصيل وحدودها ب README_AR.md قسم Linphone) =====
 # المفتاح مقيد على IP 89.124.8.30 — يعمل من جهازك فقط، مش من Cloudflare Worker.
 LINPHONE_SIP_URI = "sip:moudy.moray@sip.linphone.org"

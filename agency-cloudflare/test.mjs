@@ -5,11 +5,11 @@
 import worker from "./worker.js";
 import assert from "node:assert/strict";
 
-const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0, coarenaCalls: 0, coarenaDown: false };
+const state = { sent: [], fetches: [], kv: new Map(), geminiQueue: [], tavilyCalls: 0, callmebot: 0, auditHits: 0, appsScript: 0, arenaCalls: 0, arenaHealthFails: 0, arenaDown: false, geminiCalls: 0, coarenaCalls: 0, coarenaDown: false, coarenaAuths: [], coarenaDownKeys: [] };
 
 function reset() {
   state.sent = []; state.fetches = []; state.kv = new Map();
-  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0; state.coarenaCalls = 0; state.coarenaDown = false;
+  state.geminiQueue = []; state.tavilyCalls = 0; state.callmebot = 0; state.auditHits = 0; state.appsScript = 0; state.arenaCalls = 0; state.arenaHealthFails = 0; state.arenaDown = false; state.geminiCalls = 0; state.coarenaCalls = 0; state.coarenaDown = false; state.coarenaAuths = []; state.coarenaDownKeys = [];
 }
 
 const mockKV = () => ({
@@ -49,7 +49,10 @@ global.fetch = async (input, init = {}) => {
   if (url.startsWith("https://script.google.com/")) { state.appsScript++; return j({ ok: true }); }
   if (url === "https://coarena.ai/api/v1/chat/completions") {
     state.coarenaCalls++;
-    if (state.coarenaDown) return j({ error: { message: "quota exceeded" } }, 429);
+    const auth = String((init && init.headers && (init.headers.authorization || init.headers.Authorization)) || "");
+    state.coarenaAuths.push(auth);
+    const bearer = auth.replace(/^Bearer\s+/i, "");
+    if (state.coarenaDown || state.coarenaDownKeys.includes(bearer)) return j({ error: { message: "quota exceeded" } }, 429);
     return j({ choices: [{ index: 0, message: { role: "assistant", content: "رد من Coarena المجاني" }, finish_reason: "stop" }] });
   }
   if (url === "https://coarena.ai/api/v1/limits") return j({ usd_remaining: 4.86, usd_per_day: 5 });
@@ -700,5 +703,26 @@ await t("50) /live تعرض صفحة اللايف وسليمة", async () => {
   assert.ok(html.includes("/livekit-token"), "الصفحة ما تستدعي مسار التوكن");
 });
 
-console.log(`\n${passed}/50 اختبارات ناجحة`);
+
+await t("51) مجمع Coarena round-robin: مفتاحان يتاوبان على المحادثات", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_firstkey00000000000000", COARENA_API_KEY_2: "coa_secondkey00000000000000", GEMINI_API_KEY: "gem" });
+  await runWebhook(env, makeCtx(), tgUpdate("رسالة أولى"));
+  await runWebhook(env, makeCtx(), tgUpdate("رسالة ثانية"));
+  const used = new Set(state.coarenaAuths.map((a) => a.replace(/^Bearer\s+/i, "")));
+  assert.ok(used.has("coa_firstkey00000000000000"), "المفتاح الأول ما انستخدم");
+  assert.ok(used.has("coa_secondkey00000000000000"), "المفتاح الثاني ما انستخدم — التاوب ما اشتغل");
+  assert.equal(state.geminiCalls, 0, "Gemini اننادى رغم نجاح Coarena");
+});
+
+await t("52) مفتاح أول ميت (429) → يرد من الثاني بدون Gemini", async () => {
+  const env = makeEnv({ COARENA_API_KEY: "coa_downkey000000000000000000", COARENA_API_KEY_2: "coa_alivekey00000000000000000", GEMINI_API_KEY: "gem" });
+  state.coarenaDownKeys.push("coa_downkey000000000000000000");
+  const ctx = makeCtx();
+  await runWebhook(env, ctx, tgUpdate("سؤال عادي"));
+  assert.ok(state.coarenaAuths.some((a) => a.includes("coa_alivekey")), "المفتاح الحي ما انجرّب بعد فشل الأول");
+  assert.ok(sentTexts().join("\n").includes("رد من Coarena المجاني"));
+  assert.equal(state.geminiCalls, 0, "سقط للسلسلة رغم نجاح المفتاح الثاني");
+});
+
+console.log(`\n${passed}/52 اختبارات ناجحة`);
 process.exit(process.exitCode || 0);

@@ -130,6 +130,18 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<SUBDOMAIN>.wor
 - أوامر تيليجرام: `/coarena status` (الحدود والباقي وآخر فشل) · `/coarena on` · `/coarena off` (يرجع لـ Arena) · `/coarena model kimi-k3` (أي موديل من Coarena) · `/coarena key …` · **`/coarena limit 50`** (إعادة تقديم طلب رفع الحد إلى $50/يوم — طلبك الحالي «$50 a day and 300 requests/minute» لسا «Waiting for review» عند Coarena؛ لما ينوافق ما بتغيّر ولا سطر بالكود).
 - **الأمان**: بوجود `COARENA_API_KEY` ب `[vars]` صار بالـ git history — لما تختلي مفاتيحك (إنت ناوي تغيّرها كلها أصلاً)، دوّر هذا المفتاح من صفحة Coarena ثم حدّث `[vars]` أو `wrangler secret put COARENA_API_KEY`.
 
+### 🆕 الدفعة الأحدث (2026-11-13 مساءً): كل شي على AWS + صوت Polly + مجمع مفاتيح Coarena + تبديل LiveKit التلقائي
+
+**١) صوت AWS Polly (Hala/Zayd — Neural):** أمازون عندها صوتين عربيين Neural فقط — **Zayd (ذكر)** و**Hala (أنثى)**، وكلاهما **ar-AE (خليجي)** وفيهما فصحى. **لا يوجد صوت سوري بـ Polly** — السوري الذكر يضل `ar-SY-LaithNeural` (Edge، الافتراضي). للتبديل على الـ Agent: `JARVIS_TTS=polly` + `POLLY_VOICE=Zayd` + `AWS_REGION=us-east-2` + IAM Role بصلاحية `AmazonPollyReadOnlyAccess` على سيرفر EC2 (بدون مفاتيح AWS بأي ملف). التكلفة: **$0 عملياً** — 1M حرف/شهر مجاني على Neural لأول 12 شهر.
+
+**٢) مجمع مفاتيح Coarena (round-robin) — الرصيد ما بيخلص أبداً:** الـ Worker بوزّع المحادثات على **كل** مفاتيحك بالتناوب بدل مفتاح واحد: `COARENA_API_KEY` + `COARENA_API_KEY_2` … حتى `_20`، أو `COARENA_EXTRA_KEYS="coa_a,coa_b,coa_c"` — ولو سبق عملت `/coarena key` من تيليجرام فمفتاحك بالـ KV بينضم للمجمع تلقائياً. **فشل مفتاح = انتقال فوري للتالي** قبل سقوط السلسلة للاحتياطي. `/coarena status` يعرض المجمع مقنّعاً مع رصيد كل مفتاح. خلاصة: **أعطني كل المفاتيح اللي عندك (NEXT_KEYS) وأنا بضيفها وبتشوفها بنفس الأمر.**
+
+**٣) LiveKit مشروعان — الحصتان تبعوك متوفرتين:** صفحة `/live` فيها مختار المشروع (1/2) + **تبديل تلقائي**: إذا المشروع 1 فشل بالاتصال، يرجع تلقائياً للمشروع 2 مع إشعار، بدون تدخل. و`?project=2` متاح من `/livekit-token` مباشرة. القاعدة: إذا المكالمات صارت تتقطع بعد مدة طويلة → بدّل لـ 2؛ إذا لسا «Waiting» على 300 req/min... لا علاقة لـ LiveKit بها.
+
+**٤) «كل المفاتيح على AWS»:** على سيرفر EC2 — ملف الخدمة `/etc/systemd/system/jarvis-live.service` (root-readable، برّه git) فيه: LIVEKIT_* (مشروع واحد يكفي للـ Agent؛ الثاني احتياط الصفحة)، COARENA_API_KEY (+_2.. لمجمع الـ Agent إن أردت)، GROQ_API_KEY، وJARVIS_TTS/POLLY_*. **مفاتيح لا توضع هون إطلاقاً:** توكن البوت التيليجرام (البوت على Cloudflare مش على EC2)، أسرار DB/KV — مكانهن [vars]/KV فقط. **Linphone: ب [vars] للتوثيق — ما إلها استخدام بالـ Agent.**
+
+**٥) ملاحظة أمان ثابتة:** المفاتيح الجديدة بالمجمع بتزيد قيمة التشغيل لكن **تزيد حجم الكارثة التاريخية بالـ git** — خطة التدوير بعد تثبيت كل شي (تشمل LiveKit + Coarena + Linphone).
+
 ### المكالمة اللايف الحقيقية — الخيارات الثلاثة (مرتبة)
 1. **الأكمل (Full-duplex — تقاطع جارفس متى بدك):** شغّل `livekit-agent/` على جهازك (10 دقائق، مجاني كله) ثم افتح `https://<worker>/live` واضغط «اتصل بجارفس لايف». السلسلة: **Groq Whisper** (تفريغ، مجاني) ← **Coarena** (العقل، مجاني) ← **Edge TTS** (صوت شامي بشري، مجاني بلا حدود) ← **Silero VAD** (محلي) ← **LiveKit Cloud** (مشروعان مجانيان = حصتان). الدليل الكامل: `livekit-agent/README.md`. بتيليجرام عندك أمر `/live` يشرح كل شي فيها + حالة ضبط LiveKit. حامل AWS بـ $100 رصيد (حتى 2027-05-13)؟ شوف `livekit-agent/AWS_EC2_AR.md` — نفس الـ Agent على EC2، جارفس لايف 24/7 حتى لو جهازك طافي. وإذا بدك «كل شي محلي وبلاش» بالتفصيل (Polly/Nabra/Hermes): `livekit-agent/LOCAL_VOICE_AWS_AR.md`.
 2. **فوري بدون تثبيت:** `/voicecall` بتيليجرام ← رابط **Gemini Live** (صوت أصلي بمقاطعة فورية — يعتمد على كوتا Gemini المجانية، وأقوى شي بدون أي إعداد).
@@ -251,7 +263,7 @@ npx wrangler secret put CALL_ON_BRIEF   # ثم اكتب: true
 - **أي مفتاح تريد تغيّره** (مثلاً بعد تدوير مفاتيح مالتك القديمة): أعد نفس أمر `npx wrangler secret put <NAME>` بالقيمة الجديدة — يتحدّث تلقائياً بدون deploy جديد.
 - **لوجات البوت الحية:** `npx wrangler tail`
 - **قائمة كل المفاتيح المضافة:** `npx wrangler secret list`
-- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 50 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، Coarena، و/livekit-token.
+- **اختبارات المطور (بدون شبكة):** `node test.mjs` — 52 اختباراً تغطي الويبهوك، الصلاحيات، الأدوات، الخلفية، /ask، الذاكرة، وطابور الموافقة على الإيميل، Coarena، و/livekit-token.
 
 ---
 
@@ -293,5 +305,5 @@ npx wrangler secret put CALL_ON_BRIEF   # ثم اكتب: true
 
 ---
 
-تم الفحص: **50/50 اختباراً ناجحاً** (`node test.mjs`).
+تم الفحص: **52/52 اختباراً ناجحاً** (`node test.mjs`).
 الملفات: `worker.js` + `wrangler.toml` + `test.mjs` (**50/50 ناجحة**) + `call.html` (صفحة المكالمة) + `live.html` + `livepage.mjs` (صفحة اللايف) + `livekit-agent/` (الـ Agent) + `apps-script-email.gs` (آلة الإيميل) + هذا الدليل.

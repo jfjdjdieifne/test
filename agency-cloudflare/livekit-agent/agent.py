@@ -5,7 +5,8 @@
 السلسلة 100% مجانية:
   STT : Groq Whisper large-v3-turbo (حصة مجانية يومية — GROQ_API_KEY)
   العقل: Coarena Model API (Claude Fable 5.2 أو أي موديل — COARENA_API_KEY)
-  TTS : Microsoft Edge Neural TTS (ar-SY-LaithNeural الافتراضي — بدون مفتاح إطلاقاً)
+  TTS : Microsoft Edge Neural TTS (الافتراضي — شامي) أو Amazon Polly Neural (Hala/Zayd — على AWS داخل حسابك)
+        التبديل بمتغير واحد: JARVIS_TTS=edge (الافتراضي) أو JARVIS_TTS=polly
   VAD : Silero (يعمل محلياً على جهازك — مجاني)
   النقل: LiveKit Cloud (مشروعان مجانيان = حصتان)
 
@@ -33,6 +34,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("jarvis-live")
 
 EDGE_VOICE = os.environ.get("EDGE_TTS_VOICE", "ar-SY-LaithNeural")  # شاركي رجل — جرّب ar-SY-AmanyNeural (أنثى)
+JARVIS_TTS = os.environ.get("JARVIS_TTS", "edge").strip().lower()   # edge | polly
+POLLY_VOICE = os.environ.get("POLLY_VOICE", "Zayd").strip()          # Zayd (ذكر ar-AE) أو Hala (أنثى ar-AE) — لا يوجد صوت سوري بـ Polly
+POLLY_REGION = os.environ.get("AWS_REGION", "us-east-2").strip()     # نفس منطقة حسابك
 COARENA_BASE_URL = os.environ.get("COARENA_BASE_URL", "https://coarena.ai/api/v1")
 COARENA_MODEL = os.environ.get("COARENA_MODEL", "claude-fable-5-2")
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
@@ -91,6 +95,76 @@ class EdgeTTS(tts.TTS):
         return EdgeTTSChunkedStream(edge_tts_instance=self, input_text=text, conn_options=conn_options)
 
 
+def _polly_client():
+    """boto3 lazy-import حتى يضل agent شغال بدون boto3 لما يكون JARVIS_TTS=edge."""
+    try:
+        import boto3
+    except ImportError as e:
+        raise RuntimeError("boto3 مو مثبت — نفّذ: pip install boto3  (أو خلي JARVIS_TTS=edge)") from e
+    return boto3.client("polly", region_name=POLLY_REGION)
+
+
+class PollyChunkedStream(tts.ChunkedStream):
+    def __init__(self, *, polly_tts: "PollyTTS", input_text: str, conn_options):
+        super().__init__(tts=polly_tts, input_text=input_text, conn_options=conn_options)
+        self._polly_tts = polly_tts
+
+    async def _run(self, output_emitter: tts.AudioEmitter) -> None:
+        client = self._polly_tts._client()
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.synthesize_speech(
+                Text=self._input_text,
+                VoiceId=self._polly_tts.voice,
+                Engine=self._polly_tts.engine,
+                LanguageCode=self._polly_tts.language_code,
+                OutputFormat="mp3",
+                SampleRate="24000",
+            ),
+        )
+        audio_bytes = response["AudioStream"].read()
+        output_emitter.initialize(
+            request_id=f"polly-{int(time.time() * 1000)}",
+            sample_rate=24000,
+            num_channels=1,
+            mime_type="audio/mpeg",
+            frame_size_ms=200,
+        )
+        output_emitter.push(audio_bytes)
+        output_emitter.flush()
+
+
+class PollyTTS(tts.TTS):
+    """Amazon Polly Neural (ar-AE: Zayd/Hala) — داخل نفس حساب AWS، بشري وموثوق، يُدفع من الرصيد (أو مجاني ضمن حد المليون حرف/شهر أول 12 شهر)."""
+
+    def __init__(self, voice: str = POLLY_VOICE, engine: str = "neural", language_code: str = "ar-AE"):
+        super().__init__(
+            capabilities=tts.TTSCapabilities(streaming=False),
+            sample_rate=24000,
+            num_channels=1,
+        )
+        self.voice = voice
+        self.engine = engine
+        self.language_code = language_code
+        self._cached_client = None
+
+    @property
+    def model(self) -> str:
+        return f"polly-{self.engine}-{self.voice}"
+
+    @property
+    def provider(self) -> str:
+        return "amazon-polly"
+
+    def _client(self):
+        if self._cached_client is None:
+            self._cached_client = _polly_client()
+        return self._cached_client
+
+    def synthesize(self, text: str, *, conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS) -> tts.ChunkedStream:
+        return PollyChunkedStream(polly_tts=self, input_text=text, conn_options=conn_options)
+
 def require_env(name: str, hint: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
@@ -109,7 +183,7 @@ async def entrypoint(ctx: agents.JobContext):
         stt=openai.STT(base_url=GROQ_BASE_URL, api_key=groq_key, model=GROQ_STT_MODEL, language="ar"),
         vad=silero.VAD.load(),
         llm=openai.LLM(base_url=COARENA_BASE_URL, api_key=coarena_key, model=COARENA_MODEL, temperature=0.7),
-        tts=EdgeTTS(EDGE_VOICE),
+        tts=PollyTTS() if JARVIS_TTS == "polly" else EdgeTTS(EDGE_VOICE),
         allow_interruptions=True,
     )
 

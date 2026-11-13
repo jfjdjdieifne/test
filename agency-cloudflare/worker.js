@@ -329,13 +329,46 @@ async function kvPut(env, key, value) {
 }
 
 /* ---------------- Coarena (العقل المجاني الرسمي للمشروع) ----------------
-   المصدران للمفتاح:
-   1) KV عبر الأمر /coarena key (يتغلب على البيئة)
-   2) متغير البيئة COARENA_API_KEY (من wrangler.toml [vars] أو wrangler secret put)
-   الأولوية للعقل: اختيار صريح بالـ KV (/coarena on|off) ← وإلا Coarena إن وُجد مفتاحها ← وإلا arena. */
+   مجمع مفاتيح — ما بيخلص الرصيد:
+   - البيئة: COARENA_API_KEY (الأساس) + COARENA_API_KEY_2، COARENA_API_KEY_3… (أي عدد)
+   - KV: مفتاح المالك عبر /coarena key (ينضم للمجمع أيضاً)
+   التوزيع round-robin (KV: coarena_rr_v1) عشان كل مفتاح ياخذ حصته اليومية بدل ما ينحرق الواحد.
+   عند فشل مفتاح — تجرب المفاتيح التالية قبل ما يسقط للسلسلة الاحتياطية. */
+async function coarenaKeyPool(env) {
+  const pool = [];
+  const seen = new Set();
+  const add = (label, value) => {
+    const v = String(value || "").trim();
+    if (v && !seen.has(v)) { seen.add(v); pool.push({ label, key: v }); }
+  };
+  add("env:COARENA_API_KEY", env && env.COARENA_API_KEY);
+  for (let i = 2; i <= 20; i++) add(`env:COARENA_API_KEY_${i}`, env && env[`COARENA_API_KEY_${i}`]);
+  // دعم قيمة مفصولة بفواصل: COARENA_EXTRA_KEYS="coa_a,coa_b"
+  for (const part of String((env && env.COARENA_EXTRA_KEYS) || "").split(",")) add("env:COARENA_EXTRA_KEYS", part);
+  add("kv:/coarena key", await kvGet(env, "coarena_api_key_v1", ""));
+  return pool;
+}
 async function coarenaApiKey(env) {
-  const kv = String((await kvGet(env, "coarena_api_key_v1", "")) || "").trim();
-  return kv || String((env && env.COARENA_API_KEY) || "").trim();
+  const pool = await coarenaKeyPool(env);
+  if (pool.length) {
+    // ابدأ من المفتاح الذي شارك عدّاد الـ round-robin حتى تتوزع المحادثات على كل المفاتيح
+    const rr = Number(await kvGet(env, "coarena_rr_v1", 0)) || 0;
+    return pool[rr % pool.length].key;
+  }
+  return "";
+}
+async function coarenaOrderedPool(env) {
+  const pool = await coarenaKeyPool(env);
+  const rr = Number(await kvGet(env, "coarena_rr_v1", 0)) || 0;
+  const start = pool.length ? rr % pool.length : 0;
+  return pool.slice(start).concat(pool.slice(0, start));
+}
+async function coarenaRrBump(env) {
+  try { const rr = Number(await kvGet(env, "coarena_rr_v1", 0)) || 0; await kvPut(env, "coarena_rr_v1", rr + 1); } catch {}
+}
+async function coarenaPoolInfo(env) {
+  const pool = await coarenaKeyPool(env);
+  return pool.map((p, i) => ({ index: i + 1, label: p.label, masked: p.key.slice(0, 4) + "…" + p.key.slice(-4), key: p.key }));
 }
 function coarenaModelFallback(env) {
   return String((env && env.COARENA_MODEL) || "claude-fable-5-2").trim() || "claude-fable-5-2";
@@ -343,7 +376,8 @@ function coarenaModelFallback(env) {
 async function primaryIntelligence(env) {
   const kv = await kvGet(env, "primary_intelligence_v1", null);
   if (kv != null && String(kv).trim()) return String(kv).trim().toLowerCase();
-  return String((env && env.COARENA_API_KEY) || "").trim() ? "coarena" : "arena";
+  const pool = await coarenaKeyPool(env);
+  return pool.length ? "coarena" : "arena";
 }
 const getHistory = (env) => kvGet(env, "history", []); // legacy fallback
 const saveHistory = (env, convo) => kvPut(env, "history", convo.slice(-MAX_HISTORY));
@@ -1264,17 +1298,22 @@ async function callGroqSmart(convo, system, env, key) {
 }
 
 async function requestCoarenaDailyLimit(env, usd) {
-  const key = await coarenaApiKey(env); if (!key) return { ok: false, message: "Coarena مو مربوط — لا في KV ولا في COARENA_API_KEY." };
-  try {
-    const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: Math.max(5, Math.min(50, Number(usd) || 10)) }), signal: AbortSignal.timeout(10000) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) return { ok: false, message: String(d?.error?.message || d?.message || `HTTP ${r.status}`).slice(0, 500) };
-    return { ok: true, data: d };
-  } catch (e) { return { ok: false, message: String(e?.message || e).slice(0, 300) }; }
+  const ordered = await coarenaOrderedPool(env);
+  if (!ordered.length) return { ok: false, message: "Coarena مو مربوط — لا بأي مفتاح (لا COARENA_API_KEY ولا KV)." };
+  let lastError = "لا استجابة";
+  for (const entry of ordered) {
+    try {
+      const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${entry.key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: Math.max(5, Math.min(50, Number(usd) || 10)) }), signal: AbortSignal.timeout(10000) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) return { ok: true, data: d, keyLabel: entry.label };
+      lastError = String(d?.error?.message || d?.message || `HTTP ${r.status}`).slice(0, 500);
+    } catch (e) { lastError = String(e?.message || e).slice(0, 300); }
+  }
+  return { ok: false, message: lastError };
 }
 
-async function getCoarenaLimits(env) {
-  const key = await coarenaApiKey(env); if (!key) return null;
+async function getCoarenaLimits(env, keyOverride) {
+  const key = String(keyOverride || "").trim() || (await coarenaApiKey(env)); if (!key) return null;
   try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) }); return r.ok ? await r.json() : null; } catch { return null; }
 }
 function coarenaBalanceText(d) {
@@ -1289,20 +1328,27 @@ function coarenaBalanceText(d) {
 
 async function llmComplete(convo, system, env) {
   const primary = await primaryIntelligence(env);
-  const coarenaKey = await coarenaApiKey(env);
-  if (primary === "coarena" && coarenaKey) {
+  if (primary === "coarena") {
+    const ordered = await coarenaOrderedPool(env);
     const model = String(await kvGet(env, "coarena_model_v1", coarenaModelFallback(env)) || coarenaModelFallback(env));
     const coarenaSystem = `${system}\n\nأنت تعمل الآن عبر Coarena Model API والنموذج الفعلي هو ${model}. إذا سُئلت عن هويتك قل: جارفس عبر Coarena، والنموذج ${model}. أعطِ جواباً كاملاً ومفصلاً حسب طلب المالك، ولا تبدأ تنسيق Markdown غير مكتمل.`;
-    const answer = await callOpenAICompatible("https://coarena.ai/api/v1", coarenaKey, model, convo, coarenaSystem);
-    if (answer) {
-      const limits = await getCoarenaLimits(env); const balance = coarenaBalanceText(limits);
+    let answeredKey = null;
+    let coarenaAnswer = null;
+    for (const entry of ordered) {
+      const answer = await callOpenAICompatible("https://coarena.ai/api/v1", entry.key, model, convo, coarenaSystem);
+      if (answer) { answeredKey = entry.key; coarenaAnswer = answer; break; }
+      console.log(`coarena key ${entry.label} failed — trying next key in pool`);
+    }
+    if (answeredKey) {
+      await coarenaRrBump(env);
+      const limits = await getCoarenaLimits(env, answeredKey); const balance = coarenaBalanceText(limits);
       const m = balance.match(/الباقي \$([0-9.]+)/); const left = m ? Number(m[1]) : null;
       if (left != null && left <= 1) { const last = Number(await kvGet(env, "coarena_balance_alert_v1", 0)) || 0; if (Date.now() - last > 6 * 60 * 60000) { await kvPut(env, "coarena_balance_alert_v1", Date.now()); const owner = await getOwnerChatId(env); if (owner) await sendMessage(env, owner, `⚠️ ${balance} رح خفف الاستهلاك وأخلي المهام الثقيلة لبعد التجدد إلا إذا طلبت العكس.`); } }
-      return answer;
+      return coarenaAnswer;
     }
-    // Coarena فشل (حصة خلصت/انقطاع) — نكمل على باقي السلسلة بدل ما البوت يموت بصمت.
-    await kvPut(env, "coarena_last_error_v1", { at: Date.now(), model });
-    console.log("coarena failed — falling back to the rest of the chain");
+    // كل مفاتيح Coarena فشلت (حصة خلصت/انقطاع) — نكمل على باقي السلسلة بدل ما البوت يموت بصمت.
+    await kvPut(env, "coarena_last_error_v1", { at: Date.now(), model, poolSize: ordered.length });
+    console.log(`coarena pool exhausted (${ordered.length} keys) — falling back to the rest of the chain`);
   }
   const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
   const hyperbrowserReady = !!(await kvGet(env, "hyperbrowser_profile_v1", ""));
@@ -2278,15 +2324,21 @@ async function handleCommand(text, env, chatId) {
         await sendMessage(env, chatId, test ? "✅ Coarena شغال وصار المحرك الأساسي. النموذج: Claude Fable 5.2. احذف رسالة المفتاح وابعت سؤالاً عادياً." : "❌ انحفظ المفتاح لكن اختبار Coarena لم يرجع جواباً. تأكد من صفحة Limits."); return true;
       }
       if (/^status$/i.test(arg)) {
-        const key = await coarenaApiKey(env); if (!key) { await sendMessage(env, chatId, "اربطه أولاً: /coarena key YOUR_KEY (أو اضبط COARENA_API_KEY)"); return true; }
-        const kvKey = String(await kvGet(env, "coarena_api_key_v1", "") || "").trim();
-        const source = kvKey ? "KV (عبر /coarena key)" : "متغير البيئة COARENA_API_KEY";
+        const info = await coarenaPoolInfo(env); if (!info.length) { await sendMessage(env, chatId, "اربطه أولاً: /coarena key YOUR_KEY (أو اضبط COARENA_API_KEY)"); return true; }
         const model = String(await kvGet(env, "coarena_model_v1", coarenaModelFallback(env)) || coarenaModelFallback(env));
         const primary = await primaryIntelligence(env);
-        let balance = "";
-        try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` } }); const d = await r.json(); balance = `\nlimits: ${JSON.stringify(d).slice(0, 1200)}`; } catch { balance = "\nتعذرت قراءة حدود Coarena."; }
+        const lines = [`Coarena — مجمع المفاتيح (${info.length}):`];
+        for (const entry of info) {
+          let limitsText = "تعذرت القراءة";
+          try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${entry.key}` }, signal: AbortSignal.timeout(8000) }); const d = await r.json().catch(() => null); if (r.ok && d) limitsText = JSON.stringify(d).slice(0, 300); } catch {}
+          lines.push(`#${entry.index} [${entry.label}] ${entry.masked}\n   ${limitsText}`);
+        }
+        lines.push(`النموذج: ${model}`);
+        lines.push(`الأساسي هلق: ${primary}`);
         const lastErr = await kvGet(env, "coarena_last_error_v1", null);
-        await sendMessage(env, chatId, `Coarena: المصدر: ${source}\nالنموذج: ${model}\nالأساسي هلق: ${primary}${lastErr ? `\nآخر فشل: ${new Date(lastErr.at).toISOString()}` : ""}${balance}`.slice(0, 3500)); return true;
+        if (lastErr) lines.push(`آخر فشل: ${new Date(lastErr.at).toISOString()}`);
+        lines.push("التدوير round-robin — كل مفتاح ياخذ حصته، وفشل مفتاح = انتقال للتالي تلقائياً.");
+        await sendMessage(env, chatId, lines.join("\n").slice(0, 3500)); return true;
       }
       const mm = arg.match(/^model\s+([\w./-]+)$/i);
       if (mm) { await kvPut(env, "coarena_model_v1", mm[1]); await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, `✅ نموذج Coarena: ${mm[1]}`); return true; }
