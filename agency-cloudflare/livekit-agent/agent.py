@@ -5,8 +5,9 @@
 السلسلة 100% مجانية:
   STT : Groq Whisper large-v3-turbo (حصة مجانية يومية — GROQ_API_KEY)
   العقل: Coarena Model API (Claude Fable 5.2 أو أي موديل — COARENA_API_KEY)
-  TTS : Microsoft Edge Neural TTS (الافتراضي — شامي) أو Amazon Polly Neural (Hala/Zayd — على AWS داخل حسابك)
-        التبديل بمتغير واحد: JARVIS_TTS=edge (الافتراضي) أو JARVIS_TTS=polly
+  TTS : Microsoft Edge Neural TTS (الافتراضي — شامي) · Amazon Polly Neural (Hala/Zayd ar-AE — حسابك AWS)
+        · ElevenLabs (Eleven v4 Turbo / Flash v2.5 / v4 — أقوى عربي حالياً، يسمعك بنبرة بشرية مع تفكير ووقفات)
+        التبديل بمتغير واحد: JARVIS_TTS=edge (الافتراضي) | polly | elevenlabs
   VAD : Silero (يعمل محلياً على جهازك — مجاني)
   النقل: LiveKit Cloud (مشروعان مجانيان = حصتان)
 
@@ -37,6 +38,9 @@ EDGE_VOICE = os.environ.get("EDGE_TTS_VOICE", "ar-SY-LaithNeural")  # شاركي
 JARVIS_TTS = os.environ.get("JARVIS_TTS", "edge").strip().lower()   # edge | polly
 POLLY_VOICE = os.environ.get("POLLY_VOICE", "Zayd").strip()          # Zayd (ذكر ar-AE) أو Hala (أنثى ar-AE) — لا يوجد صوت سوري بـ Polly
 POLLY_REGION = os.environ.get("AWS_REGION", "us-east-2").strip()     # نفس منطقة حسابك
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()   # من https://elevenlabs.io → API Keys (مجاني: 10k حرف/شهر للتجربة)
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "").strip() # Voice Library → فلترة «Arabic» → Voice ID (أو صوتك المُستنسخ)
+ELEVENLABS_MODEL = os.environ.get("ELEVENLABS_MODEL", "eleven_v4_turbo").strip()  # eleven_v4_turbo ≈ 150ms (حقيقي) · eleven_v4 (أقصى تعبير، أبطأ)
 COARENA_BASE_URL = os.environ.get("COARENA_BASE_URL", "https://coarena.ai/api/v1")
 COARENA_MODEL = os.environ.get("COARENA_MODEL", "claude-fable-5-2")
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
@@ -44,6 +48,9 @@ GROQ_STT_MODEL = os.environ.get("GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
 INSTRUCTIONS = """أنت "جارفس" — المساعد الصوتي الخاص للدكتور، تحكي معه مكالمة حية حقيقية.
 - احككِ باللهجة الشامية السورية الطبيعية دائماً، بجمل قصيرة جداً (مكالمة، مش مقال).
+- احكِ كشخص حقيقي، مش كروبوت: ابتدئ بترد طبيعي مثل «إي»، «طيب»، «يا هلا»، «اممم…»، فكّر بصوت عالي أحياناً («استنا شوي…»، «خليني أفكر…»، «بس بدك تنتبه…») واستخدم الوقفات («…») بين الأفكار.
+- ⚠️ القاعدة الذهبية لتسليم الصوت بشري: لا ترد بفقرة واحدة متصلة — رد بنفس الطريقة يلي عم تحكي فيها هلق: كل 4–8 كلمات جملة وحدة، ووقفات بالـ «…» مكانها طبيعي بالتفكير والانتقال، وفيه أثر «تفكير بصوت عالي» قبل ما تعطي الجوهر.
+- تنويعات محظورة: ممنوع تعيد نفس افتتاحية الجملة كل مرة («تمام»، «بكل تأكيد»)، وممنوع القوائم والتعداد — كل شي جمل تحكي.
 - كن دافئاً وواثقاً وسريع الإيقاع، بدون Markdown ولا رموز ولا نقاط تعداد — كلام تحكي.
 - إذا ما فهمت شو قال، اطلب منه يعيد بجملة واحدة.
 - اسأل سؤالاً واحداً فقط كل مرة ولا تطوّل.
@@ -165,6 +172,24 @@ class PollyTTS(tts.TTS):
     def synthesize(self, text: str, *, conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS) -> tts.ChunkedStream:
         return PollyChunkedStream(polly_tts=self, input_text=text, conn_options=conn_options)
 
+class ElevenLabsTTSFactory:
+    """مصنع ElevenLabs (WebSocket streaming) — أقوى صوت عربي بشري حالياً.
+    يتطلب: pip install livekit-plugins-elevenlabs==1.8.11 + ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID."""
+
+    @staticmethod
+    def build():
+        try:
+            from livekit.plugins import elevenlabs
+        except ImportError as e:
+            raise RuntimeError("livekit-plugins-elevenlabs مو مثبت — نفّذ: pip install livekit-plugins-elevenlabs==1.8.11") from e
+        if not ELEVENLABS_API_KEY:
+            raise SystemExit("❌ ELEVENLABS_API_KEY مو مضبوط — من https://elevenlabs.io → Developers → API Keys (فيه حصة مجانية 10k حرف/شهر للتجربة بلا بطاقة)")
+        if not ELEVENLABS_VOICE_ID:
+            raise SystemExit("❌ ELEVENLABS_VOICE_ID مو مضبوط — من Voice Library بفلترة «Arabic» افتح الصوت المطلوب وانسخ Voice ID (أو صوتك المُستنسخ)")
+        logger.info("ElevenLabs TTS: model=%s voice=%s…", ELEVENLABS_MODEL, ELEVENLABS_VOICE_ID[:6])
+        return elevenlabs.TTS(voice_id=ELEVENLABS_VOICE_ID, model=ELEVENLABS_MODEL, api_key=ELEVENLABS_API_KEY)
+
+
 def require_env(name: str, hint: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
@@ -183,7 +208,7 @@ async def entrypoint(ctx: agents.JobContext):
         stt=openai.STT(base_url=GROQ_BASE_URL, api_key=groq_key, model=GROQ_STT_MODEL, language="ar"),
         vad=silero.VAD.load(),
         llm=openai.LLM(base_url=COARENA_BASE_URL, api_key=coarena_key, model=COARENA_MODEL, temperature=0.7),
-        tts=PollyTTS() if JARVIS_TTS == "polly" else EdgeTTS(EDGE_VOICE),
+        tts=(PollyTTS() if JARVIS_TTS == "polly" else ElevenLabsTTSFactory.build() if JARVIS_TTS == "elevenlabs" else EdgeTTS(EDGE_VOICE)),
         allow_interruptions=True,
     )
 

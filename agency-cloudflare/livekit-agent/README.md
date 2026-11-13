@@ -42,6 +42,10 @@ export GROQ_API_KEY=gsk_...                            # https://console.groq.co
 # الصوت: الافتراضي Edge TTS السوري. أو Polly على حسابك AWS (Hala/Zayd ar-AE — لا يوجد سوري بـ Polly):
 # export JARVIS_TTS=polly
 # export POLLY_VOICE=Zayd                              # Zayd (ذكر) · Hala (أنثى)
+# أو الأقوى عربياً — ElevenLabs (Eleven v4 Turbo — إنساني التعبير، يدعم شائع/خليجي حسب نص الجملة):
+# export JARVIS_TTS=elevenlabs
+# export ELEVENLABS_API_KEY=sk_...                     # مجاني للتجربة 10k حرف/شهر — الدليل الكامل: ELEVENLABS_SETUP_AR.md
+# export ELEVENLABS_VOICE_ID=<Voice-ID-من-Voice-Library-فلتر-Arabic>
 # export AWS_REGION=us-east-2                          # على EC2: IAM Role (AmazonPollyReadOnlyAccess) بدون مفاتيح؛ محلياً: AWS_ACCESS_KEY_ID/SECRET لليزر الاختياري بـ IAM Polly فقط
 ```
 (القيم الحقيقية عندك — ما في شي هون، فقط أسماء المتغيرات. أو انسخ `.env.example` → `.env` واملأه.)
@@ -68,7 +72,7 @@ https://<عنوان-الـ-Worker>/live
 | الصفحة تتصل والروم يضل صامت | الـ Agent مو شغال | شغّل `python agent.py start` وشوف السجلات |
 | «GROQ_API_KEY مو مضبوط» | ناقص مفتاح Groq | مجاني من console.groq.com خلال دقيقتين |
 | جارفس يرد بالإنجليزي/فصحى | النموذج تجاهل التعليمات | جرّب `COARENA_MODEL=kimi-k3` أو `gemini-3-8-flash` |
-| صوت روبوتي كثير | هذا أفضل صوتي سوري عند Edge | جرّب `EDGE_TTS_VOICE=ar-SA-HamedNeural` (سعودي) أو `ar-EG-SalmaNeural` |
+| صوت روبوتي كثير | هذا أفضل صوتي سوري عند Edge | جرّب `EDGE_TTS_VOICE=ar-SA-HamedNeural` (سعودي) أو `ar-EG-SalmaNeural` — أو ارجع لتيليجرام/EC2 وطبّق `ELEVENLABS_SETUP_AR.md` (الأقوى) |
 | خلصت حصة Coarena اليوم | $5 استُهلكت | البوت يكمل تلقائياً على الاحتياط (Arena/Gemini…) — بـ اللايف: انتظر 3:00 AM أو بدّل `COARENA_MODEL` |
 | قاطعت وما سكت | VAD حسّ إنك صوت خلفي | زوّد ضجيج الخلفية أو غيّر `min_silence_duration` بـ `silero.VAD.load()` |
 
