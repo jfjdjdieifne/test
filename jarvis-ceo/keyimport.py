@@ -54,6 +54,7 @@ LABEL_MAP = {
 }
 
 PREFIX_MAP = [
+    (re.compile(r"^coa_[A-Za-z0-9]{8,}$"), "COARENA_API_KEYS"),
     (re.compile(r"^AIza[0-9A-Za-z_-]{20,}$"), "GEMINI_API_KEY"),
     (re.compile(r"^github_pat_[0-9A-Za-z_]{20,}$"), "GITHUB_TOKEN"),
     (re.compile(r"^ghp_[0-9A-Za-z]{20,}$"), "GITHUB_TOKEN"),
@@ -86,8 +87,15 @@ def _unmask(v):
     return f"{v[:4]}… ({len(v)} حروف)" if len(v) > 4 else "…"
 
 
+def _add(mapping, env, value):
+    if env in POOL_KEYS:
+        mapping.setdefault(env, []).append(value)
+    else:
+        mapping[env] = value
+
+
 def parse_bulk_text(text):
-    """يرجع (mapping, skipped_values). mapping: {ENV_NAME: value} — كلشي محلي."""
+    """يرجع (mapping, skipped_values). mapping: {ENV_NAME: value أو [values] للمجموعات} — كلشي محلي."""
     text = text or ""
     mapping = {}
     skipped = []
@@ -102,7 +110,7 @@ def parse_bulk_text(text):
             name, value = m.group(1), _clean_value(m.group(2))
             env = _classify_name(name)
             if env and len(value) >= 8 and not any(c.isspace() for c in value):
-                mapping[env] = value
+                _add(mapping, env, value)
                 continue
         # ---------- 2) تسمية عربية/إنجليزية بدون اسم متغير («جيميني: VALUE») ----------
         lower = line.lower()
@@ -112,7 +120,7 @@ def parse_bulk_text(text):
                 if m2:
                     value = _clean_value(m2.group(1))
                     if len(value) >= 8:
-                        mapping[env] = value
+                        _add(mapping, env, value)
                         break
 
     # ---------- 3) حالة values بلا اسم (معرّفة بالبادئة فقط) ----------
@@ -121,7 +129,8 @@ def parse_bulk_text(text):
         tok = _clean_value(tok)
         if len(tok) < 8 or re.fullmatch(r"[A-Z][A-Z0-9_]{2,39}", tok):
             continue
-        if any(tok in v for v in mapping.values()):
+        used = [v for vals in mapping.values() for v in (vals if isinstance(vals, list) else [vals])]
+        if any(tok in v for v in used):
             continue  # صارت مستعمله
         guessed = None
         for pat, env in PREFIX_MAP:
@@ -129,7 +138,7 @@ def parse_bulk_text(text):
                 guessed = env
                 break
         if guessed:
-            mapping[guessed] = tok
+            _add(mapping, guessed, tok)
         else:
             leftover.append(tok)
 
@@ -141,19 +150,33 @@ def parse_bulk_text(text):
     return mapping, skipped
 
 
+POOL_KEYS = {"COARENA_API_KEYS", "GEMINI_API_KEYS", "GEMINI_TTS_API_KEYS"}
+
 CRITICAL = ("TELEGRAM_BOT_TOKEN", "COARENA_API_KEY", "GEMINI_API_KEY")
 
 
 def apply_bulk(chat_id, text, delete_fn=None):
     mapping, skipped = parse_bulk_text(text)
     saved, failed = [], []
+    saved_total = 0
     for name, value in mapping.items():
-        ok, _note = integrations.store_env_var(name, value)
-        (saved if ok else failed).append(name)
+        if isinstance(value, list):
+            ok_all = True
+            for v in value:
+                ok, _ = integrations.store_pool_value(name, v)
+                ok_all = ok_all and ok
+                if ok:
+                    saved_total += 1
+            (saved if ok_all else failed).append(name)
+        else:
+            ok, _note = integrations.store_env_var(name, value)
+            if ok:
+                saved_total += 1
+            (saved if ok else failed).append(name)
 
     lines = []
     if saved:
-        lines.append(f"✅ حفظت {len(saved)} مفتاح: {', '.join(saved)}")
+        lines.append(f"✅ حفظت {saved_total} مفتاح: {', '.join(saved)}")
     if failed:
         lines.append(f"❌ ما قدرت أحفظ: {', '.join(failed)}")
     if skipped:
@@ -188,7 +211,8 @@ _UNAMBIGUOUS = (re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
                 re.compile(r"github_pat_[0-9A-Za-z_]{20,}"),
                 re.compile(r"ghp_[0-9A-Za-z]{20,}"),
                 re.compile(r"gho_[0-9A-Za-z]{20,}"),
-                re.compile(r"sk-[A-Za-z0-9]{16,}"))
+                re.compile(r"sk-[A-Za-z0-9]{16,}"),
+                re.compile(r"coa_[A-Za-z0-9]{16,}"))
 _ASSIGN = re.compile(r"([A-Za-z][A-Za-z0-9_]{2,39})\s*[=:]")
 _TOKENISH = re.compile(r"[A-Za-z0-9_\-./+=]{8,}")
 

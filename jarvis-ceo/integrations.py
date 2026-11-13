@@ -167,6 +167,31 @@ def env_var_allowed(name):
     return name in ALL_KEYS or name in EXTRA_KEYS
 
 
+def store_pool_value(name, value, path=None):
+    """يضيف قيمة لقائمة مفصولة بفواصل (COARENA_API_KEYS …) — يدمج بدون مسح الموجود، بدون تكرار."""
+    path = path or ENV_PATH
+    if not value or len(value) > 500 or any(ch in value for ch in "\n\r"):
+        return False, "القيمة فاضية أو فيها أسطر"
+    lines, existing = [], []
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    out_lines = []
+    for line in lines:
+        if line.strip().startswith(f"{name}="):
+            raw = line.split("=", 1)[1]
+            existing = [v.strip() for v in raw.split(",") if v.strip()]
+        else:
+            out_lines.append(line)
+    if value not in existing:
+        existing.append(value)
+    out_lines.append(f"{name}={','.join(existing)}")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(out_lines).rstrip("\n") + "\n")
+    os.chmod(path, 0o600)
+    return True, "انضاف للمجموعة"
+
+
 def store_env_var(name, value, path=None):
     """يخزّن مفتاح بـ .env — يستبدل الموجود أو يضيف. بلا طباعة القيمة أبداً."""
     path = path or ENV_PATH

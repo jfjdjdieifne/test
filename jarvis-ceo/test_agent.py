@@ -371,6 +371,45 @@ class TestBulkAutoDetect(unittest.TestCase):
         self.assertTrue(dbmod.notes_clear())
         self.assertEqual(dbmod.notes_count(), 0)
 
+    def test_parse_coarena_pool_prefix(self):
+        import keyimport
+        text = "coa_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ncoa_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\ncoa_cccccccccccccccccccccccccccccccc"
+        mapping, skipped = keyimport.parse_bulk_text(text)
+        self.assertEqual(mapping["COARENA_API_KEYS"],
+                         ["coa_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                          "coa_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                          "coa_cccccccccccccccccccccccccccccccc"])
+        self.assertEqual(skipped, [])
+
+    def test_pool_merge_and_dedup(self):
+        import integrations, tempfile, os
+        path = os.path.join(tempfile.mkdtemp(), "pool.env")
+        integrations.ENV_PATH = path
+        try:
+            integrations.store_pool_value("COARENA_API_KEYS", "coa_first1234567890abcd")
+            integrations.store_pool_value("COARENA_API_KEYS", "coa_second1234567890efgh")
+            integrations.store_pool_value("COARENA_API_KEYS", "coa_first1234567890abcd")  # تكرار
+            body = open(path, encoding="utf-8").read()
+            self.assertIn("COARENA_API_KEYS=coa_first1234567890abcd,coa_second1234567890efgh", body)
+            self.assertEqual(body.count("COARENA_API_KEYS="), 1)
+        finally:
+            integrations.ENV_PATH = os.path.expanduser("~/jarvis-ceo.env")
+
+    def test_apply_bulk_saves_pool_keys(self):
+        import keyimport, integrations, tempfile, os
+        path = os.path.join(tempfile.mkdtemp(), "pool2.env")
+        integrations.ENV_PATH = path
+        try:
+            summary, saved = keyimport.apply_bulk(999,
+                "مفاتيحي:\ncoa_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\ncoa_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                delete_fn=lambda: None)
+            self.assertIn("COARENA_API_KEYS", saved)
+            body = open(path, encoding="utf-8").read()
+            self.assertIn("coa_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,coa_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", body)
+            self.assertNotIn("coa_aaaa", summary)  # ما بنطبع القيم
+        finally:
+            integrations.ENV_PATH = os.path.expanduser("~/jarvis-ceo.env")
+
 
 if __name__ == "__main__":
     unittest.main()
