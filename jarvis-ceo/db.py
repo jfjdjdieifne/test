@@ -320,3 +320,10 @@ def delete_reminder(reminder_id, chat_id):
         cur = c.execute("DELETE FROM reminders WHERE id=? AND chat_id=?",
                         (int(reminder_id), int(chat_id)))
         return cur.rowcount > 0
+
+
+def notes_clear():
+    with conn() as c:
+        c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS notes USING fts5(text, source)")
+        c.execute("DELETE FROM notes")
+    return True

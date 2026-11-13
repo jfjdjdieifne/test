@@ -182,3 +182,28 @@ def final_report():
     else:
         lines.append("كل الأساسيات موجودة — جاهز للانطلاق 🚀")
     return "\n".join(lines)
+
+
+_UNAMBIGUOUS = (re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
+                re.compile(r"github_pat_[0-9A-Za-z_]{20,}"),
+                re.compile(r"ghp_[0-9A-Za-z]{20,}"),
+                re.compile(r"gho_[0-9A-Za-z]{20,}"),
+                re.compile(r"sk-[A-Za-z0-9]{16,}"))
+_ASSIGN = re.compile(r"([A-Za-z][A-Za-z0-9_]{2,39})\s*[=:]")
+
+
+def looks_like_bulk(text):
+    """هل النص فيه ≥2 لمحة واضحة عن مفاتيح؟ (للتعرف التلقائي) — محلي 100%."""
+    if not text:
+        return False
+    hits = 0
+    for pat in _UNAMBIGUOUS:
+        if pat.search(text):
+            hits += 1
+    for m in _ASSIGN.finditer(text):
+        env = _classify_name(m.group(1))
+        if env:
+            hits += 1
+        if hits >= 2:
+            return True
+    return hits >= 2

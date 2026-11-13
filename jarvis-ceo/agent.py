@@ -494,6 +494,15 @@ def handle_message(msg):
         tg("sendMessage", {"chat_id": chat_id, "text": "عذراً، هاد البوت خاص بشخص واحد 🙏"})
         return
 
+    # بصمة مفاتيح تلقائية — حتى بدون «احفظ كل المفاتيح»
+    if msg.get("text") and keyimport.looks_like_bulk(msg["text"]) and db.kv_get("bulk_keys", "0") == "0":
+        tg("deleteMessage", {"chat_id": chat_id, "message_id": msg.get("message_id")})
+        db.kv_set("bulk_keys", "1")
+        summary, saved = keyimport.apply_bulk(chat_id, msg["text"])
+        send_text(chat_id, "فهمتهم مفاتيح ✅ مسحت الرسالة.\n" + summary +
+                  "\n\n(لسا بوضعية الاستلام — ابعت الباقي، أو «خلص» لما تنهي)")
+        return
+
     # وضعية استلام المفاتيح — كل رسالة تنمسح وتنقّل محلياً
     if db.kv_get("bulk_keys", "0") == "1" and msg.get("text"):
         text_raw = msg["text"]
@@ -588,6 +597,17 @@ def handle_message(msg):
         db.kv_set("profile", profile)
         send_text(chat_id, "حفظت ✅ — كل محادثاتنا الجاية بفهم عليك أكثر (قل «وش تعرف عني» لتشوف)")
         return
+    if low in ("كم مفتاح", "مفاتيحي", "كم مفتاح عندي", "كم مفتاح حفظت", "شو محفوظ عندي"):
+        names = sorted(k for k in (integrations.ALL_KEYS | integrations.EXTRA_KEYS) if integrations.key_state(k))
+        if not names:
+            send_text(chat_id, "لسا ما انحفظ ولا مفتاح. اكتب «احفظ كل المفاتيح» وابعثهم.")
+        else:
+            send_text(chat_id, f"المفاتيح المحفوظة ({len(names)}):\n" + "\n".join(f"✅ {n}" for n in names))
+        return
+    if low in ("امسح المذكرات", "امسح ملاحظاتي", "خصوصي بس المذكرات"):
+        db.notes_clear()
+        send_text(chat_id, "انمسحت كل الملاحظات 🧹")
+        return
     if low in ("احفظ كل المفاتيح", "احفظلي كل المفاتيح", "استلم مفاتيحي", "/keys", "المفاتيح"):
         db.kv_set("bulk_keys", "1")
         send_text(chat_id, (
@@ -608,6 +628,9 @@ def handle_message(msg):
         note = re.sub(r"^(?:احفظ|/note)\s*[:：]?\s*", "", text, count=1).strip()
         if not note:
             send_text(chat_id, "اكتب شو بدك أحفظ — مثال: «احفظ: عقد العيادة بـ150 دولار»")
+            return
+        if keyimport.looks_like_bulk(note):
+            send_text(chat_id, "هاي تشبه مفاتيح — ما بنحفظها كملاحظة. اكتب «احفظ كل المفاتيح» وابعثهم من جديد.")
             return
         db.notes_add(note, f"chat:{chat_id}")
         send_text(chat_id, f"حفظتها بالذاكرة العميقة 🧠 ({db.notes_count()} ملاحظة) — اسألني «تذكر …» وقت ما بدك")

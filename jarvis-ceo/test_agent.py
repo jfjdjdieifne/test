@@ -348,5 +348,23 @@ class TestKeyImport(unittest.TestCase):
         self.assertIn("COARENA_API_KEY", txt)
 
 
+class TestBulkAutoDetect(unittest.TestCase):
+    def test_looks_like_bulk_true(self):
+        import keyimport
+        text = "coarena: sk-livekey1234567890abc\nمفاتيحي: AIzaSyD-xxxxxxxxxxxxxxxxxxxx-xxxxx"
+        self.assertTrue(keyimport.looks_like_bulk(text))
+
+    def test_looks_like_bulk_false(self):
+        import keyimport
+        self.assertFalse(keyimport.looks_like_bulk("السلام عليكم، كيف الحال اليوم؟"))
+        self.assertFalse(keyimport.looks_like_bulk(""))
+
+    def test_notes_clear(self):
+        import db as dbmod
+        dbmod.notes_add("ملاحظة مؤقتة", "test")
+        self.assertTrue(dbmod.notes_clear())
+        self.assertEqual(dbmod.notes_count(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
