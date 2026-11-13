@@ -1169,6 +1169,16 @@ async function callGroqSmart(convo, system, env, key) {
   return out;
 }
 
+async function requestCoarenaDailyLimit(env, usd) {
+  const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) return { ok: false, message: "Coarena مو مربوط." };
+  try {
+    const r = await fetch("https://coarena.ai/api/v1/limits/requests", { method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ usd_per_day: Math.max(5, Math.min(10, Number(usd) || 10)) }), signal: AbortSignal.timeout(10000) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, message: String(d?.error?.message || d?.message || `HTTP ${r.status}`).slice(0, 500) };
+    return { ok: true, data: d };
+  } catch (e) { return { ok: false, message: String(e?.message || e).slice(0, 300) }; }
+}
+
 async function getCoarenaLimits(env) {
   const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) return null;
   try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) }); return r.ok ? await r.json() : null; } catch { return null; }
@@ -1592,6 +1602,10 @@ async function processTaskQueue(env, maxSteps) {
 
 async function agentLoop(userText, env, chatId, opts) {
   const o = opts || {};
+  if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:ارفع|رفع|زيد|زيادة).{0,30}(?:الحد|الرصيد).{0,20}(?:10|١٠)|(?:10|١٠).{0,30}(?:دولار|الحد)/i.test(String(userText))) {
+    const asked = await requestCoarenaDailyLimit(env, 10);
+    return asked.ok ? "تمام دكتور، قدمت طلب رفع حد Coarena اليومي من $5 إلى $10 عبر الـAPI الرسمي. الموافقة مو فورية بالضرورة؛ رح راقب /limits وأخبرك لما يتغير." : `ما قدرت أقدم الطلب: ${asked.message}`;
+  }
   if ((await kvGet(env, "primary_intelligence_v1", "arena")) === "coarena" && /(?:قديش|كم|اديش|شو).{0,25}(?:رصيد|باقي|استهلاك|كريديت)|(?:رصيد|كريديت).{0,25}(?:قديش|كم|باقي)/i.test(String(userText))) {
     const balance = coarenaBalanceText(await getCoarenaLimits(env));
     if (/(?:بيكفي|يكفي|بكفي).*(?:مهمة|شغلة|بحث|مشروع)/i.test(String(userText))) return `${balance}\nغالباً بكفينا للمهمة المتوسطة، بس ما بقدر أضمن التكلفة قبل ما أعرف حجم الملفات وعدد خطوات البحث. بعطيك تنبيه قبل ما ينزل الباقي عن $1.`;
