@@ -6,8 +6,8 @@
   STT : Groq Whisper large-v3-turbo (حصة مجانية يومية — GROQ_API_KEY)
   العقل: Coarena Model API (Claude Fable 5.2 أو أي موديل — COARENA_API_KEY)
   TTS : Microsoft Edge Neural TTS (الافتراضي — شامي) · Amazon Polly Neural (Hala/Zayd ar-AE — حسابك AWS)
-        · ElevenLabs (Eleven v4 Turbo / Flash v2.5 / v4 — أقوى عربي حالياً، يسمعك بنبرة بشرية مع تفكير ووقفات)
-        التبديل بمتغير واحد: JARVIS_TTS=edge (الافتراضي) | polly | elevenlabs
+        · ElevenLabs (Eleven v4 Turbo — أقوى عربي) · Gemini Flash TTS (مجاني متجدد يومياً + Director's Notes شامي!)
+        التبديل بمتغير واحد: JARVIS_TTS=edge (الافتراضي) | polly | elevenlabs | gemini
   VAD : Silero (يعمل محلياً على جهازك — مجاني)
   النقل: LiveKit Cloud (مشروعان مجانيان = حصتان)
 
@@ -41,6 +41,12 @@ POLLY_REGION = os.environ.get("AWS_REGION", "us-east-2").strip()     # نفس م
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "").strip()   # من https://elevenlabs.io → API Keys (مجاني: 10k حرف/شهر للتجربة)
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "").strip() # Voice Library → فلترة «Arabic» → Voice ID (أو صوتك المُستنسخ)
 ELEVENLABS_MODEL = os.environ.get("ELEVENLABS_MODEL", "eleven_v4_turbo").strip()  # eleven_v4_turbo ≈ 150ms (حقيقي) · eleven_v4 (أقصى تعبير، أبطأ)
+GEMINI_TTS_API_KEYS = os.environ.get("GEMINI_TTS_API_KEYS", os.environ.get("GEMINI_API_KEY", "")).strip()  # مفتاح أو أكثر مفصولة بفواصل (sk مجاني من AI Studio)
+GEMINI_TTS_MODEL = os.environ.get("GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview").strip()  # نموذج TTS — Preview الآن، تحقق من الاسم من /v1beta/models?key=...
+GEMINI_TTS_VOICE = os.environ.get("GEMINI_TTS_VOICE", "Charon").strip()  # Kore، Puck، Charon، Fenrir، Algieba… (30+ صوت)
+GEMINI_TTS_STYLE = os.environ.get("GEMINI_TTS_STYLE", "warm and unhurried; the speaker thinks out loud with brief hesitations like «اممم»; natural pauses between ideas").strip()
+GEMINI_TTS_ACCENT = os.environ.get("GEMINI_TTS_ACCENT", "Levantine Shami (Syrian Arabic, Damascus) — casual, warm, masculine").strip()
+GEMINI_TTS_FALLBACK_EDGE = os.environ.get("GEMINI_TTS_FALLBACK_EDGE", "1").strip() == "1"  # عند 429/عام — ارجع تلقائياً لـ Edge ar-SY (بلا حدود)
 COARENA_BASE_URL = os.environ.get("COARENA_BASE_URL", "https://coarena.ai/api/v1")
 COARENA_MODEL = os.environ.get("COARENA_MODEL", "claude-fable-5-2")
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
@@ -172,6 +178,140 @@ class PollyTTS(tts.TTS):
     def synthesize(self, text: str, *, conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS) -> tts.ChunkedStream:
         return PollyChunkedStream(polly_tts=self, input_text=text, conn_options=conn_options)
 
+class _GeminiKeyPool:
+    """مجمّع مفاتيح Gemini — مفاتيحك أنت (من مشاريع GCP مختلفة شرعية) بتوزيع وCooldown تلقائي عند 429.
+    تنبيه: مفاتيح نفس المشروع تتشارك نفس الحصة — للتوسعة القانونية الحقيقية راجع GEMINI_TTS_SETUP_AR.md."""
+
+    def __init__(self, raw: str):
+        self.keys = [k.strip() for k in raw.split(",") if k.strip()]
+        self.cooldown_until = [0.0 for _ in self.keys]
+        self._next = 0
+
+    def __bool__(self):
+        return bool(self.keys)
+
+    def acquire(self):
+        now = time.time()
+        for _ in range(len(self.keys)):
+            i = self._next % len(self.keys)
+            self._next = (self._next + 1) % len(self.keys)
+            if now >= self.cooldown_until[i]:
+                return i, self.keys[i]
+        i = min(range(len(self.keys)), key=lambda j: self.cooldown_until[j])
+        wait = max(0.0, self.cooldown_until[i] - now)
+        return None, (None if wait else self.keys[i])
+
+    def penalize(self, i: int, seconds: float = 300.0):
+        self.cooldown_until[i] = time.time() + seconds
+        logger.warning("مفتاح Gemini #%d دخل Cooldown %ss (حصة مستنفدة/مرفوض)", i, int(seconds))
+
+
+GEMINI_KEY_POOL = _GeminiKeyPool(GEMINI_TTS_API_KEYS)
+
+
+class GeminiTTSChunkedStream(tts.ChunkedStream):
+    def __init__(self, *, gemini_tts: "GeminiTTS", input_text: str, conn_options):
+        super().__init__(tts=gemini_tts, input_text=input_text, conn_options=conn_options)
+        self._gemini = gemini_tts
+
+    async def _synthesize(self, text: str):
+        import base64 as _b64
+        import json as _json
+        import re as _re
+        import urllib.request
+
+        prompt = (
+            "### PERFORMANCE\n"
+            f"Style: {GEMINI_TTS_STYLE}.\n"
+            f"Accent: {GEMINI_TTS_ACCENT}.\n"
+            "Pace: relaxed conversational speed, natural breathing.\n\n"
+            "### TEXT\n" + text
+        )
+        body = _json.dumps({
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": GEMINI_TTS_VOICE}}},
+            },
+        }).encode("utf-8")
+
+        last_err = None
+        attempts = max(1, len(GEMINI_KEY_POOL.keys))
+        for _ in range(attempts):
+            got = GEMINI_KEY_POOL.acquire()
+            if got[0] is None:
+                raise RuntimeError("كل مفاتيح Gemini بالـ Cooldown — خلصت حصة اليوم، انتظر تجددها أو راجع GEMINI_TTS_SETUP_AR.md")
+            idx, key = got
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_TTS_MODEL}:generateContent"
+            req = urllib.request.Request(url, data=body, method="POST",
+                headers={"x-goog-api-key": key, "content-type": "application/json"})
+            try:
+                loop = asyncio.get_running_loop()
+                resp = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=30))
+                payload = _json.loads(resp.read().decode("utf-8"))
+                part = payload["candidates"][0]["content"]["parts"][0]["inlineData"]
+                audio_b64 = part.get("data") or part.get("audioData") or ""
+                mime = part.get("mimeType", "") or part.get("mimetype", "")
+                rate_m = _re.search(r"rate\s*=\s*(\d+)", mime)
+                sample_rate = int(rate_m.group(1)) if rate_m else 24000
+                return _b64.b64decode(audio_b64), sample_rate
+            except Exception as e:  # noqa: BLE001 — ثم نجرب المفتاح التالي
+                code = getattr(getattr(e, "code", None), "start", None) or getattr(e, "code", None)
+                is_quota = ("429" in str(e)) or ("RESOURCE_EXHAUSTED" in str(e)) or ("rate" in str(e).lower() and "limit" in str(e).lower())
+                is_dead = ("403" in str(e)) or ("PERMISSION_DENIED" in str(e)) or ("API_KEY" in str(e).upper())
+                if is_quota or is_dead:
+                    GEMINI_KEY_POOL.penalize(idx, 300 if is_quota else 3600)
+                    last_err = e
+                    continue
+                raise
+        raise RuntimeError(f"تعذر توليد الصوت من Gemini بعد {attempts} محاولة: {last_err}")
+
+    async def _run(self, output_emitter: tts.AudioEmitter) -> None:
+        try:
+            audio, sample_rate = await self._synthesize(self._input_text)
+        except Exception as e:  # noqa: BLE001
+            if not GEMINI_TTS_FALLBACK_EDGE:
+                raise
+            logger.warning("Gemini TTS فشل (%s) — التبديل المؤقت إلى Edge ar-SY مجاناً", e)
+            edge = EdgeTTS(EDGE_VOICE)
+            stream = EdgeTTSChunkedStream(edge_tts_instance=edge, input_text=self._input_text, conn_options=DEFAULT_API_CONNECT_OPTIONS)
+            await stream._run(output_emitter)
+            return
+        output_emitter.initialize(
+            request_id=f"gemini-{int(time.time() * 1000)}",
+            sample_rate=sample_rate,
+            num_channels=1,
+            mime_type="audio/pcm",
+            frame_size_ms=200,
+        )
+        frame_bytes = int(sample_rate * 2 * 0.2)  # 16-bit mono — 200ms
+        for off in range(0, len(audio), frame_bytes):
+            output_emitter.push(audio[off:off + frame_bytes])
+        output_emitter.flush()
+
+
+class GeminiTTS(tts.TTS):
+    """Gemini Flash TTS — مجاني (حصة يومية تتجدد) + Director's Notes: لحن شامي بشري بوقفات.
+    يحتاج مفتاح AI Studio مجاني (بلا بطاقة): https://aistudio.google.com/apikey"""
+
+    def __init__(self, voice: str = GEMINI_TTS_VOICE):
+        if not GEMINI_KEY_POOL:
+            raise SystemExit("❌ GEMINI_TTS_API_KEYS (أو GEMINI_API_KEY) مو مضبوط — مفتاح مجاني بلا بطاقة من https://aistudio.google.com/apikey — الدليل الكامل: GEMINI_TTS_SETUP_AR.md")
+        super().__init__(capabilities=tts.TTSCapabilities(streaming=False), sample_rate=24000, num_channels=1)
+        self.voice = voice
+
+    @property
+    def model(self) -> str:
+        return self._gemini_model if hasattr(self, "_gemini_model") else GEMINI_TTS_MODEL
+
+    @property
+    def provider(self) -> str:
+        return "google-gemini-tts"
+
+    def synthesize(self, text: str, *, conn_options: APIConnectOptions = DEFAULT_API_CONNECT_OPTIONS) -> tts.ChunkedStream:
+        return GeminiTTSChunkedStream(gemini_tts=self, input_text=text, conn_options=conn_options)
+
+
 class ElevenLabsTTSFactory:
     """مصنع ElevenLabs (WebSocket streaming) — أقوى صوت عربي بشري حالياً.
     يتطلب: pip install livekit-plugins-elevenlabs==1.8.11 + ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID."""
@@ -208,7 +348,7 @@ async def entrypoint(ctx: agents.JobContext):
         stt=openai.STT(base_url=GROQ_BASE_URL, api_key=groq_key, model=GROQ_STT_MODEL, language="ar"),
         vad=silero.VAD.load(),
         llm=openai.LLM(base_url=COARENA_BASE_URL, api_key=coarena_key, model=COARENA_MODEL, temperature=0.7),
-        tts=(PollyTTS() if JARVIS_TTS == "polly" else ElevenLabsTTSFactory.build() if JARVIS_TTS == "elevenlabs" else EdgeTTS(EDGE_VOICE)),
+        tts=(PollyTTS() if JARVIS_TTS == "polly" else ElevenLabsTTSFactory.build() if JARVIS_TTS == "elevenlabs" else GeminiTTS() if JARVIS_TTS == "gemini" else EdgeTTS(EDGE_VOICE)),
         allow_interruptions=True,
     )
 
