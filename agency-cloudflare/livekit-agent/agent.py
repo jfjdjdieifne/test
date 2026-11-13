@@ -62,6 +62,7 @@ INSTRUCTIONS = """أنت "جارفس" — المساعد الصوتي الخاص
 - اسأل سؤالاً واحداً فقط كل مرة ولا تطوّل.
 - إذا سأل عن هويتك: قل أنت جارفس (يعمل عبر Coarena ونموذج """ + COARENA_MODEL + """).
 - ممنوع تخترع أرقام أو أسعار أو مواعيد — أي رقم تقوله لازم يكون من سياق المحادثة.
+- إذا طلب إنهاء المكالمة («سكر المكالمة»، «انهي المكالمة»، «خلص المكالمة»…): رد بجملة وداع شامي قصيرة دافئة (مثلاً: «طيب حبيبي… بخاطرك دكتور، باي باي.») ولا تطول — المكالمة رح تنهي بعدها بثوانٍ.
 """
 
 
@@ -352,9 +353,47 @@ async def entrypoint(ctx: agents.JobContext):
         allow_interruptions=True,
     )
 
+    HANGUP_PHRASES = ("سكر المكالمة", "اسكر المكالمة", "انهي المكالمة", "خلص المكالمة", "اقفل المكالمة", "سكر معنا", "بدي انهي", "بدي اسكر", "إنهاء المكالمة")
+
+    def _message_text(msg) -> str:
+        content = getattr(msg, "content", "")
+        parts = content if isinstance(content, list) else [content]
+        out = []
+        for p in parts:
+            if isinstance(p, str):
+                out.append(p)
+            elif isinstance(p, dict):
+                out.append(str(p.get("text") or p.get("content") or ""))
+            else:
+                out.append(str(getattr(p, "text", p) or ""))
+        return " ".join(out)
+
     class Assistant(Agent):
         def __init__(self):
             super().__init__(instructions=INSTRUCTIONS)
+
+        async def on_user_turn_completed(self, turn_ctx, new_message):
+            text = _message_text(new_message)
+            norm = " ".join(text.split())
+            if any(phrase in norm for phrase in HANGUP_PHRASES):
+                logger.info("أمر إنهاء المكالمة وصل — جارفس رح يسكر المكالمة بنفسه: %s", norm[:80])
+
+                async def _hangup():
+                    await asyncio.sleep(6)  # وقت كفاية لتوديع الصوت قبل سكّر
+                    try:
+                        await session.aclose()
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("session.aclose: %s", e)
+                    try:
+                        await ctx.delete_room(ctx.room.name)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("delete_room بعد aclose: %s", e)
+                        try:
+                            ctx.shutdown("user requested hangup")
+                        except Exception as e2:  # noqa: BLE001
+                            logger.warning("ctx.shutdown: %s", e2)
+
+                asyncio.create_task(_hangup())
 
     await session.start(agent=Assistant(), room=ctx.room)
     try:
