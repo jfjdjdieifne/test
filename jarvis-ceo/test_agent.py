@@ -232,5 +232,62 @@ class TestIntegrations(unittest.TestCase):
             tools_mod.TAVILY_API_KEY = old
 
 
+class TestNewModules(unittest.TestCase):
+    def test_reminders(self):
+        import db as dbmod
+        rid = dbmod.add_reminder(777, "راجع مثال الساعة 9", "daily", "09:00")
+        rows = dbmod.list_reminders(777)
+        self.assertTrue(any(r["id"] == rid for r in rows))
+        self.assertEqual(dbmod.due_reminders(time.time()), [])  # بكرة الصبح لسا
+        self.assertTrue(dbmod.delete_reminder(rid, 777))
+
+    def test_store_env_var(self):
+        import integrations
+        path = os.path.join(tempfile.mkdtemp(), "test.env")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("GITHUB_TOKEN=old\nCOARENA_API_KEY=keep\n")
+        ok, _ = integrations.store_env_var("GITHUB_TOKEN", "newtoken123", path=path)
+        self.assertTrue(ok)
+        with open(path, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn("GITHUB_TOKEN=newtoken123", content)
+        self.assertIn("COARENA_API_KEY=keep", content)
+        self.assertEqual(oct(os.stat(path).st_mode & 0o777), "0o600")
+        ok2, _ = integrations.store_env_var("bad name!", "x", path=path)
+        self.assertFalse(ok2)
+
+    def test_image_url(self):
+        import images
+        url = images.image_url("عيادة أسنان حديثة")
+        self.assertIn("image.pollinations.ai", url)
+        self.assertTrue(url.startswith("https://"))
+
+    def test_project_module(self):
+        import project
+        fake = tempfile.mkdtemp()
+        with open(os.path.join(fake, "README.md"), "w", encoding="utf-8") as fh:
+            fh.write("# مشروع تجريبي\nهاد هو المشروح.")
+        os.makedirs(os.path.join(fake, "src"))
+        with open(os.path.join(fake, "src", "app.py"), "w", encoding="utf-8") as fh:
+            fh.write("def main():\n    printhello = 'demo'\n")
+        self.assertIn("src/", project.tree(fake))
+        content, err = project.read_file("README.md", fake)
+        self.assertIn("مشروع تجريبي", content)
+        _, err2 = project.read_file("../secret.txt", fake)
+        self.assertIsNotNone(err2)  # ما بيطلع بره المجلد
+        hits = project.search("printhello", fake)
+        self.assertTrue(hits)
+        summ = project.summary(fake, refresh=True)
+        self.assertIn("README", summ)
+
+    def test_steps_for(self):
+        import integrations
+        sid, steps = integrations.steps_for("الجيميل")
+        self.assertEqual(sid, "gmail")
+        self.assertIn("apppasswords", steps)
+        sid2, steps2 = integrations.steps_for("شيء غريب")
+        self.assertIsNone(sid2)
+
+
 if __name__ == "__main__":
     unittest.main()

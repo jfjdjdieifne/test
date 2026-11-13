@@ -227,3 +227,96 @@ def stats():
 def forget_all(chat_id):
     with conn() as c:
         c.execute("DELETE FROM messages WHERE chat_id=?", (int(chat_id),))
+
+
+# ---------- التذكيرات الدورية (بنفع «كل يوم/أسبوع») ----------
+
+_REMINDER_SCHEMA = """
+CREATE TABLE IF NOT EXISTS reminders(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    time_str TEXT NOT NULL,
+    days TEXT NOT NULL DEFAULT '',
+    next_fire REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open'
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status, next_fire);
+"""
+
+
+def _reminder_connect():
+    c = conn()
+    c.executescript(_REMINDER_SCHEMA)
+    return c
+
+
+def _next_fire(kind, time_str, days, from_ts):
+    import datetime
+    h, m = [int(x) for x in time_str.split(":")]
+    now = datetime.datetime.fromtimestamp(from_ts)
+    cand = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    if kind in ("once", "daily"):
+        if cand.timestamp() <= from_ts:
+            cand += datetime.timedelta(days=1)
+        return cand.timestamp()
+    if kind == "weekly":
+        day_map = {"الاثنين": 0, "الثلاثاء": 1, "الاربعاء": 2, "الأربعاء": 2,
+                   "الخميس": 3, "الجمعة": 4, "السبت": 5, "الاحد": 6, "الأحد": 6}
+        target = day_map.get((days or "").strip(), 0)
+        delta = (target - cand.weekday()) % 7
+        if delta == 0 and cand.timestamp() <= from_ts:
+            delta = 7
+        return (cand + datetime.timedelta(days=delta)).timestamp()
+    return from_ts + 86400
+
+
+def compute_next(kind, time_str, days="", from_ts=None):
+    return _next_fire(kind, time_str, days, from_ts or time.time())
+
+
+def add_reminder(chat_id, text, kind, time_str, days="", next_fire=None):
+    with _reminder_connect() as c:
+        cur = c.execute(
+            "INSERT INTO reminders(chat_id,text,kind,time_str,days,next_fire) VALUES(?,?,?,?,?,?)",
+            (int(chat_id), text[:500], kind, time_str, days,
+             next_fire if next_fire is not None else compute_next(kind, time_str, days)),
+        )
+        return cur.lastrowid
+
+
+def due_reminders(now_ts=None, limit=10):
+    with _reminder_connect() as c:
+        rows = c.execute(
+            "SELECT * FROM reminders WHERE status='open' AND next_fire <= ? ORDER BY next_fire LIMIT ?",
+            (now_ts or time.time(), int(limit)),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def bump_reminder(reminder_id, kind):
+    with _reminder_connect() as c:
+        if kind == "once":
+            c.execute("UPDATE reminders SET status='done' WHERE id=?", (int(reminder_id),))
+            return
+        r = c.execute("SELECT * FROM reminders WHERE id=?", (int(reminder_id),)).fetchone()
+        if r:
+            nxt = _next_fire(r["kind"], r["time_str"], r["days"], time.time())
+            c.execute("UPDATE reminders SET next_fire=? WHERE id=?", (nxt, int(reminder_id)))
+
+
+def list_reminders(chat_id):
+    with _reminder_connect() as c:
+        rows = c.execute(
+            "SELECT * FROM reminders WHERE chat_id=? AND status='open' ORDER BY next_fire",
+            (int(chat_id),),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_reminder(reminder_id, chat_id):
+    with _reminder_connect() as c:
+        cur = c.execute("DELETE FROM reminders WHERE id=? AND chat_id=?",
+                        (int(reminder_id), int(chat_id)))
+        return cur.rowcount > 0

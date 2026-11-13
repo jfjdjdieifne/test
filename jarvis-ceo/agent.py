@@ -23,6 +23,9 @@ import selfedit
 import github
 import gmail
 import social
+import integrations
+import project
+import images
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -203,6 +206,16 @@ def gather_facts(text):
 
 AGENT_ALIASES = {"سعيد": "سعيد", "محمود": "محمود", "احمد": "أحمد", "أحمد": "أحمد", "متداول": "متداول"}
 
+
+def _parse_hhmm(token):
+    m = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?", (token or "").strip())
+    if not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    if h > 23 or mi > 59:
+        return None
+    return f"{h:02d}:{mi:02d}"
+
 def agent_history(chat_id, agent, limit=10):
     return db.history(chat_id, agent=agent, limit=limit)
 
@@ -213,8 +226,17 @@ def think(chat_id, user_text, is_voice=False):
     convo.append({"role": "user", "content": user_text})
     if facts:
         convo[-1]["content"] += f"\n\n[معلومات حقيقية من الأدوات — استخدمها ولا تخترع أرقام]\n{facts}"
+    if re.search(r"(مشروع|مشاريع|ريبو|repo|الكود|ملفاتنا|نقدر نعمل|نقدر نربط|نقدر نضيف|فهمني|شو بعرف تعمل)", user_text):
+        try:
+            convo[-1]["content"] += f"\n\n[ذاكرتي عن مشروعنا — استند عليها]\n{project.summary()}"
+        except Exception:  # noqa: BLE001
+            pass
+    profile = db.kv_get("profile", "")
+    system = brain.system_prompt()
+    if profile:
+        system += f"\n\n[عن الدكتور — استند عليها بشخصيتك وتعاملك]\n{profile}"
 
-    raw = brain.chat([{"role": "system", "content": brain.system_prompt()}] + convo, temperature=0.6)
+    raw = brain.chat([{"role": "system", "content": system}] + convo, temperature=0.6)
     plan = brain.extract_json(raw)
     if not plan:  # رجّع فابل نص حر — جرّبه جوب مباشرة
         return raw.strip()
@@ -407,16 +429,9 @@ def _default_branch_exists(repo):
 # ============ أوامر مباشرة (بلا عقل — أسرع وأضمن) ============
 
 def integrations_status():
-    gh = github.whoami() if github.configured() else {"ok": False, "error": "GITHUB_TOKEN مش حاطه"}
-    lines = [
-        "🔌 وصلات الدكتور:",
-        f"• GitHub: {'✅ ' + gh.get('login', '') if gh.get('ok') else '❌ ' + str(gh.get('error', ''))[:60]}",
-        f"• جيميل: {'✅ ' + os.environ.get('GMAIL_ADDRESS', '') if gmail.configured() else '❌ مش موصول (needs App Password)'}",
-        f"• X (تويتر): {'✅' if social.x_configured() else '❌ مش موصول'}",
-        f"• فيسبوك (صفحة): {'✅' if social.fb_configured() else '❌ مش موصول'}",
-        f"• انستغرام: {'✅' if social.ig_configured() else '❌ مش موصول (يحتاج حساب Business + صفحة)'}",
-        f"• وضع الموافقة: {'⚡ بدون سؤال (auto_send)' if auto_send() else '🙋 كل إرسال بضغطة منك'}",
-    ]
+    lines = ["🔌 وضع الوصلات هلأ:"]
+    lines += integrations.status_lines()
+    lines.append(f"• وضع الموافقة: {'⚡ بدون سؤال (auto_send)' if auto_send() else '🙋 كل إرسال/نشر بضغطة منك'}")
     return "\n".join(lines)
 
 
@@ -558,6 +573,128 @@ def handle_message(msg):
             send_text(chat_id, handle_debate(chat_id, question))
         except brain.BrainError as e:
             send_text(chat_id, f"العقل مشغول هلأ: {e}")
+        return
+    if low in ("شو لازم اضيف", "شو لازم أضيف", "شو ناقص", "ناقصني شو", "لسا شو ناقص"):
+        missing = integrations.missing_list()
+        if not missing:
+            send_text(chat_id, "كل إشي موصول ✅ ما ناقصك شي")
+        else:
+            send_text(chat_id, "هاي الناقص:\n" + "\n".join(missing) + "\n\nاحكيلي «ربط <اسم الخدمة>» وبديك الخطوات خطوة خطوة.")
+        return
+    if low.startswith(("ربط ", "اربط ", "كيف اربط ", "كيف أربط ", "طريقة ربط ")):
+        query = re.sub(r"^(ربط|اربط|كيف اربط|كيف أربط|طريقة ربط)\s+", "", text.strip()).strip()
+        query = query.rstrip("؟?").strip()
+        sid, steps = integrations.steps_for(query)
+        if not steps:
+            send_text(chat_id, "قل لي شو بدك اربط — مثال: «ربط الجيميل» أو «ربط GitHub» أو «ربط انستغرام»")
+        else:
+            send_text(chat_id, steps)
+        return
+    m_key = re.match(r"^(?:احفظ مفتاح|احفظلي مفتاح|/key)\s+([A-Z][A-Z0-9_]{2,40})\s*=?\s*(.+)$", text.strip())
+    if m_key:
+        name, value = m_key.group(1), m_key.group(2).strip()
+        # امسح رسالته عن السيرفر فوراً حتى ما تضل بالشات
+        tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
+        if not integrations.env_var_allowed(name):
+            send_text(chat_id, f"«{name}» مو من المفاتيح المعروفة عندي — إذا متأكد قللي بالاسم الصح أو بدّي أعدّل الكود بهاي النقطة")
+            return
+        ok, note = integrations.store_env_var(name, value)
+        if ok:
+            send_text(chat_id, f"✅ انحفظ {name} بالمكان السري وانمسحت رسالتك.\nبعمل ريستارت هلأ عشان يطبّق…")
+            os._exit(0)
+        else:
+            send_text(chat_id, f"❌ {note}")
+        return
+    if low.startswith(("احفظ عني:", "احفظ عني ", "ضيفها عني:", "ضيف لملفي:")):
+        note = re.split(r"[:：]", text, maxsplit=1)
+        note = note[1].strip() if len(note) > 1 else text.split(None, 2)[-1].strip()
+        if not note:
+            send_text(chat_id, "اكتب شو بدك تحفظ — مثال: «احفظ عني: اسمي الدكتور فلان، بعمل مواقع وعيادات، بتصلني بكره الساعة 9»")
+            return
+        profile = db.kv_get("profile", "")
+        profile = (profile + "\n" + note).strip()[-2000:]
+        db.kv_set("profile", profile)
+        send_text(chat_id, "حفظت ✅ — كل محادثاتنا الجاية بفهم عليك أكثر (قل «وش تعرف عني» لتشوف)")
+        return
+    if low in ("وشو تعرف عني", "وش تعرف عني", "شو تعرف عني", "ملفي الشخصي"):
+        profile = db.kv_get("profile", "")
+        send_text(chat_id, ("هاي اللي بعرفها عنك:\n" + profile) if profile else "لسا ما بتعرف عني شي — احكيلي: «احفظ عني: …»")
+        return
+    if low in ("امسح هويتي", "انسى هويتي", "امسح الملف الشخصي"):
+        db.kv_set("profile", "")
+        send_text(chat_id, "امساحت ✅ - ما عاد بعرف شي عنك")
+        return
+    m_once = re.match(r"^(?:ذكرني|ذكّرني)\s+(\d{1,2}(?::\d{2})?)\s+(.+)$", text)
+    if m_once:
+        t = _parse_hhmm(m_once.group(1))
+        what = m_once.group(2).strip()
+        if t:
+            rid = db.add_reminder(chat_id, what, "once", t)
+            send_text(chat_id, f"تمام ✅ رحذكّرك الساعة {t} — «{what}» (رقم التذكير #{rid} — للإلغاء: «شيل تذكير {rid}»)")
+            return
+    m_daily = re.match(r"^كل يوم\s+(\d{1,2}(?::\d{2})?)\s+(.+)$", text)
+    if m_daily:
+        t = _parse_hhmm(m_daily.group(1))
+        what = m_daily.group(2).strip()
+        if t:
+            rid = db.add_reminder(chat_id, what, "daily", t)
+            send_text(chat_id, f"تمام ✅ كل يوم الساعة {t} — «{what}» (#{rid})")
+            return
+    m_week = re.match(r"^كل أسبوع\s+(\S+)\s+(\d{1,2}(?::\d{2})?)\s+(.+)$", text)
+    if m_week:
+        days, t = m_week.group(1), _parse_hhmm(m_week.group(2))
+        what = m_week.group(3).strip()
+        if t:
+            rid = db.add_reminder(chat_id, what, "weekly", t, days)
+            send_text(chat_id, f"تمام ✅ كل {days} الساعة {t} — «{what}» (#{rid})")
+            return
+        send_text(chat_id, "ما فهمت التوقيت — مثال: «كل أسبوع الجمعة 10:30 اجمع التقرير»")
+        return
+    if low in ("تذكيراتي", "تذكيرات", "قائمة التذكيرات"):
+        rows = db.list_reminders(chat_id)
+        if not rows:
+            send_text(chat_id, "ما في تذكيرات ✅ — ضيف: «ذكرني 9:00 …» أو «كل يوم …»")
+        else:
+            lines = ["⏰ تذكيراتك:"]
+            for r in rows:
+                when = {"once": "مرة", "daily": "يومياً", "weekly": f"أسبوعياً ({r['days']})"}[r["kind"]]
+                lines.append(f"#{r['id']} {when} {r['time_str']} — {r['text'][:80]}")
+            send_text(chat_id, "\n".join(lines))
+        return
+    m_del = re.match(r"^(?:شيل|احذف|الغ)\s+تذكير\s+#?(\d+)$", text)
+    if m_del:
+        ok = db.delete_reminder(int(m_del.group(1)), chat_id)
+        send_text(chat_id, "شلت الإشعار ✅" if ok else "ما لقيت هيك تذكير")
+        return
+    m_img = re.match(r"^(?:صورة|انشر صورة|/image)\s*[:：]?\s*(.+)$", text)
+    if m_img:
+        prompt = m_img.group(1).strip()
+        try:
+            url = images.image_url(prompt)
+        except ValueError as e:
+            send_text(chat_id, str(e))
+            return
+        res = tg("sendPhoto", {"chat_id": chat_id, "photo": url, "caption": f"🎨 {prompt[:300]}"})
+        if not res:
+            send_text(chat_id, f"الصورة: {url}")
+        return
+    if low in ("حدث فهمك", "حدّث فهمك", "تحديث فهمك", "رفرش فهمك"):
+        project.summary(refresh=True)
+        send_text(chat_id, "حدّثت فهمي للمشروع ✅ — صارة عندي نظرة جديدة على كل الملفات")
+        return
+    m_read = re.match(r"^(?:اقرا|اقرأ|شو بملف|وريني)\s+(.+)$", text)
+    if m_read:
+        path = m_read.group(1).strip().rstrip("؟?")
+        content, err = project.read_file(path)
+        if err:
+            send_text(chat_id, err)
+        else:
+            send_text(chat_id, f"📄 {path}:\n\n{content[:3000]}")
+        return
+    m_search = re.match(r"^(?:ابحث بالمشروع عن|دور على|ابحث عن)\s+(.+)\s+بالمشروع$", text)
+    if m_search:
+        hits = project.search(m_search.group(1))
+        send_text(chat_id, "\n".join(f"• {h}" for h in hits) if hits else "ما لقيت شي بالمشروع بهالشي")
         return
     if low in ("/inbox", "ايميلاتي", "إيميلي", "وريني الايميل", "وريني الإيميل", "الرسايل"):
         if not gmail.configured():
@@ -701,6 +838,12 @@ HELP = (
     "شو موصول — حالة كل الوصلات (GitHub/جيميل/السوشيال)\n"
     "ربيوزاتي — آخر ريبوز GitHub تبعك\n"
     "ايميلاتي — إيميلاتك غير المقروءة\n"
+    "احفظ عني: … — بخليني أعرفك أكثر (وشو تعرف عني / امسح هويتي)\n"
+    "شو لازم اضيف — شو ناقص من الوصلات | ربط <الخدمة> — الخطوات\n"
+    "احفظ مفتاح NAME=VALUE — بنحفظ مفتاح بمكان سري وانمسح رسالتك تلقائياً\n"
+    "ذكرني 9:00 … / كل يوم 9:00 … / كل أسبوع الجمعة 10:30 … | تذكيراتي\n"
+    "صورة: <وصف> — بمولد صور مجاني\n"
+    "ابحث بالمشروع عن <كلمة> | اقرأ <ملف> | حدث فهمك\n"
     "احفظ: <أي شي> — بتحفظها بالذاكرة العميقة 🧠 | تذكر <كلمة> — بحث فوري\n"
     "ناقش قرار: <السؤال> — المتفائل × المتشائم × القاضي ⚖️\n"
     "فرصة اليوم — بتقرير الصباح (إذا Tavily مربوط)\n"
@@ -773,6 +916,13 @@ def background_loop():
                 if not db.kv_get(key):
                     db.kv_set(key, "done")
                     morning_report(cid)
+            # التذكيرات اللي مستحقة هلأ
+            cid2 = ceo_chat_id()
+            for r in db.due_reminders(time.time()):
+                try:
+                    send_text(r["chat_id"], f"⏰ تذكير: {r['text']}")
+                finally:
+                    db.bump_reminder(r["id"], r["kind"])
         except Exception as e:  # noqa: BLE001
             print(f"bg: {e}")
         time.sleep(30)
