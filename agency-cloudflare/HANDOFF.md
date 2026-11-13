@@ -157,7 +157,7 @@ gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | se
 10. **fetch_page معطلة ضد workers.dev حالياً** (2026-11-11 ~23:00) — موثوقيتها متذبذبة؛ اعتمد check-runs + فحص المالك الحي.
 11. **بناء `test`** (خدمة Workers ثانية على نفس الريبو) فاشل في كل commit — مسبق، منفصل عن الإنتاج.
 12. **اختبارات test.mjs** تتحقق من الأدوات والأوامر عبر fetch وهمي — أي تغيير سلوكي يتطلب تحديثها؛ لا «تصلح» الاختبارات لتمرير كود معطل، بل العكس.
-13. **قرارات 2026-11-13 (بطلب المالك)**: (أ) `COARENA_API_KEY` ب `[vars]` = Coarena أساس تلقائياً؛ عند فشله يكمل على السلسلة. (ب) LiveKit: مشروعان مجانيان — JWT يُوقَّع بالبوت (`/livekit-token`، HS256 بـ WebCrypto — بلا تبعيات)؛ صفحة `/live` تحتاج `livekit-agent/` على جهاز المالك (Groq STT + Coarena LLM + Edge TTS + Silero VAD، كله مجاني). (ج) Linphone: هوية SIP فقط — لا PSTN — ومفتاحها مقيد IP ولا يعمل من Cloudflare؛ مخزنة للتوثيق/الاستخدام من جهاز المالك. (د) Edge TTS قرار معتمد للـ Agent (نفس صوت البوت `ar-SY-LaithNeural`).
+13. **قرارات 2026-11-13 (بطلب المالك)**: (أ) `COARENA_API_KEY` ب `[vars]` = Coarena أساس تلقائياً؛ عند فشله يكمل على السلسلة. (ب) LiveKit: مشروعان مجانيان — JWT يُوقَّع بالبوت (`/livekit-token`، HS256 بـ WebCrypto — بلا تبعيات)؛ صفحة `/live` تحتاج `livekit-agent/` على جهاز المالك (Groq STT + Coarena LLM + Edge TTS + Silero VAD، كله مجاني). (ج) Linphone: هوية SIP فقط — لا PSTN — ومفتاحها مقيد IP ولا يعمل من Cloudflare؛ مخزنة للتوثيق/الاستخدام من جهاز المالك. (د) Edge TTS قرار معتمد للـ Agent (نفس صوت البوت `ar-SY-LaithNeural`). (هـ) المالك فتح حساب AWS بـ $100 رصيد مجاني (Free Plan حتى 2027-05-13) — دليل تشغيل الـ Agent 24/7 على EC2 في `livekit-agent/AWS_EC2_AR.md` (أنا ما بدخل على حسابه؛ هو ينفذ ويملأ القيم محلياً).
 
 ---
 

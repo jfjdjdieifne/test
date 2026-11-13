@@ -88,5 +88,6 @@ yarn && cp .env.example .env && yarn dx      # يحتاج Node 18+ وDocker — 
 | بدون أي تثبيت | `/voicecall` بتيليجرام — Gemini Live فوري بمقاطعة حقيقية |
 
 التشغيل على جهازك: `agency-cloudflare/livekit-agent/README.md` — 10 دقائق مرة واحدة + نافذة ترمينال مفتوحة أثناء المكالمات.
+وللتشغيل **24/7 بلا جهازك**: `livekit-agent/AWS_EC2_AR.md` — دليل EC2 كامل على حساب AWS المجاني للمالك ($100 رصيد، حتى 2027-05-13).
 
 **Linphone SIP** (`sip:moudy.moray@sip.linphone.org`): SIP↔SIP مجاني بين تطبيقين — مفيد كخط داخلي مجاني؛ **ليس** بديلاً عن PSTN ولا عن مكالمات الجوال، ومفتاح الـ API مالتك مقيد على IP محدد (89.124.8.30) فلا يعمل من Cloudflare.
