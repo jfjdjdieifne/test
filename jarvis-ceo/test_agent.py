@@ -294,5 +294,59 @@ class TestNewModules(unittest.TestCase):
         self.assertIsNone(sid2)
 
 
+class TestKeyImport(unittest.TestCase):
+    def test_parse_mixed_messy(self):
+        import keyimport
+        text = (
+            "هيدي كل مفاتيحي يا عزيزي:\n"
+            "coarena: coarena_sk-livekey1234567890 (للفايبل)\n"
+            "جيميني: AIzaSyD-1234567890abcdefghij-ABCD_xyz — للصوت\n"
+            "TAVILY_API_KEY=tvly-abc123def456ghi\n"
+            "bearer github_pat_a1b2c3d4e5f6g7h8i9j0k1l2m3 (لجيتهاب)\n"
+            "شغلة تانية مو مفتاح: السلام عليكم\n"
+        )
+        mapping, skipped = keyimport.parse_bulk_text(text)
+        self.assertEqual(mapping.get("COARENA_API_KEY"), "coarena_sk-livekey1234567890")
+        self.assertEqual(mapping.get("GEMINI_API_KEY"), "AIzaSyD-1234567890abcdefghij-ABCD_xyz")
+        self.assertEqual(mapping.get("TAVILY_API_KEY"), "tvly-abc123def456ghi")
+        self.assertEqual(mapping.get("GITHUB_TOKEN"), "github_pat_a1b2c3d4e5f6g7h8i9j0k1l2m3")
+        self.assertNotIn("السلام عليكم", mapping.values())
+
+    def test_parse_exact_assignment_and_duplicates(self):
+        import keyimport
+        text = "GEMINI_API_KEY=AIza-first-key-12345678\nGEMINI_API_KEY=AIza-second-key-87654321\n"
+        mapping, _ = keyimport.parse_bulk_text(text)
+        self.assertEqual(mapping["GEMINI_API_KEY"], "AIza-second-key-87654321")
+
+    def test_parse_numbers_are_not_keys(self):
+        import keyimport
+        mapping, skipped = keyimport.parse_bulk_text("سعر الذهب 2785 دولار\nاللون ازرق")
+        self.assertEqual(mapping, {})
+
+    def test_apply_bulk_saves_and_masks(self):
+        import keyimport, integrations
+        path = os.path.join(tempfile.mkdtemp(), "test.env")
+        os.environ["CEO_ENV_PATH"] = path
+        integrations.ENV_PATH = path
+        try:
+            summary, saved = keyimport.apply_bulk(999,
+                "coarena: coarena_sk-livekey1234567890abc\n"
+                "tavily: tvly-zzz-pytest-12345",
+                delete_fn=lambda: None)
+            self.assertIn("COARENA_API_KEY", saved)
+            self.assertIn("TAVILY_API_KEY", saved)
+            body = open(path, encoding="utf-8").read()
+            self.assertNotIn("coarena_sk-livekey1234567890", summary)   # ما بنطبع القيم
+            self.assertIn("COARENA_API_KEY=coarena_sk-livekey1234567890", body)
+        finally:
+            integrations.ENV_PATH = os.path.expanduser("~/jarvis-ceo.env")
+            os.environ.pop("CEO_ENV_PATH", None)
+
+    def test_final_report_structure(self):
+        import keyimport
+        txt = keyimport.final_report()
+        self.assertIn("COARENA_API_KEY", txt)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,7 @@ import social
 import integrations
 import project
 import images
+import keyimport
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -493,6 +494,20 @@ def handle_message(msg):
         tg("sendMessage", {"chat_id": chat_id, "text": "عذراً، هاد البوت خاص بشخص واحد 🙏"})
         return
 
+    # وضعية استلام المفاتيح — كل رسالة تنمسح وتنقّل محلياً
+    if db.kv_get("bulk_keys", "0") == "1" and msg.get("text"):
+        text_raw = msg["text"]
+        low_raw = text_raw.strip().lower()
+        tg("deleteMessage", {"chat_id": chat_id, "message_id": msg.get("message_id")})
+        if low_raw in ("خلص", "خلاص", "خلصت", "توقف", "تم"):
+            db.kv_set("bulk_keys", "0")
+            send_text(chat_id, keyimport.final_report())
+            os._exit(0)
+        else:
+            summary, saved = keyimport.apply_bulk(chat_id, text_raw)
+            send_text(chat_id, summary + "\n\n(ابعت الباقي — أو «خلص» لما تخلص)")
+        return
+
     if "document" in msg:
         doc = msg["document"]
         name = doc.get("file_name", "file")
@@ -546,13 +561,57 @@ def handle_message(msg):
     if low in ("/integrations", "شو موصول", "الموصول", "الوصلات", "متصلات"):
         send_text(chat_id, integrations_status())
         return
-    if low.startswith(("احفظ ", "/note ")):
-        note = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
+    m_key = re.match(r"^(?:احفظ مفتاح|احفظلي مفتاح|/key)\s+([A-Z][A-Z0-9_]{2,40})\s*=?\s*(.+)$", text.strip())
+    if m_key:
+        name, value = m_key.group(1), m_key.group(2).strip()
+        # امسح رسالته عن السيرفر فوراً حتى ما تضل بالشات
+        tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
+        if not integrations.env_var_allowed(name):
+            send_text(chat_id, f"«{name}» مو من المفاتيح المعروفة عندي — إذا متأكد قللي بالاسم الصح أو بدّي أعدّل الكود بهاي النقطة")
+            return
+        ok, note = integrations.store_env_var(name, value)
+        if ok:
+            send_text(chat_id, f"✅ انحفظ {name} بالمكان السري وانمسحت رسالتك.\nبعمل ريستارت هلأ عشان يطبّق…")
+            os._exit(0)
+        else:
+            send_text(chat_id, f"❌ {note}")
+        return
+
+    if low.startswith(("احفظ عني:", "احفظ عني ", "ضيفها عني:", "ضيف لملفي:")):
+        note = re.split(r"[:：]", text, maxsplit=1)
+        note = note[1].strip() if len(note) > 1 else text.split(None, 2)[-1].strip()
+        if not note:
+            send_text(chat_id, "اكتب شو بدك تحفظ — مثال: «احفظ عني: اسمي الدكتور فلان، بعمل مواقع وعيادات، بتصلني بكره الساعة 9»")
+            return
+        profile = db.kv_get("profile", "")
+        profile = (profile + "\n" + note).strip()[-2000:]
+        db.kv_set("profile", profile)
+        send_text(chat_id, "حفظت ✅ — كل محادثاتنا الجاية بفهم عليك أكثر (قل «وش تعرف عني» لتشوف)")
+        return
+    if low in ("احفظ كل المفاتيح", "احفظلي كل المفاتيح", "استلم مفاتيحي", "/keys", "المفاتيح"):
+        db.kv_set("bulk_keys", "1")
+        send_text(chat_id, (
+            "وضعية الاستلام مفعّلة ✅\n"
+            "اشبكني كل مفاتيحك — بأي ترتيب ومعهم أي كتابة حوالياتهم، بفرّطهم لحالهم.\n"
+            "بعد كل رسالة بتمسحها من الشات فوراً.\n"
+            "لما تخلص، اكتب «خلص»."
+        ))
+        return
+    if low in ("خلص", "خلاص"):
+        if db.kv_get("bulk_keys", "0") == "1":
+            db.kv_set("bulk_keys", "0")
+            send_text(chat_id, keyimport.final_report())
+            os._exit(0)
+        send_text(chat_id, "خلص إيه؟ :)")
+        return
+    if low.startswith(("احفظ ", "احفظ:", "احفظ：", "/note ")):
+        note = re.sub(r"^(?:احفظ|/note)\s*[:：]?\s*", "", text, count=1).strip()
         if not note:
             send_text(chat_id, "اكتب شو بدك أحفظ — مثال: «احفظ: عقد العيادة بـ150 دولار»")
             return
         db.notes_add(note, f"chat:{chat_id}")
         send_text(chat_id, f"حفظتها بالذاكرة العميقة 🧠 ({db.notes_count()} ملاحظة) — اسألني «تذكر …» وقت ما بدك")
+        return
         return
     if low.startswith(("تذكر ", "/recall ")):
         query = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
@@ -589,32 +648,6 @@ def handle_message(msg):
             send_text(chat_id, "قل لي شو بدك اربط — مثال: «ربط الجيميل» أو «ربط GitHub» أو «ربط انستغرام»")
         else:
             send_text(chat_id, steps)
-        return
-    m_key = re.match(r"^(?:احفظ مفتاح|احفظلي مفتاح|/key)\s+([A-Z][A-Z0-9_]{2,40})\s*=?\s*(.+)$", text.strip())
-    if m_key:
-        name, value = m_key.group(1), m_key.group(2).strip()
-        # امسح رسالته عن السيرفر فوراً حتى ما تضل بالشات
-        tg("deleteMessage", {"chat_id": chat_id, "message_id": msg["message_id"]})
-        if not integrations.env_var_allowed(name):
-            send_text(chat_id, f"«{name}» مو من المفاتيح المعروفة عندي — إذا متأكد قللي بالاسم الصح أو بدّي أعدّل الكود بهاي النقطة")
-            return
-        ok, note = integrations.store_env_var(name, value)
-        if ok:
-            send_text(chat_id, f"✅ انحفظ {name} بالمكان السري وانمسحت رسالتك.\nبعمل ريستارت هلأ عشان يطبّق…")
-            os._exit(0)
-        else:
-            send_text(chat_id, f"❌ {note}")
-        return
-    if low.startswith(("احفظ عني:", "احفظ عني ", "ضيفها عني:", "ضيف لملفي:")):
-        note = re.split(r"[:：]", text, maxsplit=1)
-        note = note[1].strip() if len(note) > 1 else text.split(None, 2)[-1].strip()
-        if not note:
-            send_text(chat_id, "اكتب شو بدك تحفظ — مثال: «احفظ عني: اسمي الدكتور فلان، بعمل مواقع وعيادات، بتصلني بكره الساعة 9»")
-            return
-        profile = db.kv_get("profile", "")
-        profile = (profile + "\n" + note).strip()[-2000:]
-        db.kv_set("profile", profile)
-        send_text(chat_id, "حفظت ✅ — كل محادثاتنا الجاية بفهم عليك أكثر (قل «وش تعرف عني» لتشوف)")
         return
     if low in ("وشو تعرف عني", "وش تعرف عني", "شو تعرف عني", "ملفي الشخصي"):
         profile = db.kv_get("profile", "")
@@ -840,7 +873,8 @@ HELP = (
     "ايميلاتي — إيميلاتك غير المقروءة\n"
     "احفظ عني: … — بخليني أعرفك أكثر (وشو تعرف عني / امسح هويتي)\n"
     "شو لازم اضيف — شو ناقص من الوصلات | ربط <الخدمة> — الخطوات\n"
-    "احفظ مفتاح NAME=VALUE — بنحفظ مفتاح بمكان سري وانمسح رسالتك تلقائياً\n"
+    "احفظ كل المفاتيح — وضعية: بترجم كل المفاتيح اللي عندك مرة واحدة وتضيفو، «خلص» لما تنهي\n"
+    "احفظ مفتاح NAME=VALUE — مفتاح واحد بالمكان السري وانمسح رسالتك تلقائياً\n"
     "ذكرني 9:00 … / كل يوم 9:00 … / كل أسبوع الجمعة 10:30 … | تذكيراتي\n"
     "صورة: <وصف> — بمولد صور مجاني\n"
     "ابحث بالمشروع عن <كلمة> | اقرأ <ملف> | حدث فهمك\n"
