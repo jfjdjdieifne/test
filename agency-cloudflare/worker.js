@@ -1170,6 +1170,15 @@ async function callGroqSmart(convo, system, env, key) {
 }
 
 async function llmComplete(convo, system, env) {
+  const primary = await kvGet(env, "primary_intelligence_v1", "arena");
+  const coarenaKey = String(await kvGet(env, "coarena_api_key_v1", "") || "");
+  if (primary === "coarena" && coarenaKey) {
+    const model = String(await kvGet(env, "coarena_model_v1", "claude-fable-5-2") || "claude-fable-5-2");
+    const answer = await callOpenAICompatible("https://coarena.ai/api/v1", coarenaKey, model, convo, system);
+    if (answer) return answer;
+    await kvPut(env, "coarena_last_error_v1", { at: Date.now(), model });
+    return null;
+  }
   const groqKey = String(await kvGet(env, "groq_api_key_v1", env.GROQ_API_KEY || "") || "");
   const hyperbrowserReady = !!(await kvGet(env, "hyperbrowser_profile_v1", ""));
   // وجود Profile Hyperbrowser مصادق يعني أن اختيار المالك هو Arena حصراً؛ لا تسمح
@@ -1589,6 +1598,7 @@ async function agentLoop(userText, env, chatId, opts) {
     if (!out) {
       const primary = await kvGet(env, "primary_intelligence_v1", "arena");
       if (forcedSearch) return "بحثت فعلياً، لكن محرك التحليل ما رد. هاي نتائج البحث الخام بدل ما أخترع جواب:\n\n" + String(forcedSearch).slice(0, 3200);
+      if (primary === "coarena") return "Coarena ما رجع جواباً حالياً. افحص /coarena status؛ ما رح أحوّل الطلب بصمت إلى Arena أو نموذج ثاني.";
       return primary === "groq" ? "Groq ما قبل الطلب حالياً. حفظت رسالتك؛ عم أفحص المفتاح والنموذج تلقائياً، وما في داعي تعيد ربط Arena." : "Arena رفضت طلب المتصفح الآلي مؤقتاً. حفظت رسالتك وسياقها بالطابور وسأعيدها تلقائياً؛ لا تعيد إرسالها ولا تعمل ربطاً جديداً.";
     }
     if (out === "__ARENA_RETRY_429__" || out === "__ARENA_RETRY_DAILY__") return out;
@@ -2121,6 +2131,23 @@ async function handleCommand(text, env, chatId) {
       for (const [k, v] of Object.entries(counts)) lines.push(`• ${k}: ${v}`);
       lines.push("", "للتفاصيل: /leads و /lead <رقم>");
       await sendMessage(env, chatId, lines.join("\n")); return true;
+    }
+    case "/coarena": {
+      const cm = arg.match(/^key\s+(.+)$/i);
+      if (cm) {
+        const key = cm[1].trim(); if (!key.startsWith("coa_") || key.length < 25) { await sendMessage(env, chatId, "مفتاح Coarena غير صالح."); return true; }
+        await kvPut(env, "coarena_api_key_v1", key); await kvPut(env, "coarena_model_v1", "claude-fable-5-2"); await kvPut(env, "primary_intelligence_v1", "coarena");
+        const test = await callOpenAICompatible("https://coarena.ai/api/v1", key, "claude-fable-5-2", [{ role: "user", content: "رد فقط: جاهز" }], "اختبار اتصال قصير");
+        await sendMessage(env, chatId, test ? "✅ Coarena شغال وصار المحرك الأساسي. النموذج: Claude Fable 5.2. احذف رسالة المفتاح وابعت سؤالاً عادياً." : "❌ انحفظ المفتاح لكن اختبار Coarena لم يرجع جواباً. تأكد من صفحة Limits."); return true;
+      }
+      if (/^status$/i.test(arg)) {
+        const key = String(await kvGet(env, "coarena_api_key_v1", "") || ""); if (!key) { await sendMessage(env, chatId, "اربطه أولاً: /coarena key YOUR_KEY"); return true; }
+        try { const r = await fetch("https://coarena.ai/api/v1/limits", { headers: { authorization: `Bearer ${key}` } }); const d = await r.json(); await sendMessage(env, chatId, `Coarena limits:\n${JSON.stringify(d, null, 2)}`.slice(0, 3500)); } catch { await sendMessage(env, chatId, "تعذر قراءة حدود Coarena."); } return true;
+      }
+      const mm = arg.match(/^model\s+([\w./-]+)$/i);
+      if (mm) { await kvPut(env, "coarena_model_v1", mm[1]); await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, `✅ نموذج Coarena: ${mm[1]}`); return true; }
+      if (/^on$/i.test(arg)) { await kvPut(env, "primary_intelligence_v1", "coarena"); await sendMessage(env, chatId, "✅ Coarena صار المحرك الأساسي."); return true; }
+      await sendMessage(env, chatId, "الأوامر: /coarena key NEW_KEY | /coarena status | /coarena model MODEL_ID | /coarena on"); return true;
     }
     case "/hyperbrowser": {
       const hm = arg.match(/^key\s+(.+)$/i);
