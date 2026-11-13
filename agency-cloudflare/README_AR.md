@@ -23,7 +23,7 @@
 ### 1) حمّل مجلد `agency-cloudflare` من المستودع
 من داخل المستودع على فرعك الحالي:
 ```bash
-git clone --branch arena/749f0c04-test --depth 1 https://github.com/jfjdjdieifne/test.git
+git clone --branch main --depth 1 https://github.com/jfjdjdieifne/test.git   # فرع main يحتوي كل شي (PR #20)
 cd test/agency-cloudflare
 ```
 (أو حمّل الـ ZIP من GitHub وافتح مجلد `agency-cloudflare` منه.)

@@ -1,6 +1,6 @@
 # 🤝 JARVIS — هاند أوف كامل لأي ايجنت يستلم المشروع
 
-> اكتبه: 2026-11-11 · آخر تحديث: 2026-11-13 (الفرع `arena/c299d7e2-test`) · النشر الإنتاجي: `arena/749f0c04-test` (Workers Builds)
+> اكتبه: 2026-11-11 · آخر تحديث: 2026-11-13 (الفرع `arena/c299d7e2-test`، اتدمج بـ main عبر PR #20) · النشر الإنتاجي: **GitHub Actions** `.github/workflows/deploy-jarvis-cloudflare.yml` — كل push على فرع `arena/*-test` مذكور بالقائمة = `npm test` ثم `wrangler deploy` تلقائياً (الـ secrets `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` موجودة بالريبو). **`main` ليس فرع نشر — هو أرشيف الدمج** (PRs 12–20 كلها → main). `arena/749f0c04-test` **متجمد عند Nov 11** ويفتقر لشغل main — لا تنشر منه ولا تدفع إليه.
 > الجمهور: ايجنت جديد **ما يعرف شي** عن المشروع. اقرأه كامل قبل أي تعديل. أي شي مكتوب هون أهم من افتراضاتك.
 
 ---
@@ -37,7 +37,7 @@
 | `apps-script-email.gs` | بوابة Gmail عبر Google Apps Script — **لم ينشرها المالك بعد** |
 | `README_AR.md` | دليل الإعداد الأصلي (wrangler login، KV، النشر) |
 
-**لا توجد خطوة build ولا package.json ولا npm.** `worker.js` يُنشر كما هو عبر **Workers Builds** المتصل بالمستودع (كل push على `arena/749f0c04-test` → بناء تلقائي). ثلاث خدمات Workers مربوطة بالريبو: `jarvis-24-7` (**الإنتاج**)، `testjarvis` (توأم قديم)، و`test` (**بناء فاشل منذ قبل — رواسب من إعداد سابق، احذفها من اللوحة إذا سمح المالك**).
+النشر عبر **GitHub Actions**: push على فرع arena مذكور ب `deploy-jarvis-cloudflare.yml` → `npm ci` → `npm test` (56 اختبار) → `wrangler deploy` (بدون بناء — `worker.js` يُنشر كما هو) → فحص `/health` حي. ثلاث خدمات Workers مربوطة بالريبو: `jarvis-24-7` (**الإنتاج**)، `testjarvis` (توأم قديم)، و`test` (**بناء فاشل منذ قبل — رواسب من إعداد سابق، احذفها من اللوحة إذا سمح المالك**). أي فرع عمل جديد يُضاف لسطر `branches:` بملف الـ workflow نفسه. للتحقق من نشر ح اللي صار: `gh run list --workflow deploy-jarvis-cloudflare.yml --limit 5` أو `gh run view <id>`.
 
 ---
 
@@ -103,9 +103,8 @@ git status --short --branch        # تأكد 0 0 مع origin واكتشاف أ�
 # عدّل، ثم:
 node --check agency-cloudflare/worker.js   # أو import عبر node -e
 node agency-cloudflare/test.mjs            # يجب: 56/56
-git add -A && git commit -m "…" && git push origin arena/749f0c04-test
-sleep ~150
-gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | select(.name=="Workers Builds: jarvis-24-7") | {status, conclusion}'
+git add -A && git commit -m "…" && git push origin arena/<فرعك>-test   # الفرع لازم يكون مضاف ب workflow deploy-jarvis-cloudflare.yml
+gh run watch $(gh run list --workflow deploy-jarvis-cloudflare.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status
 # /health عبر fetch_page (إن كانت الخدمة تعمل — حالياً معطلة ضد workers.dev: تحقق من تلفونك: jarvis-24-7.jfjdjdieifne.workers.dev/health)
 ```
 
@@ -176,7 +175,7 @@ gh api repos/jfjdjdieifne/test/commits/<SHA>/check-runs --jq '.check_runs[] | se
 ## 8) قواعد أي ايجنت يستلم (مختصرة وملزمة)
 
 1. اقرأ هذا الملف + `README_AR.md` قبل أي سطر كود.
-2. `git fetch` أولاً؛ لا تعتمد على النسخة المحلية؛ لا تعيد تسمية الفرع؛ لا push لغير `arena/749f0c04-test`.
+2. `git fetch` أولاً؛ لا تعتمد على النسخة المحلية؛ لا تعيد تسمية الفرع؛ عمل جديد → فرع arena جديد + أضفه لسطر `branches:` ب `deploy-jarvis-cloudflare.yml` (هالنشر بـ Actions مو بـ Workers Builds). `main` يُحدَّث فقط عبر PR من فرع arena.
 3. تحقق من كل deploy (check-run + `/health` مع المالك) — «بناء نجح» وحدها لا تكفي أن البوت حي.
 4. لا أسرار في المخرجات أو الكود أو الذاكرة؛ لا تكتب قيمًا في HANDOFF/README.
 5. لا مهام خلفية بلا ✅؛ لا tool تنفذة علناً بلا موافقة؛ لا «كوكيز/جلسات» أي خدمة، أعذار مهما كانت.
