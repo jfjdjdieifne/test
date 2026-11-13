@@ -142,10 +142,9 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<SUBDOMAIN>.wor
 
 **٥) ملاحظة أمان ثابتة:** المفاتيح الجديدة بالمجمع بتزيد قيمة التشغيل لكن **تزيد حجم الكارثة التاريخية بالـ git** — خطة التدوير بعد تثبيت كل شي (تشمل LiveKit + Coarena + Linphone).
 
-### المكالمة اللايف الحقيقية — الخيارات الثلاثة (مرتبة)
+### المكالمة اللايف الحقيقية
 1. **الأكمل (Full-duplex — تقاطع جارفس متى بدك):** شغّل `livekit-agent/` على جهازك (10 دقائق، مجاني كله) ثم افتح `https://<worker>/live` واضغط «اتصل بجارفس لايف». السلسلة: **Groq Whisper** (تفريغ، مجاني) ← **Coarena** (العقل، مجاني) ← **Edge TTS** (صوت شامي بشري، مجاني بلا حدود) ← **Silero VAD** (محلي) ← **LiveKit Cloud** (مشروعان مجانيان = حصتان). الدليل الكامل: `livekit-agent/README.md`. بتيليجرام عندك أمر `/live` يشرح كل شي فيها + حالة ضبط LiveKit. حامل AWS بـ $100 رصيد (حتى 2027-05-13)؟ شوف `livekit-agent/AWS_EC2_AR.md` — نفس الـ Agent على EC2، جارفس لايف 24/7 حتى لو جهازك طافي. وإذا بدك «كل شي محلي وبلاش» بالتفصيل (Polly/Nabra/Hermes): `livekit-agent/LOCAL_VOICE_AWS_AR.md`.
-2. **فوري بدون تثبيت:** `/voicecall` بتيليجرام ← رابط **Gemini Live** (صوت أصلي بمقاطعة فورية — يعتمد على كوتا Gemini المجانية، وأقوى شي بدون أي إعداد).
-3. **الأبسط:** صفحة `/call` — مكالمة دورية (اضغط، احكِ، اضغط) مع صوت Edge الشامي — شغالة من قبل وهون.
+2. **بدون أي تثبيت:** `/live` فقط — صفحة Gemini القديمة (`/call`) اتشالت. المكالمة بتحتاج Agent شغّال على السيرفر (EC2).
 
 ### رأيي بحل edge-tts (اللي إنت بعتته) — بصراحة
 - **ممتاز فعلياً وهو الأقوى مجاناً للعربية:** أصوات Microsoft العصبية (Neural) اللي بتستخدمها Azure Read Aloud — الصوت يتنفس ويقف عند الفواصل وينطق السياق سليم، 25+ صوت عربي (سوري `ar-SY-LaithNeural`/`ar-SY-AmanyNeural`، سعودي، مصري، إماراتي…).
@@ -162,7 +161,7 @@ curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<SUBDOMAIN>.wor
 |---|---|---|
 | Cloudflare Workers + KV + Workers AI | 100k طلب/يوم · 1k كتابة KV/يوم · آلاف neurons/ يوم | البوت كله + /tts + STT احتياط + رؤية |
 | Coarena | $5/يوم، 128k سياق، vision + tools | العقل الأساسي (والـ Agent) |
-| Gemini | كوتا يومية للـ Live + Flash | /voicecall (Gemini Live) + احتياط + STT احتياط |
+| Gemini | كوتا يومية للـ Flash | احتياط بالسلسلة + STT احتياط (مسار المكالمات اتشال) |
 | OpenRouter free | نماذج مجانية (Kimi K2…) | احتياط بالسلسلة |
 | Arena (جسرك/Browser) | كما هو مربوط | احتياط/أساسي قابل للتبديل بـ /coarena off |
 | LiveKit Cloud | مشروعان مجانيان | /live + الـ Agent |

@@ -1,4 +1,3 @@
-import CALL_PAGE from "./callpage.mjs";
 import LIVE_PAGE from "./livepage.mjs";
 import puppeteer from "@cloudflare/puppeteer";
 import remotePuppeteer from "puppeteer-core";
@@ -157,9 +156,6 @@ export default {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: LIVEKIT_CORS_HEADERS });
       if (request.method !== "GET") return jsonResponse({ error: "GET only" }, 405, LIVEKIT_CORS_HEADERS);
       return handleLiveKitToken(request, env);
-    }
-    if (url.pathname === "/call") {
-      return new Response(CALL_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
     if (url.pathname === "/live") {
       return new Response(LIVE_PAGE, { status: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
