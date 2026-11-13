@@ -46,6 +46,9 @@ export GROQ_API_KEY=gsk_...                            # https://console.groq.co
 # export JARVIS_TTS=elevenlabs
 # export ELEVENLABS_API_KEY=sk_...                     # مجاني للتجربة 10k حرف/شهر — الدليل الكامل: ELEVENLABS_SETUP_AR.md
 # export ELEVENLABS_VOICE_ID=<Voice-ID-من-Voice-Library-فلتر-Arabic>
+# أو — مجاني ومتجدد يومياً + Director's Notes شامي (الأقرب لـ ElevenLabs بلا أي تكلفة):
+# export JARVIS_TTS=gemini
+# export GEMINI_TTS_API_KEYS=AIza...مفتاح_واحد_يكفي           # الدليل الكامل: GEMINI_TTS_SETUP_AR.md
 # export AWS_REGION=us-east-2                          # على EC2: IAM Role (AmazonPollyReadOnlyAccess) بدون مفاتيح؛ محلياً: AWS_ACCESS_KEY_ID/SECRET لليزر الاختياري بـ IAM Polly فقط
 ```
 (القيم الحقيقية عندك — ما في شي هون، فقط أسماء المتغيرات. أو انسخ `.env.example` → `.env` واملأه.)
