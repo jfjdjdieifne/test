@@ -213,6 +213,8 @@ def spend_exceeded(cap):
         cap = int(cap)
     except Exception:
         cap = 200000
+    if cap <= 0:
+        return False  # 0 = بلا سقف (قرار الدكتور — الميزانية متجددة)
     return tokens_today() >= cap
 
 

@@ -463,6 +463,14 @@ class TestThinkSideEffectGate(unittest.TestCase):
         finally:
             agent.brain = orig_brain
 
+class TestSpendUnlimited(unittest.TestCase):
+    def test_zero_cap_means_unlimited(self):
+        import db as dbmod
+        dbmod.kv_set(dbmod._today_key(), "999999999")
+        self.assertFalse(dbmod.spend_exceeded(0))
+        self.assertTrue(dbmod.spend_exceeded(200000))
+        dbmod.kv_set(dbmod._today_key(), "0")
+
 
 if __name__ == "__main__":
     unittest.main()
