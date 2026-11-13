@@ -190,6 +190,7 @@ _UNAMBIGUOUS = (re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
                 re.compile(r"gho_[0-9A-Za-z]{20,}"),
                 re.compile(r"sk-[A-Za-z0-9]{16,}"))
 _ASSIGN = re.compile(r"([A-Za-z][A-Za-z0-9_]{2,39})\s*[=:]")
+_TOKENISH = re.compile(r"[A-Za-z0-9_\-./+=]{8,}")
 
 
 def looks_like_bulk(text):
@@ -206,4 +207,15 @@ def looks_like_bulk(text):
             hits += 1
         if hits >= 2:
             return True
+    # أسطر بتسمية عربية/إنجليزية معروفة («جيميني: قيمة») + قيمة طويلة على نفس السطر
+    if hits < 2:
+        for line in text.splitlines():
+            low = line.lower()
+            if any(lbl in low for lbl in LABEL_MAP) and _TOKENISH.search(line):
+                # نتأكد إنو القيمة نفسها طويلة بما يكفي (مو مجرد شرح قصير)
+                toks = _TOKENISH.findall(line)
+                if any(len(t) >= 12 for t in toks):
+                    hits += 1
+                    if hits >= 2:
+                        return True
     return hits >= 2

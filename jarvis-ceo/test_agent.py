@@ -358,6 +358,12 @@ class TestBulkAutoDetect(unittest.TestCase):
         import keyimport
         self.assertFalse(keyimport.looks_like_bulk("السلام عليكم، كيف الحال اليوم؟"))
         self.assertFalse(keyimport.looks_like_bulk(""))
+        self.assertFalse(keyimport.looks_like_bulk("شوفي جيميني بكرة تقدري تيجي؟"))
+
+    def test_looks_like_bulk_arabic_labels(self):
+        import keyimport
+        text = "كوارنيا: cq_live_9f8e7d6c5b4a39281706f5e4\nجيميني: AIzaSyABCDEFGHIJKLMNOPQRSTUVWX12345"
+        self.assertTrue(keyimport.looks_like_bulk(text))
 
     def test_notes_clear(self):
         import db as dbmod
