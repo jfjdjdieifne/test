@@ -472,5 +472,28 @@ class TestSpendUnlimited(unittest.TestCase):
         dbmod.kv_set(dbmod._today_key(), "0")
 
 
+class TestBrainEmptyContent(unittest.TestCase):
+    def test_empty_content_raises_brainerror(self):
+        import brain, json as _json, os
+        payload = {"choices": [{"message": {"content": ""}}], "usage": {"total_tokens": 5}}
+
+        class FakeResp:
+            def read(self):
+                return _json.dumps(payload).encode()
+
+        orig = brain.urllib.request.urlopen
+        brain.urllib.request.urlopen = lambda req, timeout=60: FakeResp()
+        old_keys = {k: os.environ.get(k) for k in ("COARENA_API_KEYS", "COARENA_API_KEY")}
+        os.environ.pop("COARENA_API_KEYS", None)
+        os.environ.pop("COARENA_API_KEY", None)
+        try:
+            with self.assertRaises(brain.BrainError):
+                brain.chat([{"role": "user", "content": "مرحبا"}])
+        finally:
+            brain.urllib.request.urlopen = orig
+            for k, v in old_keys.items():
+                if v is not None:
+                    os.environ[k] = v
+
 if __name__ == "__main__":
     unittest.main()

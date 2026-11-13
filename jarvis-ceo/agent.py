@@ -873,6 +873,8 @@ def handle_message(msg):
 
     if reply:
         send_text(chat_id, reply)
+    else:
+        send_text(chat_id, "ما وصلني رد من العقل — جرّب تاني 🙏 (إذا صار أكتر من مرة، ابعتلي)")
     # الدكتور ما بده ردود صوتية — نص بس (الصوت بالمكالمات بس، لاحقاً)
 
 

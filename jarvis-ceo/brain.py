@@ -69,6 +69,13 @@ def chat(messages, temperature=0.7, max_tokens=None):
             msg = ((payload.get("choices") or [{}])[0].get("message") or {})
             content = (msg.get("content") or "").strip()
             usage = payload.get("usage") or {}
+            if not content:
+                # رد فاضي من النموذج — سجّل مفاتيح الـ payload للتشخيص وجرّب المفتاح التالي
+                print(f"brain empty: msg_keys={list(msg.keys())} usage={usage} raw={json.dumps(payload, ensure_ascii=False)[:400]}")
+                last_err = "العقل رجّع جواب فاضي من النموذج (رد فارغ)"
+                if isinstance(msg.get("tool_calls") or msg.get("reasoning") or msg.get("reasoning_content"), (list, str)):
+                    last_err += " — النموذج بيحكي بقناة الاستدلال/الأدوات مو المحتوى العادي"
+                continue
             used = int(usage.get("total_tokens") or max(1, len(content) // 4))
             try:
                 import db
