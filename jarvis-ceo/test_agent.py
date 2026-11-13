@@ -280,6 +280,11 @@ class TestNewModules(unittest.TestCase):
         summ = project.summary(fake, refresh=True)
         self.assertIn("README", summ)
 
+    def test_pool_keys_allowed(self):
+        import integrations
+        for name in ("COARENA_API_KEYS", "GEMINI_TTS_API_KEYS", "COARENA_API_KEY"):
+            self.assertTrue(integrations.env_var_allowed(name), name)
+
     def test_steps_for(self):
         import integrations
         sid, steps = integrations.steps_for("الجيميل")
