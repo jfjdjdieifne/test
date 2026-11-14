@@ -107,8 +107,9 @@ def chat(messages, temperature=0.7, max_tokens=None):
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "ignore")[:200] if e.fp else str(e)
             last_err = f"HTTP {e.code}: {detail}"
-            if e.code in (401, 403, 429):
-                continue  # المفتاح التالي
+            if e.code in (400, 401, 403, 408, 409, 413, 429):
+                # مفتاح محدود/مرفوض — نجرب المفتاح الجاي (كوارينا بترجع «usage limits» كـ 400 مو 429)
+                continue
             raise BrainError(last_err) from None
         except Exception as e:  # noqa: BLE001
             last_err = str(e)
