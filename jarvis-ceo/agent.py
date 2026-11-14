@@ -696,6 +696,21 @@ def handle_message(msg):
         send_text(chat_id, "بعتلي Excel (.xlsx) هلأ — باقي الملفات بمرحلة الجاية.")
         return
 
+    if "photo" in msg:
+        photos = msg.get("photo") or []
+        big = photos[-1] if photos else {}
+        path = download_file(big.get("file_id"), ".jpg")
+        caption = (msg.get("caption") or "").strip()
+        if not path:
+            send_text(chat_id, "ما قدرت حمّل الصورة — جرّب تاني")
+            return
+        try:
+            desc = tools.gemini_vision(path, caption or "وصف لي هالصورة بإيجاز — شو فيها بالضبط؟ ولا تتجاوز ٦ أسطر")
+        except Exception as e:  # noqa: BLE001
+            send_text(chat_id, f"ما قدرت شوف الصورة: {e}")
+            return
+        text = "[الدكتور بعثلي صورة — وصفها: " + desc + "]\n\n" + (caption if caption else "علّق رأيك عليها بإيجاز إذا فيها شي يستاهل.")
+        # يكمّل بنفس مسار المحادثة الطبيعي (العقل/الأدوات) بدل مسار خاص
     is_voice = "voice" in msg
     if is_voice:
         path = download_file(msg["voice"]["file_id"], ".oga")

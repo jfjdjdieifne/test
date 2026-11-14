@@ -38,64 +38,88 @@ class BrainError(Exception):
     pass
 
 
-def chat(messages, temperature=0.7, max_tokens=None):
-    """messages: قائمة {role, content} — يرجع النص الخام من المساعد."""
-    if db_spent_exceeded():
-        raise BrainError("خلص سقف إنفاق اليوم — راجعني بكرة أو زيد DAILY_TOKEN_CAP")
-    body = json.dumps(
-        {
-            "model": MODEL,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens or MAX_TOKENS,
-        }
-    ).encode("utf-8")
+def _gemini_keys():
+    raw = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_TTS_API_KEYS", "")
+    return [k.strip() for k in raw.split(",") if k.strip()]
 
-    last_err = None
-    for _ in range(len(_keys())):
-        key = _next_key()
-        req = urllib.request.Request(
-            BASE_URL + "/chat/completions",
-            data=body,
-            method="POST",
-            headers={
-                "Authorization": f"Bearer {key}",
-                "Content-Type": "application/json",
-            },
-        )
-        try:
-            resp = urllib.request.urlopen(req, timeout=60)
+
+def _openrouter_keys():
+    raw = os.environ.get("OPENROUTER_API_KEY", "")
+    return [k.strip() for k in raw.split(",") if k.strip()]
+
+
+def _providers():
+    p = [{"name": "كوارينا", "base": BASE_URL, "model": MODEL, "keys": _keys()}]
+    g = _gemini_keys()
+    if g:
+        p.append({"name": "جيميني", "base": "https://generativelanguage.googleapis.com/v1beta/openai",
+                  "model": os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"), "keys": g})
+    o = _openrouter_keys()
+    if o:
+        p.append({"name": "OpenRouter", "base": "https://openrouter.ai/api/v1",
+                  "model": os.environ.get("OPENROUTER_MODEL", "openrouter/free"), "keys": o})
+    return p
+
+
+def _one_call(prov, key, body_bytes, timeout=60):
+    """محاولة واحدة — بترمي BrainError عند أي فشل."""
+    base = prov["base"].rstrip("/")
+    hdrs = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    try:
+        with urllib.request.urlopen(urllib.request.Request(base + "/chat/completions",
+                                                           data=body_bytes, method="POST", headers=hdrs),
+                                    timeout=timeout) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "ignore")[:160] if e.fp else str(e)
+        raise BrainError(f"HTTP {e.code}: {detail}") from None
+    except Exception as e:  # noqa: BLE001
+        raise BrainError(str(e)) from None
+    msg = ((payload.get("choices") or [{}])[0].get("message") or {})
+    content = (msg.get("content") or "").strip()
+    usage = payload.get("usage") or {}
+    if not content and (msg.get("reasoning") or msg.get("reasoning_content")):
+        try:
+            bigger = min(int(json.loads(body_bytes).get("max_tokens") or MAX_TOKENS) * 4, 6000)
+            body2 = dict(json.loads(body_bytes))
+            body2["max_tokens"] = bigger
+            req = urllib.request.Request(base + "/chat/completions",
+                                         data=json.dumps(body2).encode("utf-8"), method="POST", headers=hdrs)
+            with urllib.request.urlopen(req, timeout=max(timeout, 100)) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
             msg = ((payload.get("choices") or [{}])[0].get("message") or {})
             content = (msg.get("content") or "").strip()
-            # نموذج «reasoning» صرّف الميزانية كلها لقناة الاستدلال وترك content فاضي
-            # → بنرجع نرسل نفس الطلب بميزانية أكبر قبل ما نستسلم للمفتاح التالي
-            if not content and (msg.get("reasoning") or msg.get("reasoning_content")):
-                base = max_tokens or MAX_TOKENS
-                bigger = min(base * 4, 6000)
-                print(f"brain: reasoning-only (budget {base}) — retry بـ {bigger}")
-                try:
-                    body_big = dict(json.loads(body))
-                    body_big["max_tokens"] = bigger
-                    req = urllib.request.Request(
-                        BASE_URL + "/chat/completions",
-                        data=json.dumps(body_big).encode("utf-8"),
-                        method="POST",
-                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                    )
-                    resp = urllib.request.urlopen(req, timeout=120)
-                    payload = json.loads(resp.read().decode("utf-8"))
-                    msg = ((payload.get("choices") or [{}])[0].get("message") or {})
-                    content = (msg.get("content") or "").strip()
-                except Exception as e:  # noqa: BLE001
-                    print(f"brain retry: {e}")
-            usage = payload.get("usage") or {}
-            if not content:
-                # رد فاضي من النموذج — سجّل مفاتيح الـ payload للتشخيص وجرّب المفتاح التالي
-                print(f"brain empty: msg_keys={list(msg.keys())} usage={usage} raw={json.dumps(payload, ensure_ascii=False)[:400]}")
-                last_err = "العقل رجّع جواب فاضي من النموذج (رد فارغ)"
-                if isinstance(msg.get("tool_calls") or msg.get("reasoning") or msg.get("reasoning_content"), (list, str)):
-                    last_err += " — النموذج بيحكي بقناة الاستدلال/الأدوات مو المحتوى العادي"
+            usage = payload.get("usage") or usage
+        except Exception as e:  # noqa: BLE001
+            print(f"brain retry: {e}")
+    if not content:
+        print(f"brain empty: msg_keys={list(msg.keys())} usage={usage}")
+        raise BrainError("النموذج رجّع جواب فاضي")
+    return content, usage
+
+
+def chat(messages, temperature=0.7, max_tokens=None):
+    """شبكة مصادر: كوارينا (اختيار الدكتور) ← جيميني المجاني ← OpenRouter المجاني."""
+    if db_spent_exceeded():
+        raise BrainError("خلص سقف إنفاق اليوم — راجعني بكرة أو زيد DAILY_TOKEN_CAP")
+    providers = _providers()
+    errs = []
+    for prov in providers:
+        body = json.dumps({"model": prov["model"], "messages": messages,
+                           "temperature": temperature,
+                           "max_tokens": max_tokens or MAX_TOKENS}, ensure_ascii=False).encode("utf-8")
+        net_fails = 0
+        timeout = 45 if prov["name"] == "جيميني" else 60
+        for key in prov["keys"]:
+            try:
+                content, usage = _one_call(prov, key, body, timeout=timeout)
+            except BrainError as e:
+                errs.append(f"{prov['name']}: {e}")
+                if not str(e).startswith("HTTP"):
+                    net_fails += 1
+                    if net_fails >= 2:
+                        errs.append(f"{prov['name']}: توقف الشبكة — تخطينا باقي مفاتيحه")
+                        break
                 continue
             used = int(usage.get("total_tokens") or max(1, len(content) // 4))
             try:
@@ -103,18 +127,10 @@ def chat(messages, temperature=0.7, max_tokens=None):
                 db.add_tokens(used)
             except Exception:
                 pass
+            if prov["name"] != "كوارينا":
+                print(f"brain: اشتغل المصدر الرديف «{prov['name']}» ({prov['model']})")
             return content
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", "ignore")[:200] if e.fp else str(e)
-            last_err = f"HTTP {e.code}: {detail}"
-            if e.code in (400, 401, 403, 408, 409, 413, 429):
-                # مفتاح محدود/مرفوض — نجرب المفتاح الجاي (كوارينا بترجع «usage limits» كـ 400 مو 429)
-                continue
-            raise BrainError(last_err) from None
-        except Exception as e:  # noqa: BLE001
-            last_err = str(e)
-            continue
-    raise BrainError(f"فشلت كل المفاتيح — آخر خطأ: {last_err}")
+    raise BrainError("فشلت كل المصادر — " + " | ".join(errs[-5:]))
 
 
 def db_spent_exceeded():

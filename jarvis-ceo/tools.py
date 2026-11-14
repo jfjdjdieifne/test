@@ -185,6 +185,44 @@ def gemini_transcribe(path, mime="audio/ogg"):
     raise RuntimeError("تعذر تفريغ الصوت عبر Gemini")
 
 
+def gemini_vision(path, prompt, model=None):
+    """قراءة صورة عبر Gemini — بترجع وصف/إجابة عربية."""
+    model = model or os.environ.get("GEMINI_VISION_MODEL") or os.environ.get("GEMINI_STT_MODEL", "gemini-2.5-flash")
+    raw = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_TTS_API_KEYS") or os.environ.get("GEMINI_API_KEY", "")
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    if not keys:
+        raise RuntimeError("ما فيه مفتاح Gemini على السيرفر")
+    img_b64 = base64.b64encode(open(path, "rb").read()).decode()
+    mime = "image/png" if str(path).lower().endswith(".png") else "image/jpeg"
+    body = json.dumps({
+        "contents": [{"role": "user", "parts": [
+            {"text": prompt},
+            {"inlineData": {"mimeType": mime, "data": img_b64}},
+        ]}],
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024},
+    }).encode("utf-8")
+    last = ""
+    for key in keys:
+        req = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            data=body, method="POST",
+            headers={"x-goog-api-key": key, "content-type": "application/json"},
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=60)
+            payload = json.loads(resp.read().decode("utf-8"))
+            parts = (((payload.get("candidates") or [{}])[0].get("content") or {}).get("parts")) or []
+            text = "".join(p.get("text", "") for p in parts).strip()
+            if text:
+                return text
+            last = "رد فاضي"
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code}"
+        except Exception as e:  # noqa: BLE001
+            last = str(e)
+    raise RuntimeError(f"جيميني ما قدر يشوف الصورة — {last}")
+
+
 async def _tts_save(text, path):
     await edge_tts.Communicate(text, EDGE_TTS_VOICE).save(path)
 
