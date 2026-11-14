@@ -59,17 +59,62 @@ def _openrouter_keys():
     return _clean_keys(os.environ.get("OPENROUTER_API_KEY", ""))
 
 
+_gemini_working_model = os.environ.get("GEMINI_MODEL") or None
+GEMINI_MODEL_CANDIDATES = [m.strip() for m in os.environ.get(
+    "GEMINI_MODELS",
+    "gemini-2.5-flash,gemini-2.0-flash,gemini-2.5-flash-lite,gemini-2.0-flash-lite,gemini-2.5-pro,gemini-1.5-flash",
+).split(",") if m.strip()]
+
+
+def _gemini_models():
+    ms = list(GEMINI_MODEL_CANDIDATES)
+    if _gemini_working_model and _gemini_working_model in ms:
+        ms.remove(_gemini_working_model)
+    return ([_gemini_working_model] if _gemini_working_model else []) + ms
+
+
 def _providers():
     p = [{"name": "كوارينا", "base": BASE_URL, "model": MODEL, "keys": _keys()}]
     g = _gemini_keys()
     if g:
+        models = _gemini_models()
         p.append({"name": "جيميني", "base": "https://generativelanguage.googleapis.com/v1beta/openai",
-                  "model": os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"), "keys": g})
+                  "model": models[0], "models": models, "keys": g})
     o = _openrouter_keys()
     if o:
         p.append({"name": "OpenRouter", "base": "https://openrouter.ai/api/v1",
                   "model": os.environ.get("OPENROUTER_MODEL", "openrouter/free"), "keys": o})
     return p
+
+
+def probe_provider(name):
+    """يرجع اسم الموديل اللي اشتغل — أو يرمي الخطأ الأخير."""
+    for prov in _providers():
+        if prov["name"] != name:
+            continue
+        body = json.dumps({"model": prov["model"],
+                           "messages": [{"role": "user", "content": "قل: جاهز"}],
+                           "max_tokens": 8}, ensure_ascii=False).encode("utf-8")
+        last = None
+        for model in prov.get("models", [prov["model"]]):
+            body_m = dict(json.loads(body))
+            body_m["model"] = model
+            body_bytes = json.dumps(body_m, ensure_ascii=False).encode("utf-8")
+            for key in prov["keys"]:
+                try:
+                    _one_call({**prov, "model": model}, key, body_bytes, timeout=30)
+                    return model
+                except BrainError as e:
+                    last = e
+                    if _is_model_error(e):
+                        break  # جرّب الموديل الجاي، بلا ما تستهلك كل المفاتيح على موديل ميت
+        raise BrainError(str(last)[:200])
+    raise BrainError(f"{name}: غير موجود")
+
+
+def _is_model_error(err):
+    s = str(err).lower()
+    return ("404" in s) or ("model" in s and ("not found" in s or "not supported" in s or "not available" in s or "does not exist" in s or "is not found" in s))
 
 
 def _one_call(prov, key, body_bytes, timeout=60):
@@ -115,32 +160,40 @@ def chat(messages, temperature=0.7, max_tokens=None):
         raise BrainError("خلص سقف إنفاق اليوم — راجعني بكرة أو زيد DAILY_TOKEN_CAP")
     providers = _providers()
     errs = []
+    global _gemini_working_model
     for prov in providers:
-        body = json.dumps({"model": prov["model"], "messages": messages,
-                           "temperature": temperature,
-                           "max_tokens": max_tokens or MAX_TOKENS}, ensure_ascii=False).encode("utf-8")
-        net_fails = 0
         timeout = 45 if prov["name"] == "جيميني" else 60
-        for key in prov["keys"]:
-            try:
-                content, usage = _one_call(prov, key, body, timeout=timeout)
-            except BrainError as e:
-                errs.append(f"{prov['name']}: {e}")
-                if not str(e).startswith("HTTP"):
-                    net_fails += 1
-                    if net_fails >= 2:
-                        errs.append(f"{prov['name']}: توقف الشبكة — تخطينا باقي مفاتيحه")
-                        break
-                continue
-            used = int(usage.get("total_tokens") or max(1, len(content) // 4))
-            try:
-                import db
-                db.add_tokens(used)
-            except Exception:
-                pass
-            if prov["name"] != "كوارينا":
-                print(f"brain: اشتغل المصدر الرديف «{prov['name']}» ({prov['model']})")
-            return content
+        for model in prov.get("models", [prov["model"]]):
+            prov = {**prov, "model": model}
+            body = json.dumps({"model": model, "messages": messages,
+                               "temperature": temperature,
+                               "max_tokens": max_tokens or MAX_TOKENS}, ensure_ascii=False).encode("utf-8")
+            net_fails = 0
+            for key in prov["keys"]:
+                try:
+                    content, usage = _one_call(prov, key, body, timeout=timeout)
+                except BrainError as e:
+                    errs.append(f"{prov['name']} ({model}): {e}")
+                    if _is_model_error(e):
+                        break  # الموديل ميت — لموديل تاني، لا نحرق كل المفاتيح
+                    if not str(e).startswith("HTTP"):
+                        net_fails += 1
+                        if net_fails >= 2:
+                            errs.append(f"{prov['name']}: توقف الشبكة — تخطينا باقي مفاتيحه")
+                            break
+                    continue
+                used = int(usage.get("total_tokens") or max(1, len(content) // 4))
+                try:
+                    import db
+                    db.add_tokens(used)
+                except Exception:
+                    pass
+                if prov["name"] == "جيميني" and _gemini_working_model != model:
+                    _gemini_working_model = model
+                    print(f"brain: جيميني ثبّت على موديل «{model}»")
+                if prov["name"] != "كوارينا":
+                    print(f"brain: اشتغل المصدر الرديف «{prov['name']}» ({model})")
+                return content
     raise BrainError("فشلت كل المصادر — " + " | ".join(errs[-5:]))
 
 

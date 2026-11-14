@@ -696,6 +696,7 @@ def handle_message(msg):
         send_text(chat_id, "بعتلي Excel (.xlsx) هلأ — باقي الملفات بمرحلة الجاية.")
         return
 
+    text_from_photo = None
     if "photo" in msg:
         photos = msg.get("photo") or []
         big = photos[-1] if photos else {}
@@ -709,7 +710,7 @@ def handle_message(msg):
         except Exception as e:  # noqa: BLE001
             send_text(chat_id, f"ما قدرت شوف الصورة: {e}")
             return
-        text = "[الدكتور بعثلي صورة — وصفها: " + desc + "]\n\n" + (caption if caption else "علّق رأيك عليها بإيجاز إذا فيها شي يستاهل.")
+        text_from_photo = "[الدكتور بعثلي صورة — وصفها: " + desc + "]\n\n" + (caption if caption else "علّق رأيك عليها بإيجاز إذا فيها شي يستاهل.")
         # يكمّل بنفس مسار المحادثة الطبيعي (العقل/الأدوات) بدل مسار خاص
     is_voice = "voice" in msg
     if is_voice:
@@ -727,7 +728,7 @@ def handle_message(msg):
             return
         send_text(chat_id, f"فهمتك: «{text}»")
     else:
-        text = (msg.get("text") or "").strip()
+        text = text_from_photo if text_from_photo is not None else (msg.get("text") or "").strip()
 
     if not text:
         return
@@ -768,7 +769,6 @@ def handle_message(msg):
         """تحديث كامل من التيليجرام — أوامر محددة سلفاً فقط، ما بيقبل أي شيء تاني."""
         send_text(chat_id, "🔄 بدأ التحديث بالخلفية — بيجيك خبر لما يخلص (حتى دقيقتين، بدون ما أعلق على كل شي)")
         import subprocess
-        import threading
 
         def _update_job():
             repo = os.path.dirname(os.path.abspath(__file__))
@@ -925,8 +925,22 @@ def handle_message(msg):
                 except Exception as e:  # noqa: BLE001
                     report.append(f"❌ كوارينا مفتاح {i} (…{k[-4:]}) — {type(e).__name__}")
             g, o = len(_brain._gemini_keys()), len(_brain._openrouter_keys())
-            report.append(f"جيميني: {g} مفتاح مضبوط ✅ (العقل الرديف جاهز)" if g else "جيميني: ما في مفتاح — العقل الرديف مطفي")
-            report.append(f"OpenRouter: {o} مفتاح مضبوط ✅" if o else "OpenRouter: ما في مفتاح")
+            if g:
+                try:
+                    probe = _brain.probe_provider("جيميني")
+                    report.append(f"✅ جيميني — شغال على موديل «{probe}»")
+                except Exception as e:  # noqa: BLE001
+                    report.append(f"❌ جيميني — {str(e)[:120]}")
+            else:
+                report.append("جيميني: ما في مفتاح — العقل الرديف مطفي")
+            if o:
+                try:
+                    probe = _brain.probe_provider("OpenRouter")
+                    report.append(f"✅ OpenRouter — شغال على موديل «{probe}»")
+                except Exception as e:  # noqa: BLE001
+                    report.append(f"❌ OpenRouter — {str(e)[:120]}")
+            else:
+                report.append("OpenRouter: ما في مفتاح")
             ok = sum(1 for line in report if line.startswith("✅"))
             report.append(f"— النتيجة: {ok}/{len(keys)} مفتاح كوارينا شغالين هلق.")
             send_text(chat_id, "\n".join(report)[:3800])
@@ -1069,7 +1083,6 @@ def handle_message(msg):
     m_agent = re.match(r"^(?:وضع الوكيل|وكيل|عميل|ابعتلي وكيل)\s*[:：]?\s*(.+)$", text)
     if m_agent:
         goal = m_agent.group(1).strip()
-        import threading
         import agent_loop
         if agent_loop.is_running(chat_id):
             send_text(chat_id, "في وكيل شغال أساسًا — اكتب «وقف» لو بدك توقفه الأول.")
