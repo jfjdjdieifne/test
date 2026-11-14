@@ -73,8 +73,29 @@ def _gemini_models():
     return ([_gemini_working_model] if _gemini_working_model else []) + ms
 
 
+# ترتيب أولويات الدكتور: فايبل ٥.٢ ← كلودات ← GPT-6.1 sol ← الباقي
+DEFAULT_COARENA_CHAIN = [
+    "claude-fable-5-2", "claude-fable-5-1", "claude-fable-5",
+    "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+    "gpt-6-1-sol",
+    "gemini-3-8-flash", "gemini-4-argon", "gemini-4-carbon",
+    "glm-5-3-flash", "deepseek-v4-1-flash-1017",
+]
+COARENA_PIN = os.environ.get("COARENA_MODEL")  # تثبيت صريح من الدكتور له الأولوية دائماً
+_coarena_working_model = COARENA_PIN or None
+COARENA_CHAIN = [m.strip() for m in os.environ.get("COARENA_MODELS", "").split(",") if m.strip()] or list(DEFAULT_COARENA_CHAIN)
+
+
+def _coarena_models():
+    if _coarena_working_model and _coarena_working_model in COARENA_CHAIN:
+        return [_coarena_working_model] + [m for m in COARENA_CHAIN if m != _coarena_working_model]
+    return list(COARENA_CHAIN)
+
+
 def _providers():
-    p = [{"name": "كوارينا", "base": BASE_URL, "model": MODEL, "keys": _keys()}]
+    c_models = ([COARENA_PIN] if COARENA_PIN else _coarena_models())
+    p = [{"name": "كوارينا", "base": BASE_URL, "model": c_models[0], "models": c_models,
+          "keys": _keys(), "failfast_models": True}]
     g = _gemini_keys()
     if g:
         models = _gemini_models()
@@ -160,7 +181,7 @@ def chat(messages, temperature=0.7, max_tokens=None):
         raise BrainError("خلص سقف إنفاق اليوم — راجعني بكرة أو زيد DAILY_TOKEN_CAP")
     providers = _providers()
     errs = []
-    global _gemini_working_model
+    global _gemini_working_model, _coarena_working_model
     for prov in providers:
         timeout = 45 if prov["name"] == "جيميني" else 60
         for model in prov.get("models", [prov["model"]]):
@@ -174,6 +195,10 @@ def chat(messages, temperature=0.7, max_tokens=None):
                     content, usage = _one_call(prov, key, body, timeout=timeout)
                 except BrainError as e:
                     errs.append(f"{prov['name']} ({model}): {e}")
+                    if prov.get("failfast_models"):
+                        # كوارينا: أي رفض (حدود/سعة/موديول ميت) → لموديل تاني فوراً — بلا إحراق 11 مفتاح
+                        if any(c in str(e) for c in ("400", "404", "429", "503")):
+                            break
                     if _is_model_error(e):
                         break  # الموديل ميت — لموديل تاني، لا نحرق كل المفاتيح
                     if not str(e).startswith("HTTP"):
@@ -191,6 +216,9 @@ def chat(messages, temperature=0.7, max_tokens=None):
                 if prov["name"] == "جيميني" and _gemini_working_model != model:
                     _gemini_working_model = model
                     print(f"brain: جيميني ثبّت على موديل «{model}»")
+                if prov["name"] == "كوارينا" and not COARENA_PIN and _coarena_working_model != model:
+                    _coarena_working_model = model
+                    print(f"brain: كوارينا ثبّتت على موديل «{model}» (بصمت — الدكتور ما بيتعب معه)")
                 if prov["name"] != "كوارينا":
                     print(f"brain: اشتغل المصدر الرديف «{prov['name']}» ({model})")
                 return content
