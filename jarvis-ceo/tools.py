@@ -38,6 +38,54 @@ def read_url(url, max_chars=3500):
     return text.strip()[:max_chars]
 
 
+# ---------- شارت السوق (Binance + QuickChart — مجاني بلا مفتاح) ----------
+
+def _binance_klines(symbol="BTCUSDT", interval="4h", limit=60):
+    url = f"https://data-api.binance.vision/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
+    req = urllib.request.Request(url, headers={"User-Agent": "jarvis-ceo"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        raw = json.loads(r.read().decode("utf-8"))
+    out = []
+    for k in raw:
+        ts = datetime.fromtimestamp(k[0] / 1000).strftime("%m-%d %H:%M")
+        out.append({"t": ts, "o": float(k[1]), "h": float(k[2]), "l": float(k[3]), "c": float(k[4]), "v": float(k[5])})
+    return out
+
+
+def chart_url(symbol="BTCUSDT", interval="4h", limit=60):
+    """رابط quickchart.io لشارت خط للسعر (إغلاق) على ثيم داكن — بدون أي مفتاح."""
+    data = _binance_klines(symbol, interval, limit)
+    if not data:
+        raise ValueError("ما قدرت أجيب الشموع")
+    labels = [d["t"] for d in data]
+    closes = [round(d["c"], 6) for d in data]
+    last, first = closes[-1], closes[0]
+    chg = (last / first - 1) * 100 if first else 0
+    chart = {
+        "type": "line",
+        "data": {"labels": labels, "datasets": [{
+            "label": f"{symbol} {interval} — آخر {limit}",
+            "data": closes,
+            "borderColor": "#00d4aa" if chg >= 0 else "#ff5c5c",
+            "backgroundColor": "rgba(0,212,170,.14)" if chg >= 0 else "rgba(255,92,92,.14)",
+            "fill": "origin", "tension": 0.25, "pointRadius": 0, "borderWidth": 2,
+        }]},
+        "options": {
+            "plugins": {"legend": {"display": False},
+                         "title": {"display": True,
+                                   "text": f"{symbol} {interval}  ·  {last:,.4f}  ({chg:+.2f}%)",
+                                   "color": "#eef2ff", "font": {"size": 17, "weight": "bold"}}},
+            "scales": {
+                "x": {"ticks": {"color": "#8b94ad", "maxTicksLimit": 6}, "grid": {"color": "#1a2440"}},
+                "y": {"ticks": {"color": "#8b94ad"}, "grid": {"color": "#1a2440"}},
+            },
+            "backgroundColor": "#0b1220",
+        },
+    }
+    import urllib.parse
+    return "https://quickchart.io/chart?w=760&h=420&bkg=%230b1220&c=" + urllib.parse.quote(json.dumps(chart))
+
+
 # ---------- Excel ----------
 
 def excel_report(path, max_rows=12):

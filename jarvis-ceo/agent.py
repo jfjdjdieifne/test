@@ -964,6 +964,39 @@ def handle_message(msg):
         except Exception as e:  # noqa: BLE001
             send_text(chat_id, f"ما قدرت اقرأ الرابط: {e}")
         return
+    m_chart = re.match(r"^(?:شارت|وريني شارت|وريني الشارت|ارسم شارت)(?:\s+(\S+))?(?:\s+على\s+(15m|1h|4h|1d))?", text, re.I)
+    if m_chart:
+        sym = (m_chart.group(1) or "BTC").upper().replace("/USDT", "").replace("USDT", "") + "USDT"
+        tf = (m_chart.group(2) or "4h").lower()
+        try:
+            url = tools.chart_url(sym, tf, 60)
+            res = tg("sendPhoto", {"chat_id": chat_id, "photo": url, "caption": f"📊 {sym} — {tf} — Binance"})
+            if not res:
+                send_text(chat_id, f"الشارت: {url}")
+        except Exception as e:  # noqa: BLE001
+            send_text(chat_id, f"ما قدرت أجيب الشارت: {e}")
+        return
+    m_swarm = re.match(r"^(?:سوارم|فرق بحث|بحث معمق|سويرم)\s*[:：]?\s*(.+)$", text)
+    if m_swarm:
+        topic = m_swarm.group(1).strip()
+        send_text(chat_id, "🚀 3 وكلاء بينفصلوا هلق — خبريني النتيجة بثوانٍ…")
+        angles = [f"{topic} أحدث الأخبار والتطورات",
+                  f"{topic} تحليل فني وآراء محللين",
+                  f"{topic} أرقام وإحصائيات رئيسية"]
+        try:
+            import concurrent.futures
+            def _angle(q):
+                return tools.web_search(q, 3) or ""
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+                reports = list(ex.map(_angle, angles))
+        except Exception as e:  # noqa: BLE001
+            reports = [f"(البحث فشل: {e})"] * 3
+        fused = brain.chat([
+            {"role": "system", "content": "أنت مدير أبحاث. ادمج ٣ تقارير بحثية في بطاقة عربية منظمة: عنوان سطر واحد، ثم ٥-٦ نقاط حاسمة (أرقام ظاهرة)، وأخيراً «الخلاصة» سطرين. بدون حشو وفذلكة."},
+            {"role": "user", "content": f"الموضوع: {topic}\n\nزاوية أخبار:\n{reports[0]}\n\nزاوية فنية:\n{reports[1]}\n\nزاوية أرقام:\n{reports[2]}"},
+        ], temperature=0.5, max_tokens=700)
+        send_text(chat_id, f"🐝 {topic}:\n\n{fused}")
+        return
     m_img = re.match(r"^(?:صورة|انشر صورة|/image)\s*[:：]?\s*(.+)$", text)
     if m_img:
         prompt = m_img.group(1).strip()
