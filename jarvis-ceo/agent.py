@@ -9,10 +9,14 @@
 import json
 import os
 import re
+import socket
 import sys
 import threading
 import time
 import urllib.request
+
+# حد أمن — أي استدعاء شبكة بلا مهلة صريحة يموت خلال ٢٥ ثانية مش للأبد
+socket.setdefaulttimeout(25)
 import urllib.error
 import uuid
 
@@ -1209,9 +1213,16 @@ def background_loop():
 
 def main():
     threading.Thread(target=background_loop, daemon=True).start()
-    me = tg("getMe")
-    if not me:
-        print("التوكن غلط أو ما في اتصال — راجع TELEGRAM_BOT_TOKEN"); sys.exit(1)
+    me = None
+    tries = 0
+    while not me:
+        tries += 1
+        me = tg("getMe")
+        if me:
+            break
+        wait = min(60 * tries, 600)
+        print(f"getMe فشل (attempt {tries}) — بعاود بعد {wait}ث بدون ما موت (حتى ترجع الشبكة)")
+        time.sleep(wait)
     print(f"جارفس CEO شغال كـ @{me.get('username')} — استنيه بالتيليجرام")
     update_id = int(db.kv_get("tg_offset", "0"))
     while True:
