@@ -572,6 +572,38 @@ def _env_keys_snapshot():
         pass
     return out
 
+_AGENT_VERBS = re.compile(r"(اعمل|سوّي|سوي|سويلي|سويهولي|ابن|ابني|اكتب|عدّل|بدل|ضيف|زِد|زود|صلح|اصلح|حدّث|غيّر|احذف|حلل|افهم|اقرأ|راجع|نفذ|طبّق|جهز|ظبط|نزّل|انشر|لـ(ي|هو) و افحص|روح)", re.I)
+_OPS_VERBS = re.compile(r"(شوف|شوفلي|شيك|شيك+لي|افحص|افحصلي|فحص|موجود|وضع|حالة|إذا شغال|اذا شغال|الوضع|ليش ما|لما ما|ما عم يرد|شو صار|شو عم يعمل|ضال شغال|شو بسوي|شو بيصير|ضليت)", re.I)
+_SYS_NOUNS = re.compile(r"(رعد|جارفس|البوت|الروبوت|السيرفر|النظام|السيستم|المشروع|غيتهاب|github|سيرفر|البورصة|رعد الترايد)", re.I)
+_AGENT_NOUNS = re.compile(r"(غيتهاب|غيتهوب|github|ريبو|كود|ملف|موقع|صفحة|سكربت|سكريبت|سكرِبت|بايثون|python|تطبيق|قاعدة بيانات|داتا|بيانات|متجر|منصة|صورة|فيديو|ايميل|إيميل|تقرير|شيت|اكسل|excel)", re.I)
+_QUESTION_START = re.compile(r"^(لازم|هل|شو بدك|شو بتستاهل|شو رأي|كيف|لمين|لوين|ليش|مين|متى|وين|ما بتقدر|ما تقدر|ممكن|تقدر|عم)", re.I)
+
+
+def _route_agent(low, text):
+    """هدف عملي بيحتاج عدة خطوات → وكيل بالخلفية بدون أي كلمة من الدكتور."""
+    t = text.strip()
+    if len(t) < 12:
+        return False
+    if _QUESTION_START.match(t):
+        return False  # سؤال حقيقي — مو مهمة تنفيذ (العقل بيجاوب)
+    has_verb = bool(_AGENT_VERBS.search(t))
+    has_target = bool(_AGENT_NOUNS.search(t)) or bool(_SYS_NOUNS.search(t))
+    return has_verb and has_target
+
+
+def _route_ops(low, text):
+    """سؤال عن حالة شي عندنا → حقائق حية بدل «ابعثلي صورة».
+    يفهم بدون اسم كمان: «شوفوا إذا شغال» + سياق آخر كيان (رعد) = فحص رعد."""
+    if not _OPS_VERBS.search(text):
+        return False
+    if _SYS_NOUNS.search(text):
+        return True
+    try:
+        return bool(db.kv_get("last_entity", ""))
+    except Exception:
+        return False
+
+
 def _restart_self_now():
     """restart صريح للخدمة — نفس الفلسفة: النظام يعيد تشغيلنا، os._exit آخر ملاذ بس."""
     import subprocess
@@ -772,6 +804,43 @@ def handle_message(msg):
                 return
         except Exception:  # noqa: BLE001
             pass
+
+    m_ent = _SYS_NOUNS.search(text)
+    if m_ent:
+        try:
+            db.kv_set("last_entity", m_ent.group(0).lower())
+        except Exception:  # noqa: BLE001
+            pass
+    # ── راوتر النوايا: «روح عالمشروع وسوّي كذا» = شغل بالخلفية؛ «شوف رعد شغال ولا لا» = حقائق حية ──
+    if _route_agent(_low_c, text):
+        import threading
+        import agent_loop
+        if agent_loop.is_running(chat_id):
+            send_text(chat_id, "في وكيل شغال أساسًا ⏳ — بخبرك أول ما يخلص. («وقف» لو بدك توقفه)")
+            return
+        send_text(chat_id, "🤖 فهمت — بشتغل بالخلفية وبتضل تحكي معي عادي، بخبرك أول ما يخلص…")
+        threading.Thread(target=agent_loop.run_agent,
+                         args=(chat_id, text.strip(), send_text, send_document, db),
+                         daemon=True).start()
+        return
+    if _route_ops(_low_c, text):
+        import threading
+
+        def _ops_job():
+            import ops
+            snap = ops.snapshot()
+            try:
+                ans = brain.chat([
+                    {"role": "system", "content": ops.SYSTEM_PROMPT + snap},
+                    {"role": "user", "content": text},
+                ], temperature=0.3, max_tokens=420)
+                send_text(chat_id, ans)
+            except Exception as e:  # noqa: BLE001
+                send_text(chat_id, "هاذي الحقائق حية من السيرفر (العقل ما رد، بس أنت بتشوف الواقع):\n" + snap[:1800])
+
+        send_text(chat_id, "🔧 بشيك ع السيرفر ولرعد هلق — ثواني…")
+        threading.Thread(target=_ops_job, daemon=True).start()
+        return
 
     low = text.lower().strip()
     if low in ("/start", "start", "اهلا", "مرحبا", "هاي", "هلا"):
