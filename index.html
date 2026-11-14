@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#070b16">
+<title>جارفس — شريكك بالمكالمة</title>
+<style>
+:root{
+  --bg:#070b16; --bg2:#0d1430; --card:#101a33; --card2:#16224a;
+  --teal:#3ee6c0; --teal-dim:#1b7f6b; --violet:#8b5cf6; --violet-dim:#4c3a86;
+  --gold:#ffd166; --red:#ff5c5c; --text:#eef2ff; --muted:#93a0c4;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:radial-gradient(1300px 800px at 50% -20%, #1a2450 0%, var(--bg) 58%);
+  color:var(--text);font-family:-apple-system,"Segoe UI",Tahoma,"Noto Kufi Arabic",sans-serif;
+  height:100dvh;overflow:hidden;user-select:none;-webkit-user-select:none;touch-action:manipulation;
+}
+#stage{height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:calc(env(safe-area-inset-top,0px) + 14px) 18px calc(env(safe-area-inset-bottom,0px) + 18px);position:relative}
+.brand{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;letter-spacing:1.5px}
+.live-dot{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 10px var(--red);animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* ═══════ جارفس — الكرة الحية ═══════ */
+.orb-zone{display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:6px}
+#orb{position:relative;width:190px;height:190px;display:grid;place-items:center;cursor:pointer}
+#orb .core{position:absolute;inset:34px;border-radius:50%;
+  background:radial-gradient(circle at 36% 32%, #2ee6c0 0%, #0f8f74 45%, #083a34 100%);
+  box-shadow:inset -14px -18px 44px rgba(0,0,0,.55), inset 10px 12px 30px rgba(255,255,255,.18),
+             0 0 70px rgba(62,230,192,.35), 0 0 140px rgba(62,230,192,.16);
+  transition:background 0.6s, box-shadow 0.6s; animation:breathe 4.2s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+#orb .shine{position:absolute;inset:34px;border-radius:50%;
+  background:radial-gradient(circle at 38% 30%, rgba(255,255,255,.5), transparent 42%);pointer-events:none;animation:breathe 4.2s ease-in-out infinite}
+.ring{position:absolute;border-radius:50%;border:1.5px solid rgba(62,230,192,.35);opacity:0;pointer-events:none}
+#orb.speaking .ring{animation:ripple 2.1s ease-out infinite}
+#orb.speaking .ring:nth-child(2){animation-delay:.7s}
+#orb.speaking .ring:nth-child(3){animation-delay:1.4s}
+@keyframes ripple{0%{inset:12px;opacity:.9;border-color:rgba(62,230,192,.7)}100%{inset:-52px;opacity:0;border-color:rgba(62,230,192,0)}}
+.wave{position:absolute;inset:20px;border-radius:50%;border:2px dashed rgba(62,230,192,.22);animation:spin 14s linear infinite;pointer-events:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+#orb.speaking .core{background:radial-gradient(circle at 36% 32%, #5cf5c8 0%, #14b887 42%, #063026 100%);
+  box-shadow:inset -14px -18px 44px rgba(0,0,0,.55), inset 10px 12px 30px rgba(255,255,255,.22),
+             0 0 90px rgba(62,230,192,.55), 0 0 190px rgba(62,230,192,.28); animation:talk 0.9s ease-in-out infinite}
+@keyframes talk{0%,100%{transform:scale(1)}25%{transform:scale(1.055)}50%{transform:scale(.985)}75%{transform:scale(1.035)}}
+#orb.listening .core{background:radial-gradient(circle at 36% 32%, #b79bff 0%, #6d4de0 45%, #241040 100%);
+  box-shadow:inset -14px -18px 44px rgba(0,0,0,.55), inset 10px 12px 30px rgba(255,255,255,.2),
+             0 0 90px rgba(139,92,246,.55), 0 0 190px rgba(139,92,246,.3); animation:listenpulse 1.5s ease-in-out infinite}
+@keyframes listenpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+#orb.listening .wave{border-color:rgba(139,92,246,.4)}
+#orb.thinking .core{background:radial-gradient(circle at 36% 32%, #ffe08a 0%, #d9a844 45%, #3a2a08 100%);
+  box-shadow:inset -14px -18px 44px rgba(0,0,0,.55), 0 0 80px rgba(255,209,102,.4); animation:talk 1.6s ease-in-out infinite}
+#orb.thinking .wave{border-color:rgba(255,209,102,.35);animation-duration:5s}
+.face{position:absolute;inset:34px;border-radius:50%;z-index:2;pointer-events:none;display:flex;align-items:center;justify-content:center}
+.eyes{display:flex;gap:26px}
+.eye{width:13px;height:17px;border-radius:50%;background:#04121b;box-shadow:0 0 12px rgba(62,230,192,.9), inset 0 0 4px #3ee6c0;animation:blinkEyes 5.2s infinite}
+@keyframes blinkEyes{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}
+#orb.listening .eye{box-shadow:0 0 12px rgba(139,92,246,.9), inset 0 0 4px #b79bff;height:19px}
+#orb.thinking .eye{box-shadow:0 0 12px rgba(255,209,102,.95), inset 0 0 4px #ffd166}
+h1.name{margin:10px 0 0;font-size:30px;font-weight:800;letter-spacing:.5px;
+  background:linear-gradient(180deg,#fff,#b9ffe6);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+#stateLine{color:var(--teal);font-size:14px;min-height:20px;opacity:.95}
+#activityLine{color:var(--muted);font-size:12px;min-height:18px;max-width:320px;text-align:center;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ═══════ الترجمة الحية — «شو عم يحكي» ═══════ */
+#captions{width:100%;max-width:520px;min-height:56px;max-height:118px;overflow:hidden;display:flex;flex-direction:column;gap:5px;
+  justify-content:flex-end;padding:6px 2px;transition:opacity .3s}
+.cap{max-width:88%;padding:8px 13px;border-radius:16px;font-size:14px;line-height:1.7;animation:capIn .28s ease-out}
+@keyframes capIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.cap.agent{align-self:flex-start;background:var(--card2);border:1px solid rgba(62,230,192,.25);border-end-start-radius:4px}
+.cap.doctor{align-self:flex-end;background:#241d40;border:1px solid rgba(139,92,246,.3);border-end-end-radius:4px;color:#dcd4ff}
+.cap .who{font-size:10px;color:var(--muted);display:block;margin-bottom:2px}
+#captions.hidden{opacity:0;pointer-events:none}
+
+/* ═══════ الأزرار — يتحكم فيهم هو وانت ═══════ */
+.bar{display:flex;gap:9px;width:100%;max-width:540px}
+.bar button{flex:1;background:var(--card);border:1px solid rgba(255,255,255,.07);color:var(--text);border-radius:17px;
+  padding:11px 4px 9px;font-size:11.5px;cursor:pointer;display:flex;flex-direction:column;gap:3px;align-items:center;
+  transition:transform .15s, background .2s, border-color .2s;font-family:inherit}
+.bar button:active{transform:scale(.93)}
+.bar button .ic{font-size:21px}
+.bar button.on{background:linear-gradient(180deg,#182744,#141f38);border-color:var(--teal-dim);box-shadow:0 0 16px rgba(62,230,192,.22), inset 0 0 12px rgba(62,230,192,.06)}
+.bar button.warn.on{background:#2b1a20;border-color:var(--red);box-shadow:0 0 16px rgba(255,92,92,.28)}
+.bar button.danger{border-color:rgba(255,92,92,.3);color:#ffb3b3}
+
+/* ═══════ شاشة جارفس — «وريني شو عم تشتغل» ═══════ */
+#screen{position:fixed;inset:0;z-index:8;background:rgba(4,8,18,.88);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  display:none;flex-direction:column;animation:screenIn .35s ease-out}
+@keyframes screenIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+#screen.open{display:flex}
+.screen-head{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 10px;border-bottom:1px solid rgba(62,230,192,.15)}
+.screen-dot{width:10px;height:10px;border-radius:50%;background:var(--teal);box-shadow:0 0 12px var(--teal);animation:blink 1.2s infinite}
+.screen-title{flex:1;font-size:14px;font-weight:700;color:#c8fff0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.screen-close{background:#1d2947;border:0;color:var(--text);border-radius:10px;padding:7px 13px;font-size:13px;cursor:pointer}
+.screen-body{flex:1;overflow:auto;padding:12px 14px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:10px}
+.screen-body img{max-width:100%;max-height:52vh;object-fit:contain;border-radius:14px;border:1px solid rgba(62,230,192,.2);align-self:center;background:#0b1226}
+.screen-body iframe{width:100%;flex:1;min-height:320px;border:1px solid rgba(255,255,255,.09);border-radius:14px;background:#fff}
+.screen-body pre,.screen-text{background:#0d1730;border:1px solid rgba(62,230,192,.14);border-radius:14px;padding:12px 14px;
+  line-height:1.9;white-space:pre-wrap;font-size:14px;margin:0;color:#d5f5e8}
+.screen-body ul{padding:0 18px 0 0;line-height:2.1;margin:0}
+.screen-cap{background:#0d1a2e;border:1px solid rgba(62,230,192,.2);border-radius:12px;padding:10px 14px;font-size:13px;line-height:1.8;color:#bfe9d8}
+.screen-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 16px calc(env(safe-area-inset-bottom,0px) + 12px);border-top:1px solid rgba(62,230,192,.12);font-size:11px;color:var(--muted)}
+
+/* ═══════ شاشة الانضمام ═══════ */
+#join{position:fixed;inset:0;z-index:10;background:radial-gradient(900px 600px at 50% 12%, #16224a 0%, var(--bg) 62%);
+  display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;padding:26px;text-align:center}
+.join-orb{width:132px;height:132px;border-radius:50%;position:relative;display:grid;place-items:center;
+  background:radial-gradient(circle at 37% 32%, #2ee6c0, #0f8f74 55%, #083a34);box-shadow:0 0 80px rgba(62,230,192,.4);animation:breathe 3.6s ease-in-out infinite}
+.join-orb .eyes2{display:flex;gap:18px}
+.join-orb .eye2{width:10px;height:13px;border-radius:50%;background:#04121b;box-shadow:0 0 10px rgba(62,230,192,.9)}
+#join h1{margin:0;font-size:34px}
+#join p{color:var(--muted);max-width:330px;font-size:13px;line-height:2;margin:0}
+#joinBtn{background:linear-gradient(135deg,#3ee6c0,#19b58b);color:#04231f;border:0;border-radius:19px;
+  font-size:20px;font-weight:800;padding:17px 46px;cursor:pointer;box-shadow:0 14px 46px rgba(62,230,192,.35);font-family:inherit}
+#joinBtn:active{transform:scale(.96)}
+#join-err{color:#ffb4b4;font-size:13px;min-height:18px}
+.pill{display:inline-block;background:#131f3d;border:1px solid rgba(62,230,192,.25);color:#8ef0cd;border-radius:999px;padding:4px 12px;font-size:11px}
+#toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:50%;transform:translate(-50%,-14px);z-index:20;
+  background:#182747;border:1px solid rgba(62,230,192,.3);color:#c8fff0;font-size:13px;padding:9px 18px;border-radius:12px;opacity:0;pointer-events:none;transition:.3s;max-width:88vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@media (max-height:660px){ #orb{width:150px;height:150px} h1.name{font-size:25px} #captions{min-height:44px} }
+</style>
+</head>
+<body>
+
+<main id="stage">
+  <div class="brand"><span class="live-dot"></span> خط مباشر — مش بس صوت، حضور</div>
+
+  <div class="orb-zone">
+    <div id="orb" aria-hidden="true">
+      <div class="ring"></div><div class="ring"></div><div class="ring"></div>
+      <div class="wave"></div>
+      <div class="core"></div>
+      <div class="shine"></div>
+      <div class="face"><div class="eyes"><div class="eye"></div><div class="eye"></div></div></div>
+    </div>
+    <h1 class="name">جارفس</h1>
+    <div id="stateLine">جاهز ⚡</div>
+    <div id="activityLine">…</div>
+  </div>
+
+  <div id="captions" aria-live="polite"></div>
+
+  <div class="bar">
+    <button id="btn-mic" class="on"><span class="ic">🎤</span>ميكروفوني</button>
+    <button id="btn-speaker" class="on"><span class="ic">🔊</span>صوت جارفس</button>
+    <button id="btn-caps" class="on"><span class="ic">📝</span>شو عم يحكي</button>
+    <button id="btn-screen"><span class="ic">🖥️</span>شاشته</button>
+    <button id="btn-end" class="danger"><span class="ic">📞</span>إنهاء</button>
+  </div>
+</main>
+
+<div id="screen" role="dialog" aria-modal="true">
+  <div class="screen-head">
+    <span class="screen-dot"></span>
+    <div class="screen-title" id="screenTitle">شاشة جارفس</div>
+    <button class="screen-close" id="screenClose">سكر ✕</button>
+  </div>
+  <div class="screen-body" id="screenBody"></div>
+  <div class="screen-foot"><span id="screenActivity">هلأ: …</span><span>جارفس · ببث مباشر</span></div>
+</div>
+
+<div id="join">
+  <div class="join-orb"><div class="eyes2"><div class="eye2"></div><div class="eye2"></div></div></div>
+  <h1>جارفس</h1>
+  <p>شريكك الذكي عالتيلفون — بيسمعك، بيفهمك، وبيعرضلك شو عم بيشتغل لحظة بلحظة.</p>
+  <span class="pill">🔒 صفر كاميرا — صوتك بس</span>
+  <button id="joinBtn">📲 كبس لتنضم</button>
+  <p id="join-err"></p>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.js"></script>
+<script>
+(function () {
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var LIVEKIT_URL = (params.get('liveKitUrl') || '').trim();
+  var TOKEN = (params.get('token') || '').trim();
+  var $ = function (id) { return document.getElementById(id); };
+  var orb = $('orb'), stateLine = $('stateLine'), activityLine = $('activityLine');
+  var captions = $('captions'), toastEl = $('toast');
+  var micOn = true, speakerOn = true, capsOn = true, gainNode = null, audioCtx = null;
+  var LK = window.LivekitClient || window.livekitClient || null;
+  var room = null;
+
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+  function setState(t){ if (t) stateLine.textContent = t; }
+  function setActivity(t){ activityLine.textContent = t || ''; var sa = $('screenActivity'); if (sa) sa.textContent = 'هلأ: ' + (t || '…'); }
+  var toastTimer = null;
+  function toast(t){ toastEl.textContent = t; toastEl.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 3200); }
+
+  function orbState(s){ orb.classList.remove('speaking','listening','thinking'); if (s) orb.classList.add(s); }
+
+  /* الترجمة الحية — آخر رسالتين */
+  function addCaption(role, text){
+    if (!capsOn && role !== 'system') { /* التلقائية ما بتفتح بدون الزر */ }
+    var div = document.createElement('div');
+    div.className = 'cap ' + (role === 'doctor' ? 'doctor' : 'agent');
+    div.innerHTML = '<span class="who">' + (role === 'doctor' ? 'الدكتور' : 'جارفس') + '</span>' + esc(text);
+    captions.appendChild(div);
+    while (captions.children.length > 2) captions.removeChild(captions.firstChild);
+  }
+
+  /* ===== شاشة جارفس (وريني شو عم تشتغل) ===== */
+  function openScreen(item){
+    var title = item.title || 'شاشة جارفس';
+    $('screenTitle').textContent = title;
+    var html = '';
+    if (item.kind === 'image' && item.url) {
+      html = '<img src="' + esc(item.url) + '" alt="' + esc(item.caption || title) + '">';
+      if (item.caption) html += '<div class="screen-cap">' + esc(item.caption) + '</div>';
+    } else if (item.kind === 'web' && item.url) {
+      var u = esc(item.url);
+      html = '<iframe src="' + u + '" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer"></iframe>'
+           + '<a class="open-link" href="' + u + '" target="_blank" rel="noopener" style="color:#3ee6c0;text-decoration:none;font-size:13px">🔗 افتح بشاشة كاملة</a>';
+    } else if (item.kind === 'list') {
+      html = '<ul>' + (item.items || []).map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+    } else {
+      html = '<div class="screen-text">' + esc(item.text || '') + '</div>';
+    }
+    $('screenBody').innerHTML = html;
+    $('screen').classList.add('open');
+  }
+  function closeScreen(){ $('screen').classList.remove('open'); }
+  $('screenClose').addEventListener('click', closeScreen);
+
+  function setAgentVolume(v){ if (gainNode) { gainNode.gain.value = v; speakerOn = v > 0; $('btn-speaker').classList.toggle('on', speakerOn); } }
+
+  function handleAgentMessage(msg){
+    if (!msg || !msg.type) return;
+    if (msg.type === 'screen' || msg.type === 'show') return openScreen(msg);
+    if (msg.type === 'close_panel') return closeScreen();
+    if (msg.type === 'set_volume') return setAgentVolume(Number(msg.value) ? Number(msg.value) : 1);
+    if (msg.type === 'summary') { openScreen({kind:'text', title:'📝 الملخص', text:msg.text}); return; }
+    if (msg.type === 'transcript') { addCaption(msg.role === 'user' ? 'doctor' : 'agent', msg.text); if (capsOn) captions.classList.remove('hidden'); return; }
+    if (msg.type === 'state') { setState(msg.label); if (msg.value) orbState(msg.value); return; }
+    if (msg.type === 'activity') { setActivity(msg.text); return; }
+  }
+
+  $('btn-caps').addEventListener('click', function(){
+    capsOn = !capsOn; captions.classList.toggle('hidden', !capsOn); this.classList.toggle('on', capsOn);
+    toast(capsOn ? '📝 عم تشوف اللي عم يحكيه لحظياً' : '📝 طفيت الترجمة');
+  });
+  $('btn-screen').addEventListener('click', function(){
+    if (room && room.localParticipant) {
+      room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: 'screen_request' })), { reliable: true, topic: 'jarvis' });
+      setState('جارفس عم يجهز شاشته…');
+    } else { toast('لسا ما اتصلت'); }
+  });
+  $('btn-end').addEventListener('click', function(){
+    toast('تسلم يا دكتور 🙏');
+    if (room) room.disconnect().catch(function(){});
+    orbState(null); setState('خلصت المكالمة — باي!');
+  });
+
+  async function connect(){
+    if (!LK) { $('join-err').textContent = 'تعذر تحميل مكتبة الاتصال — تأكد من الإنترنت وجرب تاني.'; return; }
+    if (!LIVEKIT_URL || !TOKEN) { $('join-err').textContent = 'الرابط ناقص — اطلب «📞 المكالمة» من البوت.'; return; }
+    try {
+      $('join-err').textContent = '';
+      setState('يتصل…');
+      room = new LK.Room({ audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+
+      room.on(LK.RoomEvent.TrackSubscribed, function (track) {
+        if (track.kind !== 'audio') return;
+        try {
+          if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          var el = document.createElement('audio');
+          el.autoplay = true; el.playsInline = true;
+          el.srcObject = new MediaStream([track.mediaStreamTrack]);
+          el.play().catch(function(){});
+          var src = audioCtx.createMediaStreamSource(el.srcObject);
+          gainNode = audioCtx.createGain(); gainNode.gain.value = speakerOn ? 1 : 0;
+          src.connect(gainNode); gainNode.connect(audioCtx.destination);
+        } catch (e) { attachFallback(track); }
+      });
+      room.on(LK.RoomEvent.ActiveSpeakersChanged, function (speakers) {
+        var me = room.localParticipant && room.localParticipant.identity;
+        var agentSpeaking = speakers.some(function (s) { return s.identity !== me; });
+        var meSpeaking = speakers.some(function (s) { return s.identity === me; });
+        if (agentSpeaking) { orbState('speaking'); setState('عم يحكي…'); }
+        else if (meSpeaking) { orbState('listening'); setState('عم يسمعك…'); }
+        else if (!document.getElementById('screen').classList.contains('open')) { orbState(null); setState('معك 🎤'); }
+      });
+      room.on(LK.RoomEvent.DataReceived, function (payload, participant, kind, topic) {
+        if (topic && topic !== 'jarvis') return;
+        try { handleAgentMessage(JSON.parse(new TextDecoder().decode(payload))); } catch (e) { /* مو رسالتنا */ }
+      });
+      room.on(LK.RoomEvent.Disconnected, function () { setState('انقطعت — اقفل واكبس تاني'); orbState(null); });
+
+      await room.connect(LIVEKIT_URL, TOKEN);
+      try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { /* بيقدر يرجع من الزر */ }
+      $('join').style.display = 'none';
+      setState('متصل — احكي معي 🙂'); setActivity('بانتظارك…');
+    } catch (e) {
+      console.error(e);
+      $('join-err').textContent = 'ما قدرت أدخل الغرفة — تأكد من الرابط وحاول تاني.';
+    }
+  }
+  function attachFallback(track){ var el = document.createElement('audio'); el.autoplay = true; el.srcObject = new MediaStream([track.mediaStreamTrack]); el.play().catch(function(){}); document.body.appendChild(el); }
+
+  $('joinBtn').addEventListener('click', connect);
+  $('btn-mic').addEventListener('click', function () {
+    micOn = !micOn;
+    if (room && room.localParticipant) room.localParticipant.setMicrophoneEnabled(micOn).catch(function () {});
+    this.classList.toggle('on', micOn);
+    setState(micOn ? '🎤 الميكروفون مفتوح' : '🎤 الميكروفون مقفول');
+  });
+  $('btn-speaker').addEventListener('click', function () {
+    setAgentVolume(speakerOn ? 0 : 1);
+    toast(speakerOn ? '🔊 جارفس مسموع' : '🔇 جارفس صايت');
+  });
+})();
+</script>
+</body>
+</html>
