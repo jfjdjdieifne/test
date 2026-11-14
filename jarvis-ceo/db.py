@@ -161,6 +161,10 @@ def open_tasks(limit=20):
         ]
 
 
+def set_task_result(task_id, result):
+    with conn() as c:
+        c.execute("UPDATE tasks SET result=? WHERE id=?", ((result or "")[:8000], int(task_id)))
+
 def done_task(task_id):
     with conn() as c:
         c.execute("UPDATE tasks SET status='done' WHERE id=?", (int(task_id),))

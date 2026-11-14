@@ -271,13 +271,11 @@ h1.name{margin:10px 0 0;font-size:30px;font-weight:800;letter-spacing:.5px;
         if (track.kind !== 'audio') return;
         try {
           if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          var el = document.createElement('audio');
-          el.autoplay = true; el.playsInline = true;
-          el.srcObject = new MediaStream([track.mediaStreamTrack]);
-          el.play().catch(function(){});
-          var src = audioCtx.createMediaStreamSource(el.srcObject);
+          var stream = new MediaStream([track.mediaStreamTrack]);
+          var src = audioCtx.createMediaStreamSource(stream);
           gainNode = audioCtx.createGain(); gainNode.gain.value = speakerOn ? 1 : 0;
           src.connect(gainNode); gainNode.connect(audioCtx.destination);
+          window.__audioHeard = true;  // للمراقبة: هل وصل صوت فعلاً
         } catch (e) { attachFallback(track); }
       });
       room.on(LK.RoomEvent.ActiveSpeakersChanged, function (speakers) {
@@ -297,6 +295,8 @@ h1.name{margin:10px 0 0;font-size:30px;font-weight:800;letter-spacing:.5px;
       await room.connect(LIVEKIT_URL, TOKEN);
       try { await room.localParticipant.setMicrophoneEnabled(true); } catch (e) { /* بيقدر يرجع من الزر */ }
       $('join').style.display = 'none';
+      window.__audioHeard = false;
+      setTimeout(function () { if (!window.__audioHeard) toast('ما في صوت لسا — افتح المكالمة من جديد، أو جرب «ميكروفوني»'); }, 12000);
       setState('متصل — احكي معي 🙂'); setActivity('بانتظارك…');
     } catch (e) {
       console.error(e);

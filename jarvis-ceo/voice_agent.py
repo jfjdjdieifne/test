@@ -35,10 +35,17 @@ BASE_SYSTEM = """أنت «جارفس» — مدير «الدكتور» التن�
 - «ميوت» / «اسكت» / «بلا كلام» → set_quiet_mode(true) — ما تحكي غير لما يقول «شيل الميوت» أو «رجع».
 - «شيل الميوت» / «رجع حكي» → set_quiet_mode(false).
 - لما تفتح بطاقة — احكي سطر واحد بالضبط («فتحتلها X») — لا تطل شرح واترك الشاشة تتكلم.
+- أي طلب «ابحثلي/دورلي/تابعلي/سويلي» خلال المكالمة — استخدم start_background_task فوراً؛ النتيجة رح تطلع على شاشته لحالها، ما تطوّل انتظاره ولا تقلو «بعدين».
+- أي مهمة وعدتها بده يعملها أو حتى مجرد طلب — سجلها note_task فوراً حتى لو ما بتقدر تسويها هلق.
+- لما يطلب «شو معلق؟ / شو عليي؟ / إيش المهام؟» — task_board — بيفتح الدفتر على الشاشة وبيحكي العدد.
+- لما يقول «خلص / سكر / باي» — end_call (هو اللي بيلخص المكالمة ذكي ويحفظها بالملاحظات ويبعتله على تيليجرام).
 - «وريني شو عم تشتغل» / «شاشتك» / «شو شايف» → استخدم share_screen (صورة/موقع/نص/قائمة) — لا تصف الشاشة صوتياً، خليها تظهر. احكيلي سطر واحد عن السبب بعد ما تفتحها.
 - مع كل share_screen اكتب activity قصير («هلأ: عم بيشوف … / عم يعد …») — سطر واحد للبال بالشاشة.
 - إذا الدكتور سأل «شو عم تحكي/شو قلت» → جاوب باختصار (لأن عنده ترجمة حية على الشاشة إذا بدي).
 """
+
+
+_CONVO = []  # نص آخر المحادثة — يُبني عليه «الملخص الذكي» عند end_call
 
 
 def _gemini_key():
@@ -153,13 +160,97 @@ async def share_screen(context: RunContext, kind: str, title: str = "", url: str
 
 
 @function_tool
+async def note_task(context: RunContext, title: str, details: str = ""):
+    """يسجل مهمة بدفتر المهام — لما الدكتور يطلب شيء يلزم يتنفذ أو حتى يصير في باله. حتى لو مش نفادها هلق."""
+    import db
+    tid = db.add_task("مكالمة", title, details, "open")
+    return f"سجلتها بالدفتر (#{tid}) — ما رح تنسى أبداً."
+
+
+@function_tool
+async def task_board(context: RunContext):
+    """يعرض المهام المعلقة (المفتوحة) على شاشة الدكتور + يحكي العدد."""
+    import db
+    items = [t["prompt"][:80] for t in db.open_tasks(15)]
+    if not items:
+        await _publish_data({"type": "screen", "kind": "text", "title": "📋 الدفتر", "text": "ما في شي معلق — الدفتر فاضي ✅"})
+        return "ما في شي معلق — الدفتر فاضي."
+    await _publish_data({"type": "screen", "kind": "list", "title": f"📋 المهام المعلقة ({len(items)})",
+                         "items": items, "activity": "عم يعرض الدفتر"})
+    return f"عرضتلك {len(items)} مهمة معلقة عشاشتك — وحابب اسمعهم كلهن بإيقاع سريع إذا بدك."
+
+
+@function_tool
+async def start_background_task(context: RunContext, description: str):
+    """بالخلفية مباشرة — «ابحثلي/دورلي/تابعلي/سويلي» خلال المكالمة: بيستقصي فوراً بالخلفية (Tavily + فابل) وبيعرض النتيجة ع شاشته لما تخلص."""
+    import asyncio
+    import db
+    tid = db.add_task("background", description, "", "open")
+
+    async def _job():
+        try:
+            import asyncio as _a
+            import tools as _tools
+            import brain as _brain
+            found = ""
+            if getattr(_tools, "TAVILY_API_KEY", ""):
+                found = await _a.to_thread(_tools.web_search, description, 4)
+            prompt = (f"طلب الدكتور: {description}\n\nنتائج البحث:\n{found}" if found
+                      else f"طلب الدكتور: {description}\n\n(ما في بحث — جاوب من خبرتك بحدود)")
+            out = await _a.to_thread(
+                _brain.chat,
+                [{"role": "system", "content": "أنت مساعد الدكتور التنفيذي. جاوب ب٣-٥ أسطر عملية، باللهجة الشامية، أرقام ظاهرة، بدون حشو. إذا ما في شي مؤكد، قل بصراحة «ما لقيت شي مؤكد»."},
+                 {"role": "user", "content": prompt}],
+                temperature=0.5, max_tokens=500)
+            out = (out or "").strip() or "ما طلع شي."
+            await _a.to_thread(db.set_task_result, tid, out[:7000])
+            await _publish_data({"type": "screen", "kind": "text", "title": f"⚡ نتيجة: {description[:70]}", "text": out, "activity": "خلص البحث — النتيجة عندك"})
+            await _publish_data({"type": "activity", "text": "خلص مهمته بالخلفية ✅"})
+        except Exception as e:  # noqa: BLE001
+            print(f"background task: {e}")
+            await _publish_data({"type": "activity", "text": "انعلقت مهمة الخلفية — خبرني على تيليجرام"})
+
+    asyncio.ensure_future(_job())
+    return "بلشت بالمهمة بالخلفية — بتعرضلك النتيجة ع شاشتك أول ما تخلص."
+
+
+@function_tool
 async def end_call(context: RunContext):
-    """يُنهي المكالمة لما الدكتور يطلب (مثلاً: «خلص»، «روح»، «سكر»، «باي»)."""
+    """يُنهي المكالمة لما الدكتور يطلب (مثلاً: «خلص»، «روح»، «سكر»، «باي»). بيحفظ ملخص ذكي بالملاحظات وبيبعتلو على تيليجرام."""
+    try:
+        import db
+        convo = "\n".join(_CONVO[-40:]).strip()
+        if convo:
+            memo = brain_chat_summary(convo)
+            db.notes_add(memo, "call")
+            try:
+                import raad
+                raad.telegram_send("📋 ملخص المكالمة:\n" + memo)
+            except Exception as e:  # noqa: BLE001
+                print(f"memo telegram: {e}")
+            _CONVO.clear()
+    except Exception as e:  # noqa: BLE001
+        print(f"end memo: {e}")
     try:
         await agents.get_job_context().shutdown(reason="call_ended_by_user")
     except Exception:
         pass
     return "المكالمة خلصت — باي!"
+
+
+def brain_chat_summary(convo):
+    """يلخّص المكالمة بفورم منظم — شو طلب / شو عملنا / مهام معلقة / وعد موعد — عربي واضح."""
+    try:
+        import brain
+        out = brain.chat([
+            {"role": "system", "content": ("لخص المكالمة لصالح الدكتور بصيغة عربية منظمة:\n"
+                "١) شو طلب (بنقاط قصيرة)\n٢) شو تم/جهزنا بالفعل\n٣) مهام معلقة يلزم تتابع\n٤) أي وعد بموعد أو تسليم\n"
+                "بدون فلسفة، بلا تزويق — الحقائق فقط.")},
+            {"role": "user", "content": convo},
+        ], temperature=0.4, max_tokens=900)
+        return (out or "").strip() or convo[-1500:]
+    except Exception as e:  # noqa: BLE001
+        return f"(ما قدرت ألخص — النص الخام: {convo[-1200:]})"
 
 
 @function_tool
@@ -198,9 +289,10 @@ async def entrypoint(ctx: JobContext):
             enable_affective_dialog=True,
         ),
     )
+    _CONVO.clear()
     agent = Agent(
         instructions=BASE_SYSTEM + _profile_context(),
-        tools=[end_call, save_secret, save_note, open_card, close_panel, set_quiet_mode, set_caption, share_screen],
+        tools=[end_call, save_secret, save_note, open_card, close_panel, set_quiet_mode, set_caption, share_screen, note_task, task_board, start_background_task],
     )
     try:
         await ctx.room.local_participant.set_name("جارفس 🎙️")
@@ -247,6 +339,7 @@ async def entrypoint(ctx: JobContext):
             text = _item_text(item)
             if text:
                 speaker = "user" if role in ("user", "human") else "agent"
+                _CONVO.append(("الدكتور: " if speaker == "user" else "جارفس: ") + text)
                 asyncio.ensure_future(_publish_data({"type": "transcript", "role": speaker, "text": text[:500]}))
                 if speaker == "agent":
                     asyncio.ensure_future(_publish_data({"type": "activity", "text": "أجاب ✅ — بانتظارك"}))

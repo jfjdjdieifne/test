@@ -609,6 +609,13 @@ def _update_body(chat_id, repo, env):
     except Exception as e:  # noqa: BLE001
         send_text(chat_id, f"الجلب تم بس التنصيب فشل: {e}")
         return
+    # رجّع وكالة الصوت كمان (خدمة منفصلة عن البوت) — بأحسن جهد، بدون sudo قد يفشل
+    try:
+        import subprocess as _sp
+        _sp.run(["sudo", "-n", "systemctl", "restart", "jarvis-voice"],
+                capture_output=True, text=True, timeout=20)
+    except Exception:  # noqa: BLE001
+        pass
     send_text(chat_id, "برجع بثوانٍ على النسخة الجديدة ✅")
     import time as _t
     _t.sleep(1.5)
