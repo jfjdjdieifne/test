@@ -1118,6 +1118,29 @@ def handle_message(msg):
 
         threading.Thread(target=_models_job, daemon=True).start()
         return
+    if low in ("ركب هرمس", "تنصيب هرمس", "نصب هرمس", "انزل هرمس", "ثبت هرمس", "هرمس install", "/hermes", "hermes install"):
+        send_text(chat_id, "🧪 بدأ تنصيب Hermes Agent (Nous Research) بالخلفية — هاي المرة بدون ما ألمس jarvis إطلاقًا. بيطول 2-5 دقايق حسب سرعة النت. إذا طلعت أي ملاحظة برجعلك آخر السطور من الـ log.")
+        def _hermes_job():
+            import subprocess
+            log = os.path.expanduser("~/hermes-install.log")
+            try:
+                dl = subprocess.run(["curl", "-fsSL", "-m", "120", "-o", "/tmp/hermes-install.sh", "https://hermes-agent.nousresearch.com/install.sh"],
+                                    capture_output=True, text=True, timeout=150)
+                if dl.returncode != 0 or not os.path.getsize("/tmp/hermes-install.sh"):
+                    send_text(chat_id, "❌ ما قدرت نزّل مثبت الهرمس — جرب بعد شوي أو خبريني:\n" + ((dl.stderr or dl.stdout).strip()[-800:] or "تنزيل فارغ"))
+                    return
+                r = subprocess.run(["bash", "/tmp/hermes-install.sh"], capture_output=True, text=True, timeout=900)
+                tail = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()[-3200:]
+                with open(log, "w", encoding="utf-8") as fh:
+                    fh.write((r.stdout or "") + "\n" + (r.stderr or ""))
+                if r.returncode == 0:
+                    send_text(chat_id, "✅ مثبت الهرمس خلص. آخر الملاحظات:\n" + tail + "\n\nالخطوات الجاية (أنا ما بمس فيها بدون إذنك): ١) بوت تيليغرام تاني من @BotFather ٢) «hermes setup» نختار provider (كوارينا إذا «تجربة الحلقة» خلصت ✅، أو Bedrock من الـ $100) ٣) «hermes gateway run». المكالمات/واتساب/أتمتة — بطلعلك.")
+                else:
+                    send_text(chat_id, "⚠️ مثبت الهرمس وقف برموز " + str(r.returncode) + ". آخر السطور:\n" + tail + "\n\nالسجل كامل على السيرفر: ~/hermes-install.log")
+            except Exception as e:
+                send_text(chat_id, "❌ تنصيب الهرمس فشل باستثناء مو متوقع: " + str(e)[:400])
+        threading.Thread(target=_hermes_job, daemon=True).start()
+        return
     if low in ("تجربة الحلقة", "تجربة الsdk", "agentsdk", "جرب agentsdk", "جرّب agents sdk", "/sdkprobe", "تجربة sdk"):
         send_text(chat_id, "🧪 بجرب Agents SDK (OpenAI الرسمي) على كوارينا — استدعاء أداة واحد، نصف دقيقة…")
 
