@@ -717,6 +717,27 @@ def handle_message(msg):
     if not text:
         return
 
+    # «نعم/لا» لخطوات وضع الوكيل الخطرة المعلّقة — بتجي قبل أي توزيع تاني
+    _low_c = text.strip().lower()
+    if db.kv_get(f"agent_pending:{chat_id}"):
+        if _low_c in ("نعم", "ايه", "أيوا", "ايوا", "نفذ", "اكيد", "تمام", "yes", "do"):
+            import agent_loop
+            agent_loop.resume_after_approval(chat_id, send_text, send_document, db, approved=True)
+            return
+        if _low_c in ("لا", "لاء", "الغاء", "إلغاء", "بطل", "لا تنفذ", "no"):
+            import agent_loop
+            agent_loop.resume_after_approval(chat_id, send_text, send_document, db, approved=False)
+            return
+    if _low_c == "وقف":
+        try:
+            import agent_loop
+            if agent_loop.is_running(chat_id):
+                agent_loop.request_stop(chat_id)
+                send_text(chat_id, "🛑 بوقف الوكيل بعد الخطوة الحالية…")
+                return
+        except Exception:  # noqa: BLE001
+            pass
+
     low = text.lower().strip()
     if low in ("/start", "start", "اهلا", "مرحبا", "هاي", "هلا"):
         send_text(chat_id, "أهلاً دكتور 👋 " + HELP.split("\n", 1)[1], reply_markup=_call_keyboard())
@@ -986,6 +1007,18 @@ def handle_message(msg):
             send_text(chat_id, (body or "(ما فيش نص واضح بالرابط)")[:3800])
         except Exception as e:  # noqa: BLE001
             send_text(chat_id, f"ما قدرت اقرأ الرابط: {e}")
+        return
+    m_agent = re.match(r"^(?:وضع الوكيل|وكيل|عميل|ابعتلي وكيل)\s*[:：]?\s*(.+)$", text)
+    if m_agent:
+        goal = m_agent.group(1).strip()
+        import threading
+        import agent_loop
+        if agent_loop.is_running(chat_id):
+            send_text(chat_id, "في وكيل شغال أساسًا — اكتب «وقف» لو بدك توقفه الأول.")
+            return
+        threading.Thread(target=agent_loop.run_agent,
+                         args=(chat_id, goal, send_text, send_document, db),
+                         daemon=True).start()
         return
     m_chart = re.match(r"^(?:شارت|وريني شارت|وريني الشارت|ارسم شارت)(?:\s+(\S+))?(?:\s+على\s+(15m|1h|4h|1d))?", text, re.I)
     if m_chart:
