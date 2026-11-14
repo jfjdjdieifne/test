@@ -14,11 +14,28 @@ API="https://api.github.com/repos/jfjdjdieifne/test/branches/$BRANCH"
 exec 9>"$REPO/.auto_update.lock"
 flock -n 9 || exit 0
 
+# ── WATCHDOG: حتى لو ما في كود جديد — إذا البوت طافي رجّعو فوراً ──
+if ! systemctl is-active --quiet jarvis-ceo 2>/dev/null; then
+  echo "$(date -u +%F_%T) watchdog: jarvis-ceo not active — restarting" >> "$REPO/auto_update.log"
+  sudo -n systemctl restart jarvis-ceo >> "$REPO/auto_update.log" 2>&1 || systemctl restart jarvis-ceo >> "$REPO/auto_update.log" 2>&1
+  sleep 4
+  systemctl is-active --quiet jarvis-ceo && echo "$(date -u +%F_%T) watchdog: back up" >> "$REPO/auto_update.log"
+fi
+
 ENV_FILE="${CEO_ENV_PATH:-$HOME/jarvis-ceo.env}"
 grab() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'"'"' '; }
 TOKEN=$(grab GITHUB_TOKEN)
 TG_TOKEN=$(grab TELEGRAM_BOT_TOKEN)
 CHAT_ID=$(grab CEO_CHAT_ID)
+if [ -z "$CHAT_ID" ]; then
+  CHAT_ID=$(python3 -c "import sqlite3,os,sys
+p=os.environ.get('CEO_DB') or os.path.expanduser('~/jarvis-ceo.db')
+try:
+    r=sqlite3.connect(p).execute(\"SELECT v FROM kv WHERE k='ceo_chat_id'\").fetchone()
+    print((r[0] if r else '') or '')
+except Exception:
+    print('')" 2>/dev/null)
+fi
 
 notify() {
   [ -z "$TG_TOKEN" ] || [ -z "$CHAT_ID" ] && return 0

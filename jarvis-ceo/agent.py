@@ -609,17 +609,29 @@ def _update_body(chat_id, repo, env):
     except Exception as e:  # noqa: BLE001
         send_text(chat_id, f"الجلب تم بس التنصيب فشل: {e}")
         return
-    # رجّع وكالة الصوت كمان (خدمة منفصلة عن البوت) — بأحسن جهد، بدون sudo قد يفشل
     try:
         import subprocess as _sp
         _sp.run(["sudo", "-n", "systemctl", "restart", "jarvis-voice"],
-                capture_output=True, text=True, timeout=20)
+                capture_output=True, text=True, timeout=25)
     except Exception:  # noqa: BLE001
         pass
+    # أولاً: restart صريح بالمصلحة — الكود الجديد يشتغل فعلاً (ليس مجرد خروج)
+    restarted = False
+    for cmd in (["sudo", "-n", "systemctl", "restart", "jarvis-ceo"], ["systemctl", "restart", "jarvis-ceo"]):
+        try:
+            import subprocess as _sp
+            r = _sp.run(cmd, capture_output=True, text=True, timeout=60)
+            if r.returncode == 0:
+                restarted = True
+                break
+        except Exception:  # noqa: BLE001
+            continue
+    if restarted:
+        return  # النظام نفسه أُعيد تشغيله — لا تخرج بيدك (سبب الصمت القديم)
     send_text(chat_id, "برجع بثوانٍ على النسخة الجديدة ✅")
     import time as _t
     _t.sleep(1.5)
-    os._exit(0)  # systemd (Restart=always) بيرجع يشغّلنا بالكود الجديد — بدون أي صلاحية sudo
+    os._exit(0)  # آخر الملاذ — systemd يعيد تشغيلنا إذا كان Restart=always
 
 
 # ============ أوامر Excel في المحادثة ============
