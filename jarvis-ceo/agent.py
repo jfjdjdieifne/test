@@ -623,6 +623,37 @@ def handle_message(msg):
         else:
             send_text(chat_id, "LiveKit لسا مش مضبوط — اكتب «شو لازم اضيف» وضيف LIVEKIT_URL وLIVEKIT_API_KEY وLIVEKIT_API_SECRET بـ ~/jarvis-ceo.env وبعدها sudo systemctl restart jarvis-ceo")
         return
+    if low in ("تحديث", "/update", "حدث رعد", "ركّب رعد", "حدث كلشي", "حدث البوت"):
+        """تحديث كامل من التيليجرام — أوامر محددة سلفاً فقط، ما بيقبل أي شيء تاني."""
+        send_text(chat_id, "ثواني — بجيب آخر نسخة وبثبت رعد 🔄")
+        import subprocess
+        repo = os.path.dirname(os.path.abspath(__file__))
+        env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+        try:
+            pull = subprocess.run(["git", "pull", "origin", "arena/e3e2c397-test"],
+                                  cwd=repo, env=env, capture_output=True, text=True, timeout=240)
+        except Exception as e:  # noqa: BLE001
+            send_text(chat_id, f"الجلب فشل: {e}")
+            return
+        if pull.returncode != 0:
+            tail = (pull.stdout + pull.stderr).strip()[-900:]
+            send_text(chat_id, "ما قدرت أجلب آخر نسخة:\n" + tail)
+            return
+        try:
+            inst = subprocess.run(["bash", "raad_install.sh"], cwd=repo, env=env,
+                                  capture_output=True, text=True, timeout=300)
+            tail = (inst.stdout + inst.stderr).strip()[-1300:]
+            send_text(chat_id, "التنصيب انتهى ✅\n" + tail)
+        except Exception as e:  # noqa: BLE001
+            send_text(chat_id, f"الجلب تم بس التنصيب فشل: {e}")
+            return
+        try:
+            subprocess.run(["sudo", "-n", "systemctl", "restart", "jarvis-ceo"],
+                           capture_output=True, text=True, timeout=20)
+            send_text(chat_id, "البوت رجّع تشغيل على الكود الجديد ✅")
+        except Exception:  # noqa: BLE001
+            send_text(chat_id, "الكود محدث — إذا بدك كمان الكود الجديد يشتغل جوا البوت نفسه: sudo systemctl restart jarvis-ceo من الكونسول.")
+        return
     if low in ("/help", "مساعدة", "اوامر", "أوامر", "شو بتعرف تعمل"):
         send_text(chat_id, HELP)
         return
@@ -981,6 +1012,7 @@ HELP = (
     "أي تعديل على نفسك — احكي طبيعي («غيّر/أضف/صلح/احذف…») وبطبقه بحالي\n"
     "نشر/إرسال — بصيغلك وبيعطيك زر ✅ قبل ما ينفذ\n"
     "📞 المكالمة — يفتحلك خط مباشر معي بكبسة وحدة (صوت بس، بلا كتابة)\n"
+    "تحديث — بجيب آخر نسخة وبثبت رعد والكرون لحاله\n"
     "مساعدة — هالرسالة"
 )
 
