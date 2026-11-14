@@ -355,7 +355,7 @@ def setup():
     ok = telegram_send("⚡ رعد تفعّل ورقيًا — جاهز يشوف السوق ويرجع يقرر كل توصية بالدفتر. صفقات حقيقية: مستحيل بدون ✅ صريح منك.")
     try:
         import brain
-        brain.chat([{"role": "user", "content": "قل «رعد جاهز» بكلمتين فقط."}], max_tokens=20)
+        brain.chat([{"role": "user", "content": "قل «رعد جاهز» بكلمتين فقط."}], max_tokens=320)
         coarena = "وصلك صح ✅"
     except Exception as e:  # noqa: BLE001
         coarena = f"ما وصل ⚠️ ({e}) — البطاقات رح تنزل بس بدون رأي العقل لحد ما يصلح المفتاح"

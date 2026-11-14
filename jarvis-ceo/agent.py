@@ -84,7 +84,7 @@ def tg(method, params=None, timeout=60, files=None):
 CALL_ROOM = os.environ.get("LIVEKIT_ROOM", "jarvis-call")
 _MEET_TEMPLATE = os.environ.get(
     "CEO_MEET_URL",
-    "https://raw.githack.com/jfjdjdieifne/test/callpage/index.html?liveKitUrl={url}&token={token}",
+    "https://jfjdjdieifne.github.io/test/?liveKitUrl={url}&token={token}",
 )
 
 def build_call_url():

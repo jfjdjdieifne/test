@@ -13,7 +13,7 @@ import urllib.error
 
 BASE_URL = os.environ.get("COARENA_BASE_URL", "https://coarena.ai/api/v1").rstrip("/")
 MODEL = os.environ.get("COARENA_MODEL", "claude-fable-5-2")
-MAX_TOKENS = int(os.environ.get("CEO_MAX_TOKENS", "1200"))
+MAX_TOKENS = int(os.environ.get("CEO_MAX_TOKENS", "1600"))
 DAILY_TOKEN_CAP = os.environ.get("DAILY_TOKEN_CAP", "200000")
 
 
@@ -68,6 +68,27 @@ def chat(messages, temperature=0.7, max_tokens=None):
             payload = json.loads(resp.read().decode("utf-8"))
             msg = ((payload.get("choices") or [{}])[0].get("message") or {})
             content = (msg.get("content") or "").strip()
+            # نموذج «reasoning» صرّف الميزانية كلها لقناة الاستدلال وترك content فاضي
+            # → بنرجع نرسل نفس الطلب بميزانية أكبر قبل ما نستسلم للمفتاح التالي
+            if not content and (msg.get("reasoning") or msg.get("reasoning_content")):
+                base = max_tokens or MAX_TOKENS
+                bigger = min(base * 4, 6000)
+                print(f"brain: reasoning-only (budget {base}) — retry بـ {bigger}")
+                try:
+                    body_big = dict(json.loads(body))
+                    body_big["max_tokens"] = bigger
+                    req = urllib.request.Request(
+                        BASE_URL + "/chat/completions",
+                        data=json.dumps(body_big).encode("utf-8"),
+                        method="POST",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    )
+                    resp = urllib.request.urlopen(req, timeout=120)
+                    payload = json.loads(resp.read().decode("utf-8"))
+                    msg = ((payload.get("choices") or [{}])[0].get("message") or {})
+                    content = (msg.get("content") or "").strip()
+                except Exception as e:  # noqa: BLE001
+                    print(f"brain retry: {e}")
             usage = payload.get("usage") or {}
             if not content:
                 # رد فاضي من النموذج — سجّل مفاتيح الـ payload للتشخيص وجرّب المفتاح التالي
