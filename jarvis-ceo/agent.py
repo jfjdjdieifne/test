@@ -1017,6 +1017,73 @@ def handle_message(msg):
         send_text(chat_id, "🔑 مفاتيحك (انسخ نصها وخزّنه، وبعدين احذف هالرسائل):\n\n" + "\n".join(msg_parts)[:3600])
         send_text(chat_id, "خلص — هسا بإيدك. لا تبعتها لحدا ولا تحطها بأي تطبيق عام.")
         return
+    if low in ("فحص الموديلات", "الموديلات", "/models", "موديل شغال", "مين موديل شغال"):
+        send_text(chat_id, "🔍 بجرب الموديلات عندك على كوارينا — كل واحد بسؤال صغير…")
+
+        def _models_job():
+            import json as _json
+            import urllib.error
+            import urllib.request
+            import brain as _brain
+            keys = [k for k in _brain._keys() if k]
+            if not keys:
+                send_text(chat_id, "ما في مفاتيح كوارينا مضبوطة على السيرفر.")
+                return
+            key = keys[0]
+            lines = []
+            models = []
+            try:
+                req = urllib.request.Request(
+                    _brain.BASE_URL.rstrip("/") + "/models",
+                    headers={"Authorization": f"Bearer {key}",
+                             "Content-Type": "application/json",
+                             "User-Agent": "jarvis-key-probe/1"})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    data = _json.loads(r.read().decode("utf-8"))
+                for m in (data.get("data") or []):
+                    mid = m.get("id") if isinstance(m, dict) else str(m)
+                    if mid:
+                        models.append(mid)
+                lines.append(f"قائمة كوارينا: {len(models)} موديل متاح للمفتاح")
+            except Exception as e:  # noqa: BLE001
+                lines.append(f"ما قدرت أجيب القائمة الرسمية ({type(e).__name__}) — بجرب قائمة معروفة")
+                models = ["claude-fable-5-2", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash",
+                          "gpt-4o", "gpt-4o-mini", "deepseek-chat", "deepseek-r1", "claude-3-5-sonnet"]
+            working = []
+            for model in models[:12]:
+                body = _json.dumps({"model": model,
+                                    "messages": [{"role": "user", "content": "قل: جاهز"}],
+                                    "max_tokens": 8}).encode("utf-8")
+                req = urllib.request.Request(
+                    _brain.BASE_URL.rstrip("/") + "/chat/completions",
+                    data=body, method="POST",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+                try:
+                    with urllib.request.urlopen(req, timeout=12) as r:
+                        r.read()
+                    lines.append(f"✅ {model}")
+                    working.append(model)
+                except urllib.error.HTTPError as e:
+                    detail = ""
+                    try:
+                        detail = e.read().decode("utf-8", "ignore")[:60]
+                    except Exception:
+                        pass
+                    tag = "limits" if "usage limits" in detail else detail
+                    lines.append(f"❌ {model} — {e.code}" + (f" {tag}" if tag else ""))
+                except Exception as e:  # noqa: BLE001
+                    lines.append(f"❌ {model} — {type(e).__name__}")
+            lines.append("")
+            if working:
+                lines.append(f"الموديلات الشغالة عندك: {', '.join(working)}")
+                lines.append("إذا بدك واحد منهم اكتب: «احفظ مفتاح COARENA_MODEL=<الموديل>» والبوت يظل على كوارينا بموديل تاني — بدون ما ننتظر ١ ديسمبر.")
+            else:
+                lines.append("ولا موديل رد — يعني الحد على المزوّد/الحساب لهالشهر مو على موديل واحد.")
+                lines.append("الحل: مفتاح Gemini أو OpenRouter جديد (مجاني، ٣ دقايق) — أو الانتظار حتى ١ ديسمبر.")
+            send_text(chat_id, "\n".join(lines)[:3800])
+
+        threading.Thread(target=_models_job, daemon=True).start()
+        return
     if low in ("كم مفتاح", "مفاتيحي", "كم مفتاح عندي", "كم مفتاح حفظت", "شو محفوظ عندي"):
         names = sorted(k for k in (integrations.ALL_KEYS | integrations.EXTRA_KEYS) if integrations.key_state(k))
         if not names:
