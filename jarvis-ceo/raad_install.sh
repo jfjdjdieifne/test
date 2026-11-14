@@ -30,14 +30,14 @@ if command -v crontab >/dev/null 2>&1; then
     echo "30 1 * * * $PY $REPO/raad_night.py >> $REPO/raad.log 2>&1";
     echo "5 6 * * * $PY $REPO/raad.py report >> $REPO/raad.log 2>&1";
     echo "*/10 * * * * bash $REPO/auto_update.sh >> $REPO/auto_update.log 2>&1";
-  } | crontab -
+  } | timeout 15 crontab -
   echo "الكرون اتركب ✅"
 else
   echo "ما في كرون — باركّب systemd timers (بلا حزم)"
   if sudo -n true 2>/dev/null; then
-    sudo cp "$REPO"/raad_systemd/*.service "$REPO"/raad_systemd/*.timer /etc/systemd/system/
-    sudo systemctl daemon-reload
-    sudo systemctl enable --now raad-night.timer raad-report.timer raad-resolve.timer raad-update.timer
+    timeout 15 sudo cp "$REPO"/raad_systemd/*.service "$REPO"/raad_systemd/*.timer /etc/systemd/system/
+    timeout 15 sudo systemctl daemon-reload
+    timeout 20 sudo systemctl enable --now raad-night.timer raad-report.timer raad-resolve.timer raad-update.timer
     systemctl list-timers 'raad-*' --no-pager 2>/dev/null | head -8
     echo "systemd timers اتركبت ✅"
   else

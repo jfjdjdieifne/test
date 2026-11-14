@@ -84,7 +84,7 @@ def tg(method, params=None, timeout=60, files=None):
 CALL_ROOM = os.environ.get("LIVEKIT_ROOM", "jarvis-call")
 _MEET_TEMPLATE = os.environ.get(
     "CEO_MEET_URL",
-    "https://cdn.jsdelivr.net/gh/jfjdjdieifne/test@callpage-v1/jarvis-ceo/callpage/index.html?liveKitUrl={url}&token={token}",
+    "https://raw.githack.com/jfjdjdieifne/test@callpage-v1/jarvis-ceo/callpage/index.html?liveKitUrl={url}&token={token}",
 )
 
 def build_call_url():
@@ -609,12 +609,10 @@ def _update_body(chat_id, repo, env):
     except Exception as e:  # noqa: BLE001
         send_text(chat_id, f"الجلب تم بس التنصيب فشل: {e}")
         return
-    try:
-        subprocess.run(["sudo", "-n", "systemctl", "restart", "jarvis-ceo"],
-                       capture_output=True, text=True, timeout=20)
-        send_text(chat_id, "البوت رجّع تشغيل على الكود الجديد ✅")
-    except Exception:  # noqa: BLE001
-        send_text(chat_id, "الكود محدث — كرمال الكود الجديد يشتغل داخل البوت: sudo systemctl restart jarvis-ceo")
+    send_text(chat_id, "برجع بثوانٍ على النسخة الجديدة ✅")
+    import time as _t
+    _t.sleep(1.5)
+    os._exit(0)  # systemd (Restart=always) بيرجع يشغّلنا بالكود الجديد — بدون أي صلاحية sudo
 
 
 # ============ أوامر Excel في المحادثة ============
