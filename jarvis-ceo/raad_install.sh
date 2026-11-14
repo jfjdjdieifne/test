@@ -13,12 +13,12 @@ PY="$REPO/.venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3.11 || command -v python3)"
 echo "بايثون: $PY ($("$PY" -V 2>&1))"
 
-# (اختياري ونادر) RAAD_PIP=1 لتثبيت الحزم — بخط زمني قاس حتى لا يعلق
-if [ "${RAAD_PIP:-0}" = "1" ]; then
+# الاعتماديات تصير تتنصب تلقائيًا كل تحديث (مهلة قاسية 180ث — إذا ما خلص طبيعي)
+if [ "${RAAD_PIP:-1}" = "1" ]; then
   timeout 180 "$PY" -m pip install -q --timeout 8 --retries 0 -r "$REPO/requirements.txt" \
     && echo "تنصيب الاعتماديات: OK" || echo "(الاعتماديات ما خلصت — طبيعي؛ رعد + البوت بيشتغلوا بدونها)"
 else
-  echo "(متبوعة بـ skip للـ pip — الشبكة عندك مو مهيأة لتحميل ثقيل)"
+  echo "(pip معطّل يدوياً بـ RAAD_PIP=0 — طبيعي البوت بيشتغل بدون الاعتماديات الجديدة)"
 fi
 
 echo "--- المصدر: $("$PY" -m pip config list 2>/dev/null | tr '\n' ' | ')" | head -c 200; echo

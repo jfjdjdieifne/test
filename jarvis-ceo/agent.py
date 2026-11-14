@@ -825,7 +825,7 @@ def handle_message(msg):
 
         def _update_job():
             repo = os.path.dirname(os.path.abspath(__file__))
-            env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+            env = dict(os.environ, GIT_TERMINAL_PROMPT="0", RAAD_PIP="1")
             _update_body(chat_id, repo, env)
 
         threading.Thread(target=_update_job, daemon=True).start()
