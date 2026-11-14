@@ -1118,6 +1118,19 @@ def handle_message(msg):
 
         threading.Thread(target=_models_job, daemon=True).start()
         return
+    if low in ("تجربة الحلقة", "تجربة الsdk", "agentsdk", "جرب agentsdk", "جرّب agents sdk", "/sdkprobe", "تجربة sdk"):
+        send_text(chat_id, "🧪 بجرب Agents SDK (OpenAI الرسمي) على كوارينا — استدعاء أداة واحد، نصف دقيقة…")
+
+        def _probe_job():
+            import sdkprobe
+            ok, detail = sdkprobe.probe()
+            if ok:
+                send_text(chat_id, "✅ معطيات الحلقة:\n" + detail + "\n\nإذا بدك أهاجر «وضع الوكيل» للحلقة الرسمية — قول «هاجر الحلقة».")
+            else:
+                send_text(chat_id, "❌ معطيات الحلقة:\n" + detail + "\n\nالقرار الحالي («وضع الوكيل» بجسر JSON) بيضل الأقوى عمليًا — ما تغيّر شي.")
+
+        threading.Thread(target=_probe_job, daemon=True).start()
+        return
     if low in ("كم مفتاح", "مفاتيحي", "كم مفتاح عندي", "كم مفتاح حفظت", "شو محفوظ عندي"):
         names = sorted(k for k in (integrations.ALL_KEYS | integrations.EXTRA_KEYS) if integrations.key_state(k))
         if not names:
