@@ -22,6 +22,22 @@ EDGE_TTS_VOICE = os.environ.get("EDGE_TTS_VOICE", "ar-SY-LaithNeural")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "").strip()
 
 
+# ---------- قراءة المواقع (Jina Reader — مجاني بلا مفتاح) ----------
+
+def read_url(url, max_chars=3500):
+    """يقرا أي رابط عبر r.jina.ai — يرجع نص نظيف (بلا مفتاح)."""
+    u = (url or "").strip()
+    if not u:
+        raise ValueError("الرابط فاضي")
+    if not u.startswith(("http://", "https://")):
+        u = "https://" + u
+    target = "https://r.jina.ai/" + u
+    req = urllib.request.Request(target, headers={"User-Agent": "jarvis-ceo", "Accept": "text/plain"})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        text = r.read().decode("utf-8", errors="ignore")
+    return text.strip()[:max_chars]
+
+
 # ---------- Excel ----------
 
 def excel_report(path, max_rows=12):

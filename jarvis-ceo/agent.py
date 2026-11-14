@@ -549,6 +549,70 @@ def process_excel(chat_id, path, instruction):
         send_text(chat_id, out)
 
 
+def _update_body(chat_id, repo, env):
+    import subprocess
+    pulled = False
+    if os.path.isdir(os.path.join(repo, ".git")):
+        try:
+            pull = subprocess.run(["git", "pull", "origin", "arena/e3e2c397-test"],
+                                  cwd=repo, env=env, capture_output=True, text=True, timeout=240)
+            pulled = pull.returncode == 0
+        except Exception:  # noqa: BLE001
+            pulled = False
+    if not pulled:
+        token = os.environ.get("GITHUB_TOKEN", "").strip()
+        if not token:
+            send_text(chat_id, "المجلد مو git وما في GITHUB_TOKEN بـ ~/jarvis-ceo.env")
+            return
+        try:
+            import shutil
+            import tarfile
+            import tempfile
+            url = "https://api.github.com/repos/jfjdjdieifne/test/tarball/arena/e3e2c397-test"
+            req = urllib.request.Request(url, headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "jarvis-ceo",
+            })
+            with urllib.request.urlopen(req, timeout=180) as r:
+                data = r.read()
+            with tempfile.TemporaryDirectory() as td:
+                tf = os.path.join(td, "src.tar.gz")
+                with open(tf, "wb") as f:
+                    f.write(data)
+                with tarfile.open(tf, "r:gz") as tar:
+                    tar.extractall(td)
+                roots = [d for d in os.listdir(td) if os.path.isdir(os.path.join(td, d))]
+                src_dir = None
+                for d in roots:
+                    cand = os.path.join(td, d, "jarvis-ceo")
+                    if os.path.isdir(cand):
+                        src_dir = cand
+                        break
+                if not src_dir:
+                    send_text(chat_id, "التنزيل تم بس ما لقيت مجلد jarvis-ceo جوا المضغوط")
+                    return
+                shutil.copytree(src_dir, repo, dirs_exist_ok=True)
+            send_text(chat_id, "النسخة الجديدة وصلت من GitHub ✅")
+        except Exception as e:  # noqa: BLE001
+            send_text(chat_id, f"التنزيل فشل: {e}")
+            return
+    try:
+        inst = subprocess.run(["bash", "raad_install.sh"], cwd=repo, env=env,
+                              capture_output=True, text=True, timeout=240)
+        tail = (inst.stdout + inst.stderr).strip()[-1300:]
+        send_text(chat_id, "التنصيب انتهى ✅\n" + tail)
+    except Exception as e:  # noqa: BLE001
+        send_text(chat_id, f"الجلب تم بس التنصيب فشل: {e}")
+        return
+    try:
+        subprocess.run(["sudo", "-n", "systemctl", "restart", "jarvis-ceo"],
+                       capture_output=True, text=True, timeout=20)
+        send_text(chat_id, "البوت رجّع تشغيل على الكود الجديد ✅")
+    except Exception:  # noqa: BLE001
+        send_text(chat_id, "الكود محدث — كرمال الكود الجديد يشتغل داخل البوت: sudo systemctl restart jarvis-ceo")
+
+
 # ============ أوامر Excel في المحادثة ============
 
 def handle_message(msg):
@@ -623,10 +687,21 @@ def handle_message(msg):
         else:
             send_text(chat_id, "LiveKit لسا مش مضبوط — اكتب «شو لازم اضيف» وضيف LIVEKIT_URL وLIVEKIT_API_KEY وLIVEKIT_API_SECRET بـ ~/jarvis-ceo.env وبعدها sudo systemctl restart jarvis-ceo")
         return
-    if low in ("تحديث", "/update", "حدث رعد", "ركّب رعد", "حدث كلشي", "حدث البوت"):
+    if low in ("تحديث", "/تحديث", "/update", "حدث رعد", "ركّب رعد", "حدث كلشي", "حدث البوت"):
         """تحديث كامل من التيليجرام — أوامر محددة سلفاً فقط، ما بيقبل أي شيء تاني."""
-        send_text(chat_id, "ثواني — بجيب آخر نسخة وبثبت رعد 🔄")
+        send_text(chat_id, "🔄 بدأ التحديث بالخلفية — بيجيك خبر لما يخلص (حتى دقيقتين، بدون ما أعلق على كل شي)")
         import subprocess
+        import threading
+
+        def _update_job():
+            repo = os.path.dirname(os.path.abspath(__file__))
+            env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+            _update_body(chat_id, repo, env)
+
+        threading.Thread(target=_update_job, daemon=True).start()
+        return
+    if False:  # الكود الباقي صار جوّا _update_body — بيشتغل بالخلفية
+        _ = low
         repo = os.path.dirname(os.path.abspath(__file__))
         env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
         pulled = False
@@ -859,6 +934,14 @@ def handle_message(msg):
     if m_del:
         ok = db.delete_reminder(int(m_del.group(1)), chat_id)
         send_text(chat_id, "شلت الإشعار ✅" if ok else "ما لقيت هيك تذكير")
+        return
+    m_read = re.match(r"^(?:اقرأ|اقرألي|لخص|لخصلي|review|read)\s*[:：]?\s*(https?://\S+|www\.\S+)", text, re.I)
+    if m_read:
+        try:
+            body = tools.read_url(m_read.group(1))
+            send_text(chat_id, (body or "(ما فيش نص واضح بالرابط)")[:3800])
+        except Exception as e:  # noqa: BLE001
+            send_text(chat_id, f"ما قدرت اقرأ الرابط: {e}")
         return
     m_img = re.match(r"^(?:صورة|انشر صورة|/image)\s*[:：]?\s*(.+)$", text)
     if m_img:

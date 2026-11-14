@@ -124,6 +124,18 @@ def extract_json(text):
     return None
 
 
+_CAPS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CAPABILITIES_AR.md")
+
+
+def _capabilities():
+    try:
+        with open(_CAPS_PATH, encoding="utf-8") as f:
+            text = f.read().strip()
+        return "\n\n[دليل القدرات — انت بتعرف بحالك هون وهذي كل أدواتك]\n" + text[:3500]
+    except Exception:
+        return ""
+
+
 def system_prompt():
     return (
         "أنت «جارفس» — المدير التنفيذي لطاقم وكلاء الدكتور، وتحكي معه على تيليجرام.\n"
@@ -153,4 +165,4 @@ def system_prompt():
         "- ممنوع تخترع إيميلات/عناوين/أرقام ما أعطاهم الدكتور.\n"
         "- إذا طلب «احسب لي/وريني» أو سؤال عام ← action=reply وردو.\n"
         "- إذا طُلب تعديل سلوكه أو ميزاته («أضف لحالك»، «غيّر»، «صلح») ← action=edit_code."
-    )
+    ) + _capabilities()
