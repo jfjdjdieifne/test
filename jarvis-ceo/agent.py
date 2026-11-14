@@ -629,16 +629,53 @@ def handle_message(msg):
         import subprocess
         repo = os.path.dirname(os.path.abspath(__file__))
         env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
-        try:
-            pull = subprocess.run(["git", "pull", "origin", "arena/e3e2c397-test"],
-                                  cwd=repo, env=env, capture_output=True, text=True, timeout=240)
-        except Exception as e:  # noqa: BLE001
-            send_text(chat_id, f"الجلب فشل: {e}")
-            return
-        if pull.returncode != 0:
-            tail = (pull.stdout + pull.stderr).strip()[-900:]
-            send_text(chat_id, "ما قدرت أجلب آخر نسخة:\n" + tail)
-            return
+        pulled = False
+        if os.path.isdir(os.path.join(repo, ".git")):
+            try:
+                pull = subprocess.run(["git", "pull", "origin", "arena/e3e2c397-test"],
+                                      cwd=repo, env=env, capture_output=True, text=True, timeout=240)
+                pulled = pull.returncode == 0
+            except Exception:  # noqa: BLE001
+                pulled = False
+        if not pulled:
+            # المجلد مو git clone — ننزل النسخة مضغوطة من GitHub ونفرضها على مكانها (الـ .venv ما بينلمس)
+            token = os.environ.get("GITHUB_TOKEN", "").strip()
+            if not token:
+                send_text(chat_id, "المجلد مو git وما في GITHUB_TOKEN بـ ~/jarvis-ceo.env")
+                return
+            try:
+                import shutil
+                import tarfile
+                import tempfile
+                url = "https://api.github.com/repos/jfjdjdieifne/test/tarball/arena/e3e2c397-test"
+                req = urllib.request.Request(url, headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "jarvis-ceo",
+                })
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    data = r.read()
+                with tempfile.TemporaryDirectory() as td:
+                    tf = os.path.join(td, "src.tar.gz")
+                    with open(tf, "wb") as f:
+                        f.write(data)
+                    with tarfile.open(tf, "r:gz") as tar:
+                        tar.extractall(td)
+                    roots = [d for d in os.listdir(td) if os.path.isdir(os.path.join(td, d))]
+                    src_dir = None
+                    for d in roots:
+                        cand = os.path.join(td, d, "jarvis-ceo")
+                        if os.path.isdir(cand):
+                            src_dir = cand
+                            break
+                    if not src_dir:
+                        send_text(chat_id, "التنزيل تم بس ما لقيت مجلد jarvis-ceo جوا المضغوط")
+                        return
+                    shutil.copytree(src_dir, repo, dirs_exist_ok=True)
+                send_text(chat_id, "النسخة الجديدة وصلت من GitHub ✅")
+            except Exception as e:  # noqa: BLE001
+                send_text(chat_id, f"التنزيل فشل: {e}")
+                return
         try:
             inst = subprocess.run(["bash", "raad_install.sh"], cwd=repo, env=env,
                                   capture_output=True, text=True, timeout=300)
