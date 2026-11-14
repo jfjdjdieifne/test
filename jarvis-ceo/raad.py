@@ -32,8 +32,6 @@ STATE_PATH = os.environ.get("RAAD_STATE", os.path.expanduser("~/jarvis-raad-stat
 REPO = os.path.dirname(os.path.abspath(__file__))
 STRATS_DIR = os.path.join(REPO, "raad_strategies")
 PLAYBOOK = os.path.join(REPO, "PLAYBOOK.md")
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-CEO_CHAT_ID = os.environ.get("CEO_CHAT_ID", "").strip()
 DISCLAIMER = "\n\n⚠️ ورقي بحت — مو نصيحة مالية ملزمة. القرار والحجم والوقف عليك."
 
 DB_SCHEMA = """
@@ -68,6 +66,25 @@ def _load_env_file():
 
 _load_env_file()
 
+def _kv_get(path, k):
+    try:
+        with sqlite3.connect(path) as c:
+            r = c.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+            return (r[0] or "").strip() if r else ""
+    except Exception:
+        return ""
+
+def tg_creds():
+    """(token, chat_id) — يقرا من env أولاً، ثم من قاعدة البوت (~/jarvis-ceo.db → kv) كنسخة احتياط."""
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat = os.environ.get("CEO_CHAT_ID", "").strip()
+    if not chat or not token:
+        dbp = os.environ.get("CEO_DB") or os.path.expanduser("~/jarvis-ceo.db")
+        chat = chat or _kv_get(dbp, "ceo_chat_id")
+        token = token or _kv_get(dbp, "telegram_bot_token")
+    return token, chat
+
+
 def now_ts():
     return time.time()
 
@@ -89,14 +106,15 @@ def save_state(s):
         json.dump(s, f, ensure_ascii=False, indent=1)
 
 def telegram_send(text):
-    if not BOT_TOKEN or not CEO_CHAT_ID:
+    bot_token, ceo_chat_id = tg_creds()
+    if not bot_token or not ceo_chat_id:
         print("TELEGRAM غير مضبوط — حط TELEGRAM_BOT_TOKEN وCEO_CHAT_ID بـ ~/jarvis-ceo.env")
         print(text)
         return False
-    body = json.dumps({"chat_id": CEO_CHAT_ID, "text": text[:4000]}).encode()
+    body = json.dumps({"chat_id": ceo_chat_id, "text": text[:4000]}).encode()
     try:
         req = urllib.request.Request(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
             data=body, method="POST",
             headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=20):
