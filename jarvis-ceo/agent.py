@@ -80,7 +80,7 @@ def tg(method, params=None, timeout=60, files=None):
 CALL_ROOM = os.environ.get("LIVEKIT_ROOM", "jarvis-call")
 _MEET_TEMPLATE = os.environ.get(
     "CEO_MEET_URL",
-    "https://meet.livekit.io/custom/?liveKitUrl={url}&token={token}",
+    "https://cdn.jsdelivr.net/gh/jfjdjdieifne/test@callpage-v1/jarvis-ceo/callpage/index.html?liveKitUrl={url}&token={token}",
 )
 
 def build_call_url():
