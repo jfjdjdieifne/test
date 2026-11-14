@@ -45,6 +45,11 @@ else
   fi
 fi
 
-timeout 90 "$PY" "$REPO/raad.py" setup || echo "(raad.py setup فشل/تأخر — تخطيناه، الكرون مركّب والباقي شغال)"
+MARKER="$HOME/.jarvis_raad_setup_done"
+if [ -f "$MARKER" ]; then
+  echo "(التهيئة الأولى خلصت — ما بيكرر «رعد تفعّل» كل تحديث)"
+else
+  if timeout 90 "$PY" "$REPO/raad.py" setup; then touch "$MARKER"; else echo "(raad.py setup فشل/تأخر — تخطيناه، الكرون مركّب والباقي شغال)"; fi
+fi
 echo "RAAD-INSTALLED-OK"
 exit 0

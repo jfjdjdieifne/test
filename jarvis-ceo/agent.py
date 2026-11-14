@@ -553,6 +553,20 @@ def process_excel(chat_id, path, instruction):
         send_text(chat_id, out)
 
 
+def _restart_self_now():
+    """restart صريح للخدمة — نفس الفلسفة: النظام يعيد تشغيلنا، os._exit آخر ملاذ بس."""
+    import subprocess
+    for cmd in (["sudo", "-n", "systemctl", "restart", "jarvis-ceo"],
+                ["systemctl", "restart", "jarvis-ceo"]):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if r.returncode == 0:
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 def _update_body(chat_id, repo, env):
     import subprocess
     pulled = False
@@ -605,7 +619,10 @@ def _update_body(chat_id, repo, env):
         inst = subprocess.run(["bash", "raad_install.sh"], cwd=repo, env=env,
                               capture_output=True, text=True, timeout=240)
         tail = (inst.stdout + inst.stderr).strip()[-1300:]
-        send_text(chat_id, "التنصيب انتهى ✅\n" + tail)
+        if inst.returncode == 0 and "RAAD-INSTALLED-OK" in tail:
+            send_text(chat_id, "✅ وصلت النسخة الجديدة والتنصيب خلص نظيف")
+        else:
+            send_text(chat_id, "التنصيب خلص بس مع ملاحظات:\n" + tail)
     except Exception as e:  # noqa: BLE001
         send_text(chat_id, f"الجلب تم بس التنصيب فشل: {e}")
         return
@@ -659,7 +676,10 @@ def handle_message(msg):
         if low_raw in ("خلص", "خلاص", "خلصت", "توقف", "تم"):
             db.kv_set("bulk_keys", "0")
             send_text(chat_id, keyimport.final_report())
-            os._exit(0)
+            if not _restart_self_now():
+                os._exit(0)  # آخر الملاذ
+            return
+
         else:
             summary, saved = keyimport.apply_bulk(chat_id, text_raw)
             send_text(chat_id, summary + "\n\n(ابعت الباقي — أو «خلص» لما تخلص)")
@@ -815,7 +835,10 @@ def handle_message(msg):
         ok, note = integrations.store_env_var(name, value)
         if ok:
             send_text(chat_id, f"✅ انحفظ {name} بالمكان السري وانمسحت رسالتك.\nبعمل ريستارت هلأ عشان يطبّق…")
-            os._exit(0)
+            if not _restart_self_now():
+                os._exit(0)  # آخر الملاذ
+            return
+
         else:
             send_text(chat_id, f"❌ {note}")
         return
