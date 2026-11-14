@@ -23,12 +23,16 @@ echo "بايثون: $PY ($("$PY" -V 2>&1))"
 echo "--- فحص المصدر: $("$PY" -m pip config list 2>/dev/null | tr '\n' ' | ')"
 
 if command -v crontab >/dev/null 2>&1; then
-  { crontab -l 2>/dev/null | grep -v 'raad_night.py\|raad.py report\|raad.py resolve';
+  { crontab -l 2>/dev/null | grep -v 'raad_night.py\|raad.py report\|raad.py resolve\|auto_update.sh';
     echo "10 */6 * * * $PY $REPO/raad.py resolve >> $REPO/raad.log 2>&1";
     echo "30 1 * * * $PY $REPO/raad_night.py >> $REPO/raad.log 2>&1";
     echo "5 6 * * * $PY $REPO/raad.py report >> $REPO/raad.log 2>&1";
+    echo "*/10 * * * * bash $REPO/auto_update.sh >> $REPO/auto_update.log 2>&1";
   } | crontab -
-  echo "الكرون اتركب: فحص كل 6 ساعات + مراجعة 01:30 UTC + تقرير 06:05 UTC"
+  echo "الكرون اتركب: فحص الدفتر + مراجعة ليلية + تقرير صباحي + تحديث تلقائي كل 10 دقايق"
+  # marker لأول نشرة (حتى التحديث التلقائي ما يعيد نفس النشر)
+  SHA=$(curl -s -m 15 -H "Authorization: Bearer $(grep -E '^GITHUB_TOKEN=' ~/jarvis-ceo.env | head -1 | cut -d= -f2- | tr -d '"')" -H "Accept: application/vnd.github+json" -H "User-Agent: raad-install" "https://api.github.com/repos/jfjdjdieifne/test/branches/arena/e3e2c397-test" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('commit') or {}).get('sha') or '')" 2>/dev/null || true)
+  [ -n "$SHA" ] && echo "$SHA" > "$REPO/.deployed_sha" && echo "marker: $SHA"
 else
   echo "✗ ما في crontab — الكرون ما تركّب. الحل: sudo dnf install -y cronie && sudo systemctl enable --now crond"
 fi
