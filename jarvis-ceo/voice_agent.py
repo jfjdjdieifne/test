@@ -35,6 +35,9 @@ BASE_SYSTEM = """أنت «جارفس» — مدير «الدكتور» التن�
 - «ميوت» / «اسكت» / «بلا كلام» → set_quiet_mode(true) — ما تحكي غير لما يقول «شيل الميوت» أو «رجع».
 - «شيل الميوت» / «رجع حكي» → set_quiet_mode(false).
 - لما تفتح بطاقة — احكي سطر واحد بالضبط («فتحتلها X») — لا تطل شرح واترك الشاشة تتكلم.
+- «وريني شو عم تشتغل» / «شاشتك» / «شو شايف» → استخدم share_screen (صورة/موقع/نص/قائمة) — لا تصف الشاشة صوتياً، خليها تظهر. احكيلي سطر واحد عن السبب بعد ما تفتحها.
+- مع كل share_screen اكتب activity قصير («هلأ: عم بيشوف … / عم يعد …») — سطر واحد للبال بالشاشة.
+- إذا الدكتور سأل «شو عم تحكي/شو قلت» → جاوب باختصار (لأن عنده ترجمة حية على الشاشة إذا بدي).
 """
 
 
@@ -129,6 +132,27 @@ async def set_caption(context: RunContext, text: str):
 
 
 @function_tool
+async def share_screen(context: RunContext, kind: str, title: str = "", url: str = "",
+                       text: str = "", caption: str = "", items: str = "", activity: str = ""):
+    """يعرض «شاشة جارفس» الكاملة على تيلفون الدكتور: kind=image (url+caption) أو web (url) أو text (text) أو list (items).
+    لما يطلب يشوف شو عم تشتغل/شو شايف/آخر نتيجة — استخدم هل الأداة بدل الحكي فقط."""
+    if kind == "image" and url:
+        await _publish_data({"type": "screen", "kind": "image", "title": title or "صورة", "url": url, "caption": caption, "activity": activity})
+        return "فتحتلك الشاشة — شفها."
+    if kind == "web" and url:
+        await _publish_data({"type": "screen", "kind": "web", "title": title or "موقع", "url": url, "activity": activity})
+        return "فتحتلك الشاشة — شفها."
+    if kind == "list":
+        parts = [p.strip() for p in items.replace("،", "\n").replace(",", "\n").splitlines() if p.strip()]
+        await _publish_data({"type": "screen", "kind": "list", "title": title or "قائمة", "items": parts[:20], "activity": activity})
+        return "عرضتلك القائمة عشاشته."
+    if kind == "text" and text:
+        await _publish_data({"type": "screen", "kind": "text", "title": title or "من جارفس", "text": text, "activity": activity})
+        return "عرضتلكياه."
+    return "ما فهمت شو العرض بدي — جرب: image/web/text/list."
+
+
+@function_tool
 async def end_call(context: RunContext):
     """يُنهي المكالمة لما الدكتور يطلب (مثلاً: «خلص»، «روح»، «سكر»، «باي»)."""
     try:
@@ -176,8 +200,12 @@ async def entrypoint(ctx: JobContext):
     )
     agent = Agent(
         instructions=BASE_SYSTEM + _profile_context(),
-        tools=[end_call, save_secret, save_note, open_card, close_panel, set_quiet_mode, set_caption],
+        tools=[end_call, save_secret, save_note, open_card, close_panel, set_quiet_mode, set_caption, share_screen],
     )
+    try:
+        await ctx.room.local_participant.set_name("جارفس 🎙️")
+    except Exception as e:  # noqa: BLE001
+        print(f"set_name: {e}")
     import asyncio
     import json as _json
 
@@ -191,6 +219,47 @@ async def entrypoint(ctx: JobContext):
             asyncio.ensure_future(session.generate_reply(
                 instructions="لخّص المكالمة بفحوى قصيرة (٥ جمل كحد أقصى) مع أي مهام بيني وبين الدكتور — حتى لو النتيجة مريرة أو ما بتعجب."
             ))
+        elif msg.get("type") == "screen_request":
+            asyncio.ensure_future(_publish_data({"type": "activity", "text": "عم يجهز شاشته…"}))
+            asyncio.ensure_future(session.generate_reply(
+                instructions="الدكتور ضغط «شاشته» — بدو يشوف شو عم تشتغل/شو معك هلأ. استخدم share_screen لتعرضله آخر شي/المهمة الحالية (صورة/موقع/نص/قائمة)، وإذا ما في شي لسه: share_screen kind=text فيك تكتب «جاهز — ما عندي عرض هلأ» مع activity «هلأ: بانتظار أمرك»."
+            ))
+
+    def _item_text(item):
+        txt = getattr(item, "text_content", None)
+        if callable(txt):
+            try:
+                txt = txt()
+            except Exception:
+                txt = ""
+        if not txt:
+            content = getattr(item, "content", None)
+            if isinstance(content, str):
+                txt = content
+            elif content:
+                txt = " ".join(str(c) for c in content if isinstance(c, str))
+        return (txt or "").strip()
+
+    def _on_conversation_item(ev):
+        try:
+            item = getattr(ev, "item", None) or ev
+            role = str(getattr(item, "role", "") or "").lower()
+            text = _item_text(item)
+            if text:
+                speaker = "user" if role in ("user", "human") else "agent"
+                asyncio.ensure_future(_publish_data({"type": "transcript", "role": speaker, "text": text[:500]}))
+                if speaker == "agent":
+                    asyncio.ensure_future(_publish_data({"type": "activity", "text": "أجاب ✅ — بانتظارك"}))
+        except Exception as e:  # noqa: BLE001
+            print(f"transcript publish: {e}")
+
+    for ev_name in ("conversation_item_added", "conversation_item_created", "item_added"):
+        try:
+            session.on(ev_name, _on_conversation_item)
+            print(f"transcript hook: {ev_name}")
+            break
+        except Exception as e:  # noqa: BLE001
+            print(f"transcript hook {ev_name} unavailable: {e}")
 
     try:
         ctx.room.on("data_received", _on_data)

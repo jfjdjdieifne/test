@@ -45,6 +45,6 @@ else
   fi
 fi
 
-"$PY" "$REPO/raad.py" setup || echo "(raad.py setup فشل — شوف أعلاه)"
+timeout 90 "$PY" "$REPO/raad.py" setup || echo "(raad.py setup فشل/تأخر — تخطيناه، الكرون مركّب والباقي شغال)"
 echo "RAAD-INSTALLED-OK"
 exit 0
