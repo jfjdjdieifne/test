@@ -152,12 +152,24 @@ def apply_excel_code(path, code, log_limit=2000):
             return False, f"فشل التنفيذ: {type(e).__name__}: {e}"
 
 
+
+def _clean_keys_t(raw):
+    import re as _re
+    keys = []
+    for chunk in _re.split(r"[,;\n]+", raw or ""):
+        chunk = chunk.strip()
+        chunk = _re.sub(r"\s+#.*$", "", chunk).strip()
+        chunk = chunk.strip("\"'` \t\r")
+        if chunk:
+            keys.append(chunk)
+    return keys
+
 # ---------- الصوت ----------
 
 def gemini_transcribe(path, mime="audio/ogg"):
     """تفريغ ملف صوت عبر Gemini (نفس المفتاح المُثبت بالتجارب)."""
     raw = os.environ.get("GEMINI_TTS_API_KEYS") or os.environ.get("GEMINI_API_KEY", "")
-    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    keys = _clean_keys_t(raw)
     if not keys:
         raise RuntimeError("لا يوجد مفتاح Gemini على السيرفر")
     audio_b64 = base64.b64encode(open(path, "rb").read()).decode()
@@ -189,7 +201,7 @@ def gemini_vision(path, prompt, model=None):
     """قراءة صورة عبر Gemini — بترجع وصف/إجابة عربية."""
     model = model or os.environ.get("GEMINI_VISION_MODEL") or os.environ.get("GEMINI_STT_MODEL", "gemini-2.5-flash")
     raw = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_TTS_API_KEYS") or os.environ.get("GEMINI_API_KEY", "")
-    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    keys = _clean_keys_t(raw)
     if not keys:
         raise RuntimeError("ما فيه مفتاح Gemini على السيرفر")
     img_b64 = base64.b64encode(open(path, "rb").read()).decode()

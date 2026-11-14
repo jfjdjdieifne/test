@@ -17,9 +17,21 @@ MAX_TOKENS = int(os.environ.get("CEO_MAX_TOKENS", "1600"))
 DAILY_TOKEN_CAP = os.environ.get("DAILY_TOKEN_CAP", "200000")
 
 
+def _clean_keys(raw):
+    """تنظيف صفري المخاطر: يدعم فواصل , ; وأسطر؛ يشيل اقتباس/مسافات/CR/تعليق trailing — ما بيغيّر المفتاح نفسه."""
+    keys = []
+    for chunk in re.split(r"[,;\n]+", raw or ""):
+        chunk = chunk.strip()
+        chunk = re.sub(r"\s+#.*$", "", chunk).strip()   # تعليق trailing: value # comment
+        chunk = chunk.strip("\"'` \t\r")
+        if chunk:
+            keys.append(chunk)
+    return keys
+
+
 def _keys():
     raw = os.environ.get("COARENA_API_KEYS") or os.environ.get("COARENA_API_KEY", "")
-    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    keys = _clean_keys(raw)
     return keys or [""]
 
 
@@ -39,13 +51,12 @@ class BrainError(Exception):
 
 
 def _gemini_keys():
-    raw = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_TTS_API_KEYS", "")
-    return [k.strip() for k in raw.split(",") if k.strip()]
+    raw = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_TTS_API_KEYS") or os.environ.get("GEMINI_API_KEY", "")
+    return _clean_keys(raw)
 
 
 def _openrouter_keys():
-    raw = os.environ.get("OPENROUTER_API_KEY", "")
-    return [k.strip() for k in raw.split(",") if k.strip()]
+    return _clean_keys(os.environ.get("OPENROUTER_API_KEY", ""))
 
 
 def _providers():

@@ -890,6 +890,49 @@ def handle_message(msg):
         db.kv_set("profile", profile)
         send_text(chat_id, "حفظت ✅ — كل محادثاتنا الجاية بفهم عليك أكثر (قل «وش تعرف عني» لتشوف)")
         return
+    if low in ("فحص المفاتيح", "فحص المفالح", "keycheck", "/keyscheck", "شو وضع مفاتيحي", "فحص كل المفاتيح"):
+        send_text(chat_id, "🔍 بفحص كل مفتاح عندي — ثواني…")
+
+        def _check_job():
+            import io
+            import json as _json
+            import urllib.error
+            import urllib.request
+            import brain as _brain
+            report = []
+            keys = [k for k in _brain._keys() if k]
+            if not keys:
+                report.append("كوارينا: ما في ولا مفتاح مضبوط على السيرفر (COARENA_API_KEYS فاضي!)")
+            for i, k in enumerate(keys, 1):
+                body = _json.dumps({"model": _brain.MODEL,
+                                    "messages": [{"role": "user", "content": "قل: جاهز"}],
+                                    "max_tokens": 8}).encode("utf-8")
+                req = urllib.request.Request(
+                    _brain.BASE_URL.rstrip("/") + "/chat/completions",
+                    data=body, method="POST",
+                    headers={"Authorization": f"Bearer {k}", "Content-Type": "application/json"})
+                try:
+                    with urllib.request.urlopen(req, timeout=25) as r:
+                        _json.loads(r.read().decode("utf-8"))
+                    report.append(f"✅ كوارينا مفتاح {i} (…{k[-4:]}) — شغال")
+                except urllib.error.HTTPError as e:
+                    detail = ""
+                    try:
+                        detail = e.read().decode("utf-8", "ignore")[:80]
+                    except Exception:
+                        pass
+                    report.append(f"❌ كوارينا مفتاح {i} (…{k[-4:]}) — HTTP {e.code}: {detail}")
+                except Exception as e:  # noqa: BLE001
+                    report.append(f"❌ كوارينا مفتاح {i} (…{k[-4:]}) — {type(e).__name__}")
+            g, o = len(_brain._gemini_keys()), len(_brain._openrouter_keys())
+            report.append(f"جيميني: {g} مفتاح مضبوط ✅ (العقل الرديف جاهز)" if g else "جيميني: ما في مفتاح — العقل الرديف مطفي")
+            report.append(f"OpenRouter: {o} مفتاح مضبوط ✅" if o else "OpenRouter: ما في مفتاح")
+            ok = sum(1 for line in report if line.startswith("✅"))
+            report.append(f"— النتيجة: {ok}/{len(keys)} مفتاح كوارينا شغالين هلق.")
+            send_text(chat_id, "\n".join(report)[:3800])
+
+        threading.Thread(target=_check_job, daemon=True).start()
+        return
     if low in ("كم مفتاح", "مفاتيحي", "كم مفتاح عندي", "كم مفتاح حفظت", "شو محفوظ عندي"):
         names = sorted(k for k in (integrations.ALL_KEYS | integrations.EXTRA_KEYS) if integrations.key_state(k))
         if not names:
