@@ -141,6 +141,30 @@ def history(chat_id, agent=None, limit=14):
     return out
 
 
+def boundary_id(chat_id, keep=10):
+    """id الرسالة اللي قبل آخر (keep) رسائل — 0 إذا ما في تراكم."""
+    with conn() as c:
+        rows = c.execute(
+            "SELECT id FROM messages WHERE chat_id=? ORDER BY id DESC LIMIT ?",
+            (int(chat_id), keep + 1),
+        ).fetchall()
+        return rows[-1][0] if len(rows) > keep else 0
+
+
+def history_before(chat_id, before_id, after_id=0, limit=60):
+    """رسائل أقدم من before_id وأحدث من after_id — بترتيب زمني."""
+    with conn() as c:
+        rows = c.execute(
+            "SELECT id, role, agent, text FROM messages WHERE chat_id=? AND id < ? AND id > ? ORDER BY id DESC LIMIT ?",
+            (int(chat_id), int(before_id), int(after_id), limit),
+        ).fetchall()
+    out = []
+    for r in reversed(rows):
+        who = r["agent"] if r["role"] != "user" else "الدكتور"
+        out.append({"id": r["id"], "role": r["role"], "content": f"[{who}] {r['text']}"})
+    return out
+
+
 def add_task(agent, prompt, result=None, status="open"):
     with conn() as c:
         cur = c.execute(
