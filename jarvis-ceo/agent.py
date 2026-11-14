@@ -553,6 +553,25 @@ def process_excel(chat_id, path, instruction):
         send_text(chat_id, out)
 
 
+
+
+def _env_keys_snapshot():
+    """يقرأ ملف الأسرار فعليًا (مصدر الحقيقة) — ما بيرجع إلا مفاتيح معدودة."""
+    out = {}
+    try:
+        path = integrations.ENV_PATH
+        with open(path, encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.rstrip("\n")
+                s = line.strip()
+                if not s or s.startswith("#") or "=" not in s:
+                    continue
+                k, v = s.split("=", 1)
+                out[k.strip()] = v.strip().strip("\"'")
+    except Exception:
+        pass
+    return out
+
 def _restart_self_now():
     """restart صريح للخدمة — نفس الفلسفة: النظام يعيد تشغيلنا، os._exit آخر ملاذ بس."""
     import subprocess
@@ -868,7 +887,10 @@ def handle_message(msg):
         if not integrations.env_var_allowed(name):
             send_text(chat_id, f"«{name}» مو من المفاتيح المعروفة عندي — إذا متأكد قللي بالاسم الصح أو بدّي أعدّل الكود بهاي النقطة")
             return
-        ok, note = integrations.store_env_var(name, value)
+        if name in ("COARENA_API_KEYS", "GEMINI_API_KEYS", "GEMINI_TTS_API_KEYS"):
+            ok, note = integrations.store_pool_value(name, value)   # دمج بدون استبدال — بلا ما نمسح الموجود
+        else:
+            ok, note = integrations.store_env_var(name, value)
         if ok:
             send_text(chat_id, f"✅ انحفظ {name} بالمكان السري وانمسحت رسالتك.\nبعمل ريستارت هلأ عشان يطبّق…")
             if not _restart_self_now():
@@ -946,6 +968,54 @@ def handle_message(msg):
             send_text(chat_id, "\n".join(report)[:3800])
 
         threading.Thread(target=_check_job, daemon=True).start()
+        return
+    if low in ("وريني مفاتيحي", "عرض مفاتيحي", "كم مفتاح بالتفصيل", "وين مفاتيحي", "مفاتيحي كاملة"):
+        snap = _env_keys_snapshot()
+        lines = ["📦 مفاتيحك المخزنة على السيرفر (مقنّعة — آخر ٤ أحرف فقط):"]
+        pool = snap.get("COARENA_API_KEYS") or snap.get("COARENA_API_KEY") or ""
+        vals = [k.strip() for k in pool.split(",") if k.strip()]
+        if vals:
+            lines.append(f"كوارينا ({len(vals)}):")
+            for i, k in enumerate(vals, 1):
+                lines.append(f"  {i}) …{k[-4:]} ({len(k)} حروف)")
+        else:
+            lines.append("كوارينا: ولا مفتاح")
+        for name in ("GEMINI_API_KEYS", "GEMINI_TTS_API_KEYS", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
+            v = snap.get(name)
+            if v:
+                parts = [k.strip() for k in v.split(",") if k.strip()]
+                lines.append(f"{name} ({len(parts)}): " + ", ".join(f"…{p[-4:]}" for p in parts))
+        lines.append("إذا بدك القيم الكاملة اكتب «اكشف مفاتيحي» وبعدين «أكد كشف المفاتيح».")
+        send_text(chat_id, "\n".join(lines)[:3800])
+        return
+    if low == "اكشف مفاتيحي":
+        db.kv_set("reveal_pending", str(time.time()))
+        send_text(chat_id, (
+            "⚠️ القيم الكاملة رح تنبعث برسالتين خصوصاً لك بهاد الشات الخاص.\n"
+            "انسخهم لملف آمن فوراً وبعدين احذف هالرسائل (اضغط مطول ← حذف).\n"
+            "إذا متأكد اكتب: «أكد كشف المفاتيح» (خلال ٣ دقايق)"
+        ))
+        return
+    if low == "أكد كشف المفاتيح":
+        try:
+            pending_ts = float(db.kv_get("reveal_pending", "0") or 0)
+        except Exception:
+            pending_ts = 0
+        if time.time() - pending_ts > 180:
+            send_text(chat_id, "انتهت مهلة التأكيد — اكتب «اكشف مفاتيحي» مرة تانية إذا بدك.")
+            return
+        db.kv_set("reveal_pending", "0")
+        snap = _env_keys_snapshot()
+        msg_parts = []
+        for name in ("COARENA_API_KEYS", "COARENA_API_KEY", "GEMINI_API_KEYS", "GEMINI_TTS_API_KEYS", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
+            v = snap.get(name)
+            if v:
+                msg_parts.append(f"{name}={v}")
+        if not msg_parts:
+            send_text(chat_id, "ما لقيت أي مفتاح مخزن — غريب. راجعني.")
+            return
+        send_text(chat_id, "🔑 مفاتيحك (انسخ نصها وخزّنه، وبعدين احذف هالرسائل):\n\n" + "\n".join(msg_parts)[:3600])
+        send_text(chat_id, "خلص — هسا بإيدك. لا تبعتها لحدا ولا تحطها بأي تطبيق عام.")
         return
     if low in ("كم مفتاح", "مفاتيحي", "كم مفتاح عندي", "كم مفتاح حفظت", "شو محفوظ عندي"):
         names = sorted(k for k in (integrations.ALL_KEYS | integrations.EXTRA_KEYS) if integrations.key_state(k))
