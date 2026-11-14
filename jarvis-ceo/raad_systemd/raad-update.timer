@@ -1,0 +1,9 @@
+[Unit]
+Description=Raad تحديث تلقائي كل ١٠ دقائق
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=raad@update.service
+[Install]
+WantedBy=timers.target

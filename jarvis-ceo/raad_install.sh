@@ -34,7 +34,16 @@ if command -v crontab >/dev/null 2>&1; then
   SHA=$(curl -s -m 15 -H "Authorization: Bearer $(grep -E '^GITHUB_TOKEN=' ~/jarvis-ceo.env | head -1 | cut -d= -f2- | tr -d '"')" -H "Accept: application/vnd.github+json" -H "User-Agent: raad-install" "https://api.github.com/repos/jfjdjdieifne/test/branches/arena/e3e2c397-test" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('commit') or {}).get('sha') or '')" 2>/dev/null || true)
   [ -n "$SHA" ] && echo "$SHA" > "$REPO/.deployed_sha" && echo "marker: $SHA"
 else
-  echo "✗ ما في crontab — الكرون ما تركّب. الحل: sudo dnf install -y cronie && sudo systemctl enable --now crond"
+  echo "✗ ما في crontab — بركّب systemd timers بدل الكرون (ما بيحتاج أي حزمة)"
+  if sudo -n true 2>/dev/null; then
+    sudo cp "$REPO"/raad_systemd/*.service "$REPO"/raad_systemd/*.timer /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now raad-night.timer raad-report.timer raad-resolve.timer raad-update.timer
+    systemctl list-timers 'raad-*' --no-pager || true
+    echo "systemd timers اتركبت ✅ (بدل الكرون)"
+  else
+    echo "✗ لا كرون ولا صلاحية sudo لكتابة /etc/systemd/system — اعطِ ec2-user sudo أو نفّذها بلكونسول مع sudo"
+  fi
 fi
 
 "$PY" "$REPO/raad.py" setup || echo "(raad.py setup فشل — شوف المخرجات فوق)"

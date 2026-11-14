@@ -1,0 +1,8 @@
+[Unit]
+Description=Raad مراجعة ليلية 01:30 UTC
+[Timer]
+OnCalendar=*-*-* 01:30:00
+Persistent=true
+Unit=raad@night.service
+[Install]
+WantedBy=timers.target

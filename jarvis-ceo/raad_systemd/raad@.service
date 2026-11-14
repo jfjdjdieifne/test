@@ -1,0 +1,10 @@
+[Unit]
+Description=Raad tick %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ec2-user
+EnvironmentFile=-/home/ec2-user/jarvis-ceo.env
+ExecStart=/bin/bash /home/ec2-user/jarvis-ceo/raad_tick.sh %i

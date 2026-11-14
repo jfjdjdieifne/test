@@ -49,6 +49,25 @@ CREATE TABLE IF NOT EXISTS lessons(id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 """
 
+def _load_env_file():
+    """يقرا ~/jarvis-ceo.env سطر سطر (KEY=VALUE فقط) — بدون أي تنفيذ. ما بطغى على env مضبوط مسبقاً."""
+    path = os.environ.get("CEO_ENV_PATH") or os.path.expanduser("~/jarvis-ceo.env")
+    try:
+        with open(path, encoding="utf-8") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip('"').strip("'")
+                if k and k not in os.environ:
+                    os.environ[k] = v
+    except Exception:  # noqa: BLE001
+        pass
+
+
+_load_env_file()
+
 def now_ts():
     return time.time()
 

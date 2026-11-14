@@ -1,0 +1,9 @@
+[Unit]
+Description=Raad قرار الصفقات المفتوحة كل ٦ ساعات
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+Persistent=true
+Unit=raad@resolve.service
+[Install]
+WantedBy=timers.target
