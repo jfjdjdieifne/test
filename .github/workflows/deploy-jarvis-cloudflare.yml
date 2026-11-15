@@ -52,10 +52,10 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Test (44 checks)
-        run: npm test
+      - name: Verify retired Worker syntax
+        run: node --check worker.js
 
-      - name: Deploy Worker + Browser Rendering
+      - name: Deploy retired Worker
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -81,18 +81,16 @@ jobs:
           fi
           exit "$code"
 
-      - name: Privacy-safe live health check
+      - name: Permanently disconnect retired Telegram bot
         env:
           WORKER_URL: ${{ steps.deploy.outputs.worker_url }}
         shell: bash
         run: |
           test -n "$WORKER_URL"
-          health=$(curl --fail --show-error --silent "$WORKER_URL/health")
-          printf '%s\n' "$health" | grep -q '"status":"ok"'
-          key=$(sed -n 's/^CALL_SECRET = "\(.*\)"/\1/p' wrangler.toml)
-          status=$(curl --fail --show-error --silent --get --data-urlencode "key=$key" "$WORKER_URL/arena-status")
-          printf 'Arena transport metadata: %s\n' "$status"
-          echo "::notice title=Arena transport metadata::$status"
-          # لا نرسل prompt آلياً بكل deploy: Cloudflare Browser المجاني يحدّ إنشاء
-          # الجلسات، والفحص المتكرر كان ينافس رسائل المستخدم ويسبب HTTP 429.
-          echo "✅ Worker health passed. No Telegram payload, Arena page, email, chat title, prompt, cookie, or live tail was recorded." >> "$GITHUB_STEP_SUMMARY"
+          token=$(sed -n 's/^TELEGRAM_BOT_TOKEN = "\(.*\)"/\1/p' wrangler.toml)
+          test -n "$token"
+          result=$(curl --fail --show-error --silent -X POST "https://api.telegram.org/bot${token}/deleteWebhook" --data 'drop_pending_updates=true')
+          printf '%s' "$result" | grep -q '"ok":true'
+          body=$(curl --silent "$WORKER_URL/health")
+          printf '%s' "$body" | grep -q '"disabled":true'
+          echo "✅ Bot webhook deleted, queued Telegram updates dropped, cron removed, and Worker retired with no external API calls." >> "$GITHUB_STEP_SUMMARY"

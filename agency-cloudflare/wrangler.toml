@@ -21,8 +21,7 @@ binding = "BROWSER"
 # id = "<PUT-YOUR-KV-NAMESPACE-ID-HERE>"
 
 # جدولة تلقائية كل دقيقة: الموجز الصباحي (~06:00 UTC) + طابور المهام الطويلة
-[triggers]
-crons = ["* * * * *"]
+# Bot retired by owner: no scheduled work and no API consumption.
 
 # ===== المتغيرات (المستودع خاص) =====
 [vars]

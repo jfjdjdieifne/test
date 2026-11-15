@@ -75,6 +75,10 @@ function arenaConnectPage(origin, token) {
 
 export default {
   async fetch(request, env, ctx) {
+    // هذا الـWorker متوقف نهائياً بطلب المالك. لا Telegram، لا نماذج، لا متصفح،
+    // لا مفاتيح خارجية، ولا أعمال خلفية. 410 يثبت أن النسخة أُغلقت عمداً.
+    return new Response(JSON.stringify({ disabled: true, service: "jarvis-retired" }), { status: 410, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    /* retired code kept only for repository history; unreachable */
     const url = new URL(request.url);
 
     if (url.pathname === "/live-call") return handleGeminiLiveSocket(request, env);
@@ -173,6 +177,7 @@ export default {
   },
   // يعمل كل دقيقة — موجز صباحي الساعة 06:00 UTC مرة يومياً + طابور المهام دائماً
   async scheduled(event, env, ctx) {
+    return; // retired: ممنوع تشغيل أي cron أو استهلاك أي API
     ctx.waitUntil((async () => {
       try {
         const now = new Date(event?.scheduledTime || Date.now());
